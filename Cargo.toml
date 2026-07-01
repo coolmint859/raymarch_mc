@@ -1,0 +1,15 @@
+[package]
+name = "raymarched-mc"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+winit = "0.30"
+wgpu = "28.0"
+pollster = "0.3"
+glam = { version = "0.32.1", features = [ "bytemuck" ]}
+bytemuck = { version = "1.24", features = [ "derive" ] }
+rayon = "1.12.0"
+image = "0.23"
+rand = "0.8.0"
+rand_distr = "0.4.0"
