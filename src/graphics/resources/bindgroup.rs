@@ -1,42 +1,36 @@
 use std::{ops::Deref, sync::Arc};
 
-use crate::graphics::{BufferHandle, ResourceBuilder, WgpuResource};
+use crate::graphics::{BufferHandle, GpuHandle, ResourceBuilder, TextureHandle, TextureRole, WgpuResource};
 
 pub enum ResourceHandle {
-    Buffer(BufferHandle)
-    // Texture(TextureHandle),
+    Buffer(BufferHandle),
+    Texture(TextureHandle, TextureRole),
     // Sampler(SamplerHandle),
 }
 
 impl WgpuResource for ResourceHandle {
     fn binding_type(&self) -> wgpu::BindingType {
         match self {
-            ResourceHandle::Buffer(buffer) => buffer.binding_type()
-        }
-    }
-
-    fn visibility(&self) -> wgpu::ShaderStages {
-        match self {
-            ResourceHandle::Buffer(buffer) => buffer.visibility()
+            ResourceHandle::Buffer(buffer) => buffer.binding_type(),
+            ResourceHandle::Texture(_, role) => role.as_binding_type(),
         }
     }
 
     fn as_binding(&self) -> wgpu::BindingResource<'_> {
         match self {
-            ResourceHandle::Buffer(buffer) => buffer.as_binding()
+            ResourceHandle::Buffer(buffer) => buffer.as_binding(),
+            ResourceHandle::Texture(texture, _) => wgpu::BindingResource::TextureView(&texture)
         }
     }
 }
 
-// This allows users to pass in the concrete handle type and have it convert into the
-// corresponding resource handle variant automatically.
 impl From<BufferHandle> for ResourceHandle {
     fn from(handle: BufferHandle) -> Self {
         ResourceHandle::Buffer(handle)
     }
 }
 
-// A lightweight handle to a bind group and its associated layout
+/// A lightweight handle to a bind group and its associated layout
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BindGroupHandle {
     pub layout: Arc<wgpu::BindGroupLayout>,
@@ -94,6 +88,7 @@ impl BindGroupBuilder {
             resource,
         });
 
+        self.curr_slot += 1;
         self
     }
 
@@ -115,7 +110,7 @@ impl BindGroupBuilder {
 impl ResourceBuilder for BindGroupBuilder {
     type Resource = BindGroupHandle;
 
-    fn build(&self, gpu: super::GpuHandle) -> Self::Resource {
+    fn build(&self, gpu: GpuHandle) -> Self::Resource {
         let layout = Arc::new(gpu.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor{
             label: Some(&format!("Layout: {}", self.label)),
             entries: &self.layout_entries

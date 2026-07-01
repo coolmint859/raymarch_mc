@@ -1,7 +1,9 @@
 use std::{ops::Deref, sync::Arc};
 
-use crate::graphics::ResourceBuilder;
+use crate::graphics::{GpuHandle, ResourceBuilder};
 
+/// A lightweight handle to a rendering pipeline
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RenderPipelineHandle {
     pub pipeline: Arc<wgpu::RenderPipeline>
 }
@@ -41,23 +43,26 @@ impl RenderPipelineBuilder {
         self
     }
 
-    /// Pulls layout definitions seamlessly from your existing BindGroup wrappers
+    /// Add bind group layouts to the pipeline
     pub fn with_bg_layouts(mut self, layouts: &[Arc<wgpu::BindGroupLayout>]) -> Self {
         self.bg_layouts.extend_from_slice(layouts);
         self
     }
 
+    /// Set the shader program this pipeline will execute with
     pub fn with_shader(mut self, module: wgpu::ShaderModule) -> Self {
         self.shader_module = Some(module);
         self
     }
 
+    /// Set the names to the entry points as defined in the shader
     pub fn with_entry_points(mut self, vs: &str, fs: &str) -> Self {
         self.vs_main = vs.to_string();
         self.fs_main = fs.to_string();
         self
     }
 
+    /// Set the target format of the pipeline
     pub fn with_target_format(mut self, format: wgpu::TextureFormat) -> Self {
         self.target_format = Some(format);
         self
@@ -67,7 +72,7 @@ impl RenderPipelineBuilder {
 impl ResourceBuilder for RenderPipelineBuilder {
     type Resource = RenderPipelineHandle;
 
-    fn build(&self, gpu: super::GpuHandle) -> Self::Resource {
+    fn build(&self, gpu: GpuHandle) -> Self::Resource {
         let shader = self.shader_module.as_ref()
             .expect("[Render Pipeline] Expected pipeline to be configured with a shader module, but none was found.");
         let format = self.target_format

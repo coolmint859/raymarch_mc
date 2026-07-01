@@ -26,9 +26,6 @@ pub trait WgpuResource {
     /// Get the binding type that this resource fills
     fn binding_type(&self) -> wgpu::BindingType;
 
-    /// Get the resource visibility in the shaders
-    fn visibility(&self) -> wgpu::ShaderStages;
-
     /// Get this resource in its BindingResource form
     fn as_binding(&self) -> wgpu::BindingResource<'_>;
 }

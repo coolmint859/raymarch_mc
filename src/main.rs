@@ -2,15 +2,21 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use winit::application::ApplicationHandler;
+use winit::dpi::PhysicalSize;
+use winit::dpi::Size;
 use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
 use winit::event_loop::ControlFlow;
 use winit::event_loop::EventLoop;
+use winit::keyboard::KeyCode;
+use winit::keyboard::PhysicalKey;
 use winit::window::WindowAttributes;
 use winit::window::WindowId;
 
 pub mod graphics;
 use crate::graphics::*;
+
+pub mod game;
 
 /// Core window driver
 struct App {
@@ -35,12 +41,31 @@ impl App {
             elapsed_time: 0.0,
         }
     }
+    
+    pub fn run_frame(&mut self) {
+        let (Some(canvas), Some(renderer), Some(gpu)) 
+            = (&mut self.canvas, &mut self.renderer, &self.gpu) 
+            else { return; };
+
+        let current_time = Instant::now();
+        let dt = (current_time - self.previous_time).as_secs_f32();
+        self.previous_time = current_time;
+        self.elapsed_time += dt;
+
+        renderer.update_camera(gpu.clone(), canvas, self.elapsed_time);
+
+        canvas.window.request_redraw();
+    }
 }
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.renderer.is_none() {
-            let window_attrs = WindowAttributes::default().with_title("Ray Marching!");
+            let window_attrs = WindowAttributes::default()
+                .with_inner_size(Size::Physical (
+                    PhysicalSize { width: 1920, height: 1080 }
+                ))
+                .with_title("Ray Marching!");
             let window = Arc::new(event_loop.create_window(window_attrs).unwrap());
 
             let (gpu, canvas) = pollster::block_on(init_graphics(window));
@@ -52,16 +77,7 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        let (Some(canvas), Some(renderer), Some(gpu)) 
-            = (&mut self.canvas, &mut self.renderer, &self.gpu) 
-            else { return; };
-
-        let current_time = Instant::now();
-        let dt = (current_time - self.previous_time).as_secs_f32();
-        self.previous_time = current_time;
-        self.elapsed_time += dt;
-
-        renderer.update_camera(gpu.clone(), canvas, self.elapsed_time);
+        self.run_frame();
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
@@ -75,7 +91,6 @@ impl ApplicationHandler for App {
             }
             WindowEvent::Resized(physical_size) => {
                 canvas.resize(&gpu, physical_size.width, physical_size.height);
-                canvas.window.request_redraw();
             }
             WindowEvent::RedrawRequested => {
                 match canvas.get_next_frame() {
@@ -90,6 +105,15 @@ impl ApplicationHandler for App {
                     Err(e) => eprintln!("{e:?}")
                 }
                 canvas.window.request_redraw();
+            }
+            WindowEvent::KeyboardInput { event, .. } => {
+                let key_state = event.state;
+                let code = event.physical_key;
+
+                match (code, key_state.is_pressed()) {
+                    (PhysicalKey::Code(KeyCode::Escape), true) => event_loop.exit(),
+                    _ => {}
+                }
             }
             _ => {}
         }

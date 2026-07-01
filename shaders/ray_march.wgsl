@@ -1,33 +1,10 @@
 struct CameraUniform {
     view_proj: mat4x4f,
     inv_view_proj: mat4x4f,
-};
+}
 
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
-
-struct VertexOutput {
-    @builtin(position) clip_position: vec4f,
-    @location(0) screen_pos: vec2f,
-};
-
-@vertex
-fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
-    var out: VertexOutput;
-    
-    let uv = vec2f(
-        f32((in_vertex_index << 1u) & 2u),
-        f32(in_vertex_index & 2u)
-    );
-    
-    // Convert UV [0, 2] to NDC Clip Space [-1, 3]
-    // WebGPU NDC has Y pointing UP, so we flip the Y translation
-    out.clip_position = vec4f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, 0.0, 1.0);
-    
-    // Pass normalized screen position to fragment shader [-1.0, 1.0]
-    out.screen_pos = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0); 
-    
-    return out;
-}
+@group(0) @binding(1) var output: texture_storage_2d<rgba8unorm, write>;
 
 fn sdBox(p: vec3f, b: vec3f) -> f32 {
     let q = abs(p) - b;
@@ -43,25 +20,19 @@ fn getNormal(p: vec3f) -> vec3f {
     ));
 }
 
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    // 1. Transform full-screen screen coords into 3D world space points using the Inv Matrix
-    // Near plane point (Z = 0.0)
-    let near_target = camera.inv_view_proj * vec4f(in.screen_pos.x, in.screen_pos.y, 0.0, 1.0);
+fn march(screen_pos: vec2f) -> vec4f {
+    let near_target = camera.inv_view_proj * vec4f(screen_pos.x, screen_pos.y, 0.0, 1.0);
     let world_near = near_target.xyz / near_target.w;
 
-    // Far plane point (Z = 1.0)
-    let far_target = camera.inv_view_proj * vec4f(in.screen_pos.x, in.screen_pos.y, 1.0, 1.0);
+    let far_target = camera.inv_view_proj * vec4f(screen_pos.x, screen_pos.y, 1.0, 1.0);
     let world_far = far_target.xyz / far_target.w;
 
-    // 2. Derive Ray Origin and Ray Direction
     let ro = world_near;
     let rd = normalize(world_far - world_near);
 
-    // 3. Marching
     var t = 0.0;
     let max_t = 20.0;
-    var color = vec4f(0.01, 0.05, 0.1, 1.0); // Match clearing background color
+    var color = vec4f(0.0, 0.0, 0.0, 1.0);
 
     for (var i = 0; i < 100; i++) {
         let p = ro + rd * t;
@@ -80,4 +51,21 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     }
 
     return color;
+}
+
+@compute @workgroup_size(16, 16, 1)
+fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
+    let texture_size = textureDimensions(output);
+
+    if (id.x >= texture_size.x || id.y >= texture_size.y) {
+        return;
+    }
+
+    let x = (f32(id.x) / f32(texture_size.x)) * 2.0 - 1.0;
+    let y = 1.0 - (f32(id.y) / f32(texture_size.y)) * 2.0;
+    let uv = vec2f(x, y);
+
+    let color = march(uv);
+    
+    textureStore(output, id.xy, color);
 }

@@ -42,16 +42,11 @@ impl BufferRole {
 pub struct BufferHandle {
     pub buffer: Arc<wgpu::Buffer>,
     pub role: BufferRole,
-    pub visibility: wgpu::ShaderStages,
 }
 
 impl WgpuResource for BufferHandle {
     fn binding_type(&self) -> wgpu::BindingType {
         self.role.as_binding_type()
-    }
-
-    fn visibility(&self) -> wgpu::ShaderStages {
-        self.visibility
     }
 
     fn as_binding(&self) -> wgpu::BindingResource<'_> {
@@ -80,7 +75,6 @@ pub struct BufferBuilder {
     usage: wgpu::BufferUsages,
     contents: BufferContents,
     role: BufferRole,
-    visibility: wgpu::ShaderStages
 }
 
 impl BufferBuilder {
@@ -90,7 +84,6 @@ impl BufferBuilder {
             usage: role.as_usage(),
             contents,
             role,
-            visibility: wgpu::ShaderStages::VERTEX_FRAGMENT
         }
     }
 
@@ -126,12 +119,6 @@ impl BufferBuilder {
     /// Add an additional usage flag to the resultant buffer
     pub fn with_additional_usage(mut self, usage: wgpu::BufferUsages) -> Self {
         self.usage |= usage;
-        self
-    }
-
-    /// Set the shader visibility of the resultant buffer
-    pub fn with_visibility(mut self, visibility: wgpu::ShaderStages) -> Self {
-        self.visibility = visibility;
         self
     }
 
@@ -171,7 +158,6 @@ impl ResourceBuilder for BufferBuilder {
 
         BufferHandle {
             buffer: Arc::new(buffer),
-            visibility: self.visibility,
             role: self.role
         }
     }
