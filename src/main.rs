@@ -10,7 +10,7 @@ pub mod game;
 pub mod controls;
 
 pub mod graphics;
-use crate::{controls::{CameraController, KeyboardHandler, MouseHandler}, graphics::*};
+use crate::{controls::{CameraController, KeyboardHandler, MouseHandler}, game::VoxelWorld, graphics::*};
 
 #[derive(Clone, Copy)]
 pub enum KeyAction {
@@ -32,7 +32,7 @@ pub enum MouseAction {
 
 /// Core window driver
 struct App {
-    /// The renderer used to present frames to the canvas
+    world: VoxelWorld,
     renderer: Option<Renderer>,
     canvas: Option<Canvas>,
     gpu: Option<GpuHandle>,
@@ -46,9 +46,7 @@ struct App {
     is_focused: bool,
     is_cursor_locked: bool,
 
-    /// The time when the last frame was run
     previous_time: Instant,
-    /// The total elasped time since launch
     elapsed_time: f32,
 }
 
@@ -59,6 +57,7 @@ impl App {
         camera.transform.move_to(cam_default_pos);
 
         Self {
+            world: VoxelWorld::new(),
             renderer: None,
             gpu: None, 
             canvas: None,
@@ -161,6 +160,9 @@ impl App {
             = (&mut self.canvas, &mut self.renderer, &self.gpu) 
             else { return; };
 
+        self.world.update(dt);
+
+        renderer.update_env(gpu.clone(), self.world.calc_environment());
         renderer.update_camera(gpu.clone(), &mut self.camera, canvas.info().aspect);
 
         canvas.window.request_redraw();
@@ -172,7 +174,7 @@ impl ApplicationHandler for App {
         if self.renderer.is_none() {
             let window_attrs = WindowAttributes::default()
                 .with_inner_size(Size::Physical (
-                    PhysicalSize { width: 1920, height: 1080 }
+                    PhysicalSize { width: 2560, height: 1440 }
                 ))
                 .with_title("Ray Marching!");
             let window = Arc::new(event_loop.create_window(window_attrs).unwrap());

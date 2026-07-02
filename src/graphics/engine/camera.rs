@@ -1,6 +1,6 @@
 use glam::*;
 
-use crate::graphics::{LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, util::Transform};
+use crate::graphics::Transform;
 
 /// A camera that embodies perspective projection
 pub struct PerspectiveCamera {
@@ -15,7 +15,7 @@ impl PerspectiveCamera {
     pub fn new() -> Self {
         Self {
             transform: Transform::default(),
-            fov_y: 45.0_f32.to_radians(),
+            fov_y: 60.0_f32.to_radians(),
             z_near: 0.01,
             z_far: 100.0
         }
@@ -31,16 +31,16 @@ impl PerspectiveCamera {
 
     /// Get the camera's current forward axis
     pub fn forward_axis(&self) -> Vec3 {
-        (self.transform.get_rotation() * LOCAL_FORWARD).normalize()
+        (self.transform.get_rotation() * Vec3::Z).normalize()
     }
 
     /// Get the camera's current rightward axis
     pub fn rightward_axis(&self) -> Vec3 {
-        (self.transform.get_rotation() * LOCAL_RIGHT).normalize()
+        (self.transform.get_rotation() * Vec3::X).normalize()
     }
 
     /// Get the camera's current upward axis
     pub fn upward_axis(&self) -> Vec3 {
-        (self.transform.get_rotation() * LOCAL_UP).normalize()
+        (self.transform.get_rotation() * Vec3::Y).normalize()
     }
 }

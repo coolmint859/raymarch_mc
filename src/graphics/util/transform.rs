@@ -3,11 +3,6 @@ use std::{cell::Cell, sync::atomic::{AtomicU32, Ordering}};
 
 use glam::*;
 
-// local axis vectors
-pub const LOCAL_RIGHT:Vec3 =    Vec3::new(1.0, 0.0, 0.0);
-pub const LOCAL_UP:Vec3 =       Vec3::new(0.0, 1.0, 0.0);
-pub const LOCAL_FORWARD:Vec3 =  Vec3::new(0.0, 0.0, 1.0);
-
 static TRANSFORM_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 /// represents position, rotation, and scaling of an entity

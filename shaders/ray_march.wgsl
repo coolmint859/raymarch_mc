@@ -6,8 +6,16 @@ struct CameraUniform {
     inv_view_proj: mat4x4f,
 }
 
+struct EnvironmentUniform {
+    sun_dir: vec4f,
+    sun_color: vec4f,
+    sky_zenith: vec4f,
+    sky_horizon: vec4f,
+}
+
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
-@group(0) @binding(1) var output: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(1) var<uniform> env: EnvironmentUniform;
+@group(0) @binding(2) var output: texture_storage_2d<rgba8unorm, write>;
 
 struct HitInfo {
     did_hit: bool,
@@ -30,10 +38,12 @@ fn getNormal(p: vec3f) -> vec3f {
 }
 
 fn get_background_color(ray_dir: vec3f, sun_dir: vec3f) -> vec3<f32> {
-    let sky_zenith = vec3<f32>(0.27, 0.7, 1.0);
-    let sky_horizon = vec3<f32>(0.61, 0.84, 0.93);
-    let ground_color = vec3<f32>(0.05, 0.05, 0.05);
+    let sky_zenith = env.sky_zenith.xyz;
+    let sky_horizon = env.sky_horizon.xyz;
+    let sun_color = env.sun_color.xyz;
+    let sun_intensity = env.sun_color.w;
 
+    let ground_color = vec3<f32>(0.05, 0.05, 0.05);
     var sky_color = vec3f(0.0);
 
     let y = ray_dir.y;
@@ -45,15 +55,14 @@ fn get_background_color(ray_dir: vec3f, sun_dir: vec3f) -> vec3<f32> {
         sky_color = mix(ground_color, sky_horizon, horizon_glow * 0.4);
     }
 
-    let sun_color = vec3<f32>(1.0, 0.95, 0.85);
     let sun_alignment = dot(ray_dir, sun_dir);
-
-    if (sun_alignment > 0.0) {
+    if (sun_intensity > 0.0 && sun_alignment > 0.0) {
+        let sky_mask = smoothstep(-0.2, 0.0, ray_dir.y);
         let corona_glow = pow(sun_alignment, 16.0);
         let sun_disk = pow(sun_alignment, 2000.0);
 
-        sky_color += sun_color * corona_glow * 0.2;
-        sky_color += sun_color * sun_disk * 2.0; 
+        sky_color += sun_color * corona_glow * sky_mask * 0.2;
+        sky_color += sun_color * sun_disk * sky_mask * 2.0; 
     }
 
     return clamp(sky_color, vec3<f32>(0.0), vec3<f32>(1.0));
@@ -77,7 +86,7 @@ fn march(screen_pos: vec2f) -> vec4f {
     hit_info.normal = vec3f(0.0);
     hit_info.color = vec3f(0.0);
 
-    for (var i = 0; i < 100; i++) {
+    for (var i = 0; i < 500; i++) {
         let p = ro + rd * t;
         let d = sdfBox(p, vec3f(0.5));
 
@@ -91,10 +100,11 @@ fn march(screen_pos: vec2f) -> vec4f {
         if (t > max_t) { break; }
     }
 
-    let sun_dir = normalize(vec3f(1.0, 1.0, -1.0));
+    let sun_dir = normalize(env.sun_dir.xyz);
 
     if hit_info.did_hit {
-        let diff = max(dot(hit_info.normal, sun_dir), 0.1);
+        let sun_intensity = env.sun_color.w;
+        let diff = max(dot(hit_info.normal, sun_dir) * sun_intensity, 0.1);
         return vec4f(hit_info.color * diff, 1.0);
     } else {
         return vec4f(get_background_color(rd, sun_dir), 1.0);

@@ -1,8 +1,8 @@
 use std::ops::Deref;
 
-use crate::graphics::{
-    BindGroupBuilder, BindGroupHandle, BufferBuilder, BufferContents, BufferHandle, PerspectiveCamera, ComputePipelineBuilder, ComputePipelineHandle, GpuHandle, RenderPipelineBuilder, RenderPipelineHandle, RenderTarget, ResourceBuilder, ResourceHandle, TextureBuilder, TextureType
-};
+use crate::{game::EnvironmentUniform, graphics::{
+    BindGroupBuilder, BindGroupHandle, BufferBuilder, BufferContents, BufferHandle, ComputePipelineBuilder, ComputePipelineHandle, GpuHandle, PerspectiveCamera, RenderPipelineBuilder, RenderPipelineHandle, RenderTarget, ResourceBuilder, ResourceHandle, TextureBuilder, TextureType
+}};
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -26,6 +26,7 @@ impl CameraUniform {
 /// Executes rendering pipelines
 pub struct Renderer {
     cam_buffer: BufferHandle,
+    env_buffer: BufferHandle,
     compute_bg: BindGroupHandle,
     voxel_pipeline: ComputePipelineHandle,
 
@@ -40,6 +41,11 @@ impl Renderer {
             .with_additional_usage(wgpu::BufferUsages::COPY_DST)
             .build(gpu.clone());
 
+        let env_buffer = BufferBuilder::as_uniform(BufferContents::Empty(64))
+            .with_label("Environment Buffer")
+            .with_additional_usage(wgpu::BufferUsages::COPY_DST)
+            .build(gpu.clone());
+
         let render_texture = TextureBuilder::new(TextureType::Computed { width: config.width, height: config.height})
             .with_label("Voxel Storage Texture")
             .with_format(wgpu::TextureFormat::Rgba8Unorm)
@@ -49,6 +55,7 @@ impl Renderer {
         let compute_bg = BindGroupBuilder::new()
             .with_label("Compute Bind Group")
             .with_resource(wgpu::ShaderStages::COMPUTE, cam_buffer.clone().into())
+            .with_resource(wgpu::ShaderStages::COMPUTE, env_buffer.clone().into())
             .with_resource(wgpu::ShaderStages::COMPUTE, ResourceHandle::StorageTexture(render_texture.clone()))
             .build(gpu.clone());
 
@@ -76,6 +83,7 @@ impl Renderer {
 
         Self {
             cam_buffer,
+            env_buffer,
             compute_bg,
             blit_bg,
             voxel_pipeline,
@@ -88,6 +96,12 @@ impl Renderer {
         let cam_bytes = bytemuck::bytes_of(&cam_uniform);
 
         gpu.queue.write_buffer(&self.cam_buffer, 0, cam_bytes);
+    }
+
+    pub fn update_env(&mut self, gpu: GpuHandle, env_uniform: EnvironmentUniform) {
+        let env_bytes = bytemuck::bytes_of(&env_uniform);
+
+        gpu.queue.write_buffer(&self.env_buffer, 0, env_bytes);
     }
 
     /// Render the currently set render pipeline to the window
