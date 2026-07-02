@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use winit::window::Window;
 
-use crate::canvas::Canvas;
+use crate::{canvas::Canvas, graphics::CanvasDescriptor};
 
 /// A lightwight handle representing the physical gpu
 #[derive(Clone, Debug)]
@@ -50,13 +50,15 @@ pub async fn init_graphics(window: Arc<Window>) -> (GpuHandle, Canvas) {
     };
     surface.configure(&gpu.device, &config);
 
-    let aspect = (config.width as f32) / (config.height as f32);
-
     let canvas = Canvas {
+        desc: CanvasDescriptor {
+            width: config.width,
+            height: config.height,
+            aspect: (config.width as f32) / (config.height as f32)
+        },
         window,
         surface,
         config,
-        aspect_ratio: aspect
     };
 
     (gpu, canvas)

@@ -1,37 +1,46 @@
 use glam::*;
 
-pub struct Camera3D {
-    eye: glam::Vec3,
-    target: glam::Vec3,
-    up: glam::Vec3,
+use crate::graphics::{LOCAL_FORWARD, LOCAL_RIGHT, LOCAL_UP, util::Transform};
+
+/// A camera that embodies perspective projection
+pub struct PerspectiveCamera {
+    pub transform: Transform,
 
     fov_y: f32,
     z_near: f32,
     z_far: f32
 }
 
-impl Camera3D {
+impl PerspectiveCamera {
     pub fn new() -> Self {
         Self {
-            eye: Vec3 { x: 0.0, y: 1.5, z: -3.0},
-            target: Vec3 { x: 0.0, y: 0.0, z: 0.0},
-            up: Vec3 { x: 0.0, y: 1.0, z: 0.0 },
-
+            transform: Transform::default(),
             fov_y: 45.0_f32.to_radians(),
             z_near: 0.01,
             z_far: 100.0
         }
     }
 
-    pub fn set_position(&mut self, pos: Vec3) {
-        self.eye = pos;
-    }
-
     /// Get the view-projection matrix for this camera
     pub fn get_view_proj(&self, aspect: f32) -> Mat4 {
-        let view = Mat4::look_at_lh(self.eye, self.target, self.up);
-        let proj = Mat4::perspective_lh(self.fov_y, aspect, self.z_near, self.z_far);
+        let view_mat = self.transform.to_updated().inverse();
+        let proj_mat = Mat4::perspective_lh(self.fov_y, aspect, self.z_near, self.z_far);
         
-        return proj * view;
+        return proj_mat * view_mat;
+    }
+
+    /// Get the camera's current forward axis
+    pub fn forward_axis(&self) -> Vec3 {
+        (self.transform.get_rotation() * LOCAL_FORWARD).normalize()
+    }
+
+    /// Get the camera's current rightward axis
+    pub fn rightward_axis(&self) -> Vec3 {
+        (self.transform.get_rotation() * LOCAL_RIGHT).normalize()
+    }
+
+    /// Get the camera's current upward axis
+    pub fn upward_axis(&self) -> Vec3 {
+        (self.transform.get_rotation() * LOCAL_UP).normalize()
     }
 }

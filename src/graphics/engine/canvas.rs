@@ -1,5 +1,4 @@
 use std::sync::Arc;
-
 use winit::window::Window;
 
 use crate::graphics::{
@@ -7,11 +6,29 @@ use crate::graphics::{
     GpuHandle
 };
 
+/// Descriptor for the current canvas settings
+#[derive(Clone, Copy)]
+pub struct CanvasDescriptor {
+    pub width: u32,
+    pub height: u32,
+    pub aspect: f32
+}
+
+impl CanvasDescriptor {
+    /// Update the canvas descriptor dimensions
+    pub fn update_dimensions(&mut self, width: u32, height: u32) {
+        self.width = width;
+        self.height = height;
+        self.aspect = (width as f32) / (height as f32);
+    }
+}
+
 /// A transient handle representing a single rendering frame
 pub struct CanvasFrame {
     output: wgpu::SurfaceTexture,
     view: wgpu::TextureView,
     format: wgpu::TextureFormat,
+    desc: CanvasDescriptor
 }
 
 impl RenderTarget for CanvasFrame {
@@ -26,6 +43,10 @@ impl RenderTarget for CanvasFrame {
     fn present(self) {
         self.output.present();
     }
+
+    fn dimensions(&self) -> (u32, u32) {
+        (self.desc.width, self.desc.height)
+    }
 }
 
 /// Represents the window and rendering surface for which to issue draw commands
@@ -33,7 +54,7 @@ pub struct Canvas {
     pub window: Arc<Window>,
     pub surface: wgpu::Surface<'static>,
     pub config: wgpu::SurfaceConfiguration,
-    pub aspect_ratio: f32,
+    pub desc: CanvasDescriptor,
 }
 
 impl Canvas {
@@ -42,7 +63,7 @@ impl Canvas {
         if width > 0 && height > 0 {
             self.config.width = width;
             self.config.height = height;
-            self.aspect_ratio = (width as f32) / (height as f32);
+            self.desc.update_dimensions(width, height);
             self.surface.configure(&gpu.device, &self.config);
         }
     }
@@ -52,12 +73,22 @@ impl Canvas {
         self.resize(gpu, self.config.width, self.config.height);
     }
 
+    /// Get a reference to the current canvas information
+    pub fn info(&self) -> &CanvasDescriptor {
+        &self.desc
+    }
+
     /// Get the next rendering frame from the canvas.
     pub fn get_next_frame(&self) -> Result<CanvasFrame, wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
         let format = self.config.format;
 
-        Ok(CanvasFrame { output, view, format })
+        Ok(CanvasFrame { 
+            output, 
+            view, 
+            format, 
+            desc: self.desc.clone() 
+        })
     }
 }

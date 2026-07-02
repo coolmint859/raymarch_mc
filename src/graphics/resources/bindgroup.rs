@@ -4,7 +4,8 @@ use crate::graphics::{BufferHandle, GpuHandle, ResourceBuilder, TextureHandle, T
 
 pub enum ResourceHandle {
     Buffer(BufferHandle),
-    Texture(TextureHandle, TextureRole),
+    StorageTexture(TextureHandle),
+    SampledTexture(TextureHandle),
     // Sampler(SamplerHandle),
 }
 
@@ -12,14 +13,24 @@ impl WgpuResource for ResourceHandle {
     fn binding_type(&self) -> wgpu::BindingType {
         match self {
             ResourceHandle::Buffer(buffer) => buffer.binding_type(),
-            ResourceHandle::Texture(_, role) => role.as_binding_type(),
+            ResourceHandle::StorageTexture(_) => {
+                TextureRole::Storage.as_binding_type()
+            },
+            ResourceHandle::SampledTexture(_) => {
+                TextureRole::Sampled.as_binding_type()
+            }
         }
     }
 
     fn as_binding(&self) -> wgpu::BindingResource<'_> {
         match self {
             ResourceHandle::Buffer(buffer) => buffer.as_binding(),
-            ResourceHandle::Texture(texture, _) => wgpu::BindingResource::TextureView(&texture)
+            ResourceHandle::StorageTexture(texture) => {
+                wgpu::BindingResource::TextureView(&texture)
+            },
+            ResourceHandle::SampledTexture(texture) => {
+                wgpu::BindingResource::TextureView(&texture)
+            },
         }
     }
 }

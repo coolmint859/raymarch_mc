@@ -7,6 +7,9 @@ pub trait RenderTarget {
     /// Returns the texture format (e.g. Rgpa8Unorm, etc..)
     fn format(&self) -> wgpu::TextureFormat;
 
+    /// Returns the target dimensions
+    fn dimensions(&self) -> (u32, u32);
+
     /// Optional trait method for presenting to the window surface texture.
     /// 
     /// Note: This consumes self. It is recommended to call this at the very end of the target's lifecycle.

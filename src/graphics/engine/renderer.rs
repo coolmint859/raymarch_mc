@@ -1,9 +1,7 @@
 use std::ops::Deref;
 
-use glam::Vec3;
-
 use crate::graphics::{
-    BindGroupBuilder, BindGroupHandle, BufferBuilder, BufferContents, BufferHandle, Camera3D, Canvas, ComputePipelineBuilder, ComputePipelineHandle, GpuHandle, RenderPipelineBuilder, RenderPipelineHandle, RenderTarget, ResourceBuilder, ResourceHandle, TextureBuilder, TextureRole, TextureType
+    BindGroupBuilder, BindGroupHandle, BufferBuilder, BufferContents, BufferHandle, PerspectiveCamera, ComputePipelineBuilder, ComputePipelineHandle, GpuHandle, RenderPipelineBuilder, RenderPipelineHandle, RenderTarget, ResourceBuilder, ResourceHandle, TextureBuilder, TextureType
 };
 
 #[repr(C)]
@@ -14,7 +12,7 @@ pub struct CameraUniform {
 }
 
 impl CameraUniform {
-    pub fn build_from(camera: &mut Camera3D, aspect: f32) -> Self {
+    pub fn build_from(camera: &mut PerspectiveCamera, aspect: f32) -> Self {
         let view_proj = camera.get_view_proj(aspect);
         let inv_view_proj = view_proj.inverse();
 
@@ -27,9 +25,6 @@ impl CameraUniform {
 
 /// Executes rendering pipelines
 pub struct Renderer {
-    /// The camera which views the scene rendered to the surface texture
-    camera: Camera3D,
-
     cam_buffer: BufferHandle,
     compute_bg: BindGroupHandle,
     voxel_pipeline: ComputePipelineHandle,
@@ -40,11 +35,7 @@ pub struct Renderer {
 
 impl Renderer {
     pub fn new(gpu: &GpuHandle, config: &wgpu::SurfaceConfiguration) -> Self {
-        let mut camera = Camera3D::new();
-
-        let cam_uniform = CameraUniform::build_from(&mut camera, 1.0);
-        let cam_bytes = bytemuck::bytes_of(&cam_uniform).to_vec();
-        let cam_buf_handle = BufferBuilder::as_uniform(BufferContents::WithData(cam_bytes))
+        let cam_buffer = BufferBuilder::as_uniform(BufferContents::Empty(128))
             .with_label("Camera Buffer")
             .with_additional_usage(wgpu::BufferUsages::COPY_DST)
             .build(gpu.clone());
@@ -57,8 +48,8 @@ impl Renderer {
 
         let compute_bg = BindGroupBuilder::new()
             .with_label("Compute Bind Group")
-            .with_resource(wgpu::ShaderStages::COMPUTE, cam_buf_handle.clone().into())
-            .with_resource(wgpu::ShaderStages::COMPUTE, ResourceHandle::Texture(render_texture.clone(), TextureRole::Storage))
+            .with_resource(wgpu::ShaderStages::COMPUTE, cam_buffer.clone().into())
+            .with_resource(wgpu::ShaderStages::COMPUTE, ResourceHandle::StorageTexture(render_texture.clone()))
             .build(gpu.clone());
 
         let voxel_shader = gpu.device.create_shader_module(wgpu::include_wgsl!("../../../shaders/ray_march.wgsl"));
@@ -71,7 +62,7 @@ impl Renderer {
 
         let blit_bg = BindGroupBuilder::new()
             .with_label("Blit Bind Group")
-            .with_resource(wgpu::ShaderStages::FRAGMENT, ResourceHandle::Texture(render_texture.clone(), TextureRole::Sampled))
+            .with_resource(wgpu::ShaderStages::FRAGMENT, ResourceHandle::SampledTexture(render_texture.clone()))
             .build(gpu.clone());
 
         let blit_shader = gpu.device.create_shader_module(wgpu::include_wgsl!("../../../shaders/blit.wgsl"));
@@ -84,8 +75,7 @@ impl Renderer {
             .build(gpu.clone());
 
         Self {
-            camera,
-            cam_buffer: cam_buf_handle,
+            cam_buffer,
             compute_bg,
             blit_bg,
             voxel_pipeline,
@@ -93,12 +83,11 @@ impl Renderer {
         }
     }
 
-    pub fn update_camera(&mut self, gpu: GpuHandle, canvas: &Canvas, time: f32) {
-        let radius = 3.5;
-        self.camera.set_position(Vec3 { x: time.sin() * radius, y: 0.0, z: time.cos() * radius});
+    pub fn update_camera(&mut self, gpu: GpuHandle, camera: &mut PerspectiveCamera, aspect: f32) {
+        let cam_uniform = CameraUniform::build_from(camera, aspect);
+        let cam_bytes = bytemuck::bytes_of(&cam_uniform);
 
-        let uniforms = CameraUniform::build_from(&mut self.camera, canvas.aspect_ratio);
-        gpu.queue.write_buffer(&self.cam_buffer, 0, bytemuck::bytes_of(&uniforms));
+        gpu.queue.write_buffer(&self.cam_buffer, 0, cam_bytes);
     }
 
     /// Render the currently set render pipeline to the window
@@ -114,8 +103,9 @@ impl Renderer {
             compute_pass.set_pipeline(&self.voxel_pipeline);
             compute_pass.set_bind_group(0, self.compute_bg.deref(), &[]);
 
-            let workgroups_x = (1920 + 15) / 16;
-            let workgroups_y  = (1080 + 15) / 16;
+            let (width, height) = target.dimensions();
+            let workgroups_x = (width + 15) / 16;
+            let workgroups_y  = (height + 15) / 16;
             compute_pass.dispatch_workgroups(workgroups_x, workgroups_y, 1);
         }
 
