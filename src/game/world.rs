@@ -1,15 +1,6 @@
 use glam::Vec3;
 
-use crate::game::colors::*;
-
-#[repr(C)]
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct EnvironmentUniform {
-    pub sun_dir: [f32; 4],
-    pub sun_color: [f32; 4],
-    pub sky_zenith: [f32; 4],
-    pub sky_horizon: [f32; 4]
-}
+use crate::game::{EnvironmentUniform, colors::*};
 
 pub struct VoxelWorld {
     in_game_time: f32,

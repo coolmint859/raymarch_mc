@@ -54,11 +54,12 @@ pub async fn init_graphics(window: Arc<Window>) -> (GpuHandle, Canvas) {
         desc: CanvasDescriptor {
             width: config.width,
             height: config.height,
-            aspect: (config.width as f32) / (config.height as f32)
+            aspect: (config.width as f32) / (config.height as f32),
         },
         window,
         surface,
         config,
+        is_cursor_locked: false,
     };
 
     (gpu, canvas)

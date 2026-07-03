@@ -1,6 +1,6 @@
 use std::{ops::Deref, sync::Arc};
 
-use crate::graphics::{GpuHandle, ResourceBuilder};
+use crate::graphics::BindGroupId;
 
 /// A lightweight handle to a rendering pipeline
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -17,12 +17,12 @@ impl Deref for RenderPipelineHandle {
 }
 
 pub struct RenderPipelineBuilder {
-    label: String,
-    bg_layouts: Vec<Arc<wgpu::BindGroupLayout>>,
-    shader_module: Option<wgpu::ShaderModule>,
-    vs_main: String,
-    fs_main: String,
-    target_format: Option<wgpu::TextureFormat>
+    pub label: String,
+    pub bg_layouts: Vec<BindGroupId>,
+    pub shader_module: Option<wgpu::ShaderModule>,
+    pub vs_main: String,
+    pub fs_main: String,
+    pub target_format: Option<wgpu::TextureFormat>
 }
 
 impl RenderPipelineBuilder {
@@ -44,7 +44,7 @@ impl RenderPipelineBuilder {
     }
 
     /// Add bind group layouts to the pipeline
-    pub fn with_bg_layouts(mut self, layouts: &[Arc<wgpu::BindGroupLayout>]) -> Self {
+    pub fn with_bg_layouts(mut self, layouts: &[BindGroupId]) -> Self {
         self.bg_layouts.extend_from_slice(layouts);
         self
     }
@@ -66,57 +66,5 @@ impl RenderPipelineBuilder {
     pub fn with_target_format(mut self, format: wgpu::TextureFormat) -> Self {
         self.target_format = Some(format);
         self
-    }
-}
-
-impl ResourceBuilder for RenderPipelineBuilder {
-    type Resource = RenderPipelineHandle;
-
-    fn build(&self, gpu: GpuHandle) -> Self::Resource {
-        let shader = self.shader_module.as_ref()
-            .expect("[Render Pipeline] Expected pipeline to be configured with a shader module, but none was found.");
-        let format = self.target_format
-            .expect("[Render Pipeline] Expected pipeline to be configured with a target format, but none was found.");
-
-        let bg_layout_refs: Vec<&wgpu::BindGroupLayout> = self.bg_layouts
-            .iter()
-            .map(|arc| arc.as_ref()) // or just &**arc
-            .collect();
-
-        let layout = gpu.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some(&format!("{}_layout", self.label)),
-            bind_group_layouts: &bg_layout_refs,
-            immediate_size: 0,
-        });
-
-        let pipeline = gpu.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some(&self.label),
-            layout: Some(&layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some(&self.vs_main),
-                compilation_options: Default::default(),
-                buffers: &[], // Full-screen procedurally drawn triangle requires no input VBO buffers!
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some(&self.fs_main),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
-
-        RenderPipelineHandle {
-            pipeline: Arc::new(pipeline),
-        }
     }
 }

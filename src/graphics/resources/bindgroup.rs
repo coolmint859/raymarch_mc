@@ -1,45 +1,6 @@
 use std::{ops::Deref, sync::Arc};
 
-use crate::graphics::{BufferHandle, GpuHandle, ResourceBuilder, TextureHandle, TextureRole, WgpuResource};
-
-pub enum ResourceHandle {
-    Buffer(BufferHandle),
-    StorageTexture(TextureHandle),
-    SampledTexture(TextureHandle),
-    // Sampler(SamplerHandle),
-}
-
-impl WgpuResource for ResourceHandle {
-    fn binding_type(&self) -> wgpu::BindingType {
-        match self {
-            ResourceHandle::Buffer(buffer) => buffer.binding_type(),
-            ResourceHandle::StorageTexture(_) => {
-                TextureRole::Storage.as_binding_type()
-            },
-            ResourceHandle::SampledTexture(_) => {
-                TextureRole::Sampled.as_binding_type()
-            }
-        }
-    }
-
-    fn as_binding(&self) -> wgpu::BindingResource<'_> {
-        match self {
-            ResourceHandle::Buffer(buffer) => buffer.as_binding(),
-            ResourceHandle::StorageTexture(texture) => {
-                wgpu::BindingResource::TextureView(&texture)
-            },
-            ResourceHandle::SampledTexture(texture) => {
-                wgpu::BindingResource::TextureView(&texture)
-            },
-        }
-    }
-}
-
-impl From<BufferHandle> for ResourceHandle {
-    fn from(handle: BufferHandle) -> Self {
-        ResourceHandle::Buffer(handle)
-    }
-}
+use crate::graphics::{BufferId, BufferRole, TextureId, TextureRole};
 
 /// A lightweight handle to a bind group and its associated layout
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -56,15 +17,21 @@ impl Deref for BindGroupHandle {
     }
 }
 
-struct GroupEntry {
-    pub bindslot: u32,
-    pub resource: ResourceHandle,
+pub enum BindingTarget {
+    Buffer(BufferId),
+    Texture(TextureId),
+    // Sampler(SamplerId),
+}
+
+pub struct GroupEntry {
+    pub target: BindingTarget,
+    pub slot: u32
 }
 
 pub struct BindGroupBuilder {
-    label: String,
-    layout_entries: Vec<wgpu::BindGroupLayoutEntry>,
-    bindings: Vec<GroupEntry>,
+    pub label: String,
+    pub layout_entries: Vec<wgpu::BindGroupLayoutEntry>,
+    pub bindings: Vec<GroupEntry>,
 
     curr_slot: u32,
 }
@@ -85,54 +52,49 @@ impl BindGroupBuilder {
         self
     }
 
-    /// Add a resource to the bind group
-    pub fn with_resource(mut self, visibility: wgpu::ShaderStages, resource: ResourceHandle) -> Self {
+    /// Add a buffer to the bind group
+    pub fn with_buffer(
+        mut self,
+        id: BufferId,
+        role: BufferRole,
+        visibility: wgpu::ShaderStages,
+    ) -> Self {
         self.layout_entries.push(wgpu::BindGroupLayoutEntry {
             binding: self.curr_slot,
             visibility,
-            ty: resource.binding_type(),
+            ty: role.as_binding_type(),
             count: None
         });
 
-        self.bindings.push(GroupEntry {
-            bindslot: self.curr_slot,
-            resource,
+        self.bindings.push(GroupEntry { 
+            target: BindingTarget::Buffer(id), 
+            slot: self.curr_slot 
         });
 
         self.curr_slot += 1;
         self
     }
 
-    /// Convert the bindings provided to the builder into BindGroupEntries
-    fn create_entries(&self) -> Vec<wgpu::BindGroupEntry<'_>> {
-        let entries: Vec<wgpu::BindGroupEntry> = self.bindings.iter()
-            .map(|binding| {
-                wgpu::BindGroupEntry {
-                    binding: binding.bindslot,
-                    resource: binding.resource.as_binding(),
-                }
-            })
-            .collect();
+    /// Add a texture to the bind group
+    pub fn with_texture(
+        mut self,
+        id: TextureId,
+        role: TextureRole,
+        visibility: wgpu::ShaderStages,
+    ) -> Self {
+        self.layout_entries.push(wgpu::BindGroupLayoutEntry {
+            binding: self.curr_slot,
+            visibility,
+            ty: role.as_binding_type(),
+            count: None
+        });
 
-        entries
-    }
-}
+        self.bindings.push(GroupEntry { 
+            target: BindingTarget::Texture(id), 
+            slot: self.curr_slot 
+        });
 
-impl ResourceBuilder for BindGroupBuilder {
-    type Resource = BindGroupHandle;
-
-    fn build(&self, gpu: GpuHandle) -> Self::Resource {
-        let layout = Arc::new(gpu.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor{
-            label: Some(&format!("Layout: {}", self.label)),
-            entries: &self.layout_entries
-        }));
-
-        let bind_group = Arc::new(gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(&self.label),
-            layout: &layout,
-            entries: &self.create_entries(),
-        }));
-
-        BindGroupHandle { layout, bind_group }
+        self.curr_slot += 1;
+        self
     }
 }

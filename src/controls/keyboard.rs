@@ -64,7 +64,7 @@ impl<K: Clone> KeyboardHandler<K> {
         mem::take(&mut self.just_released).into_iter()
     }
 
-    /// Poll key hold events that ares still occurring this frame
+    /// Poll key hold events that are still occurring this frame
     pub fn poll_on_held(&mut self) -> std::vec::IntoIter<K> {
         self.held_keys.clear();
 
@@ -75,6 +75,29 @@ impl<K: Clone> KeyboardHandler<K> {
         }
 
         mem::take(&mut self.held_keys).into_iter()
+    }
+
+    /// Peek at key press events non-destructively
+    pub fn peek_on_press(&self) -> impl IntoIterator<Item = &K> {
+        self.just_pressed.iter()
+    }
+
+    /// Peek at key release events non-destructively
+    pub fn peek_on_release(&self) -> impl IntoIterator<Item = &K> {
+        self.just_released.iter()
+    }
+
+    /// Peek at key hold events non-destructively
+    pub fn peek_on_held(&mut self) -> impl IntoIterator<Item = &K> {
+        self.held_keys.clear();
+
+        for key_code in &self.raw_held_keys {
+            if let Some(action) = self.bindings.get(key_code) {
+                self.held_keys.push(action.clone())
+            }
+        }
+        
+        self.held_keys.iter()
     }
 
     /// Clear the detected key events since the last poll

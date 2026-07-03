@@ -1,34 +1,24 @@
 use std::{ops::Deref, sync::Arc};
 
-use wgpu::util::DeviceExt;
-
-use crate::graphics::{GpuHandle, ResourceBuilder, WgpuResource};
-
-/// The role of the buffer as used by shaders
+/// Describes the role of a buffer as used in a bind group
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum BufferRole {
+    /// The buffer is used as a uniform in a shader
     Uniform,
-    Storage(bool)
+    /// The buffer is used for storage in a shader
+    Storage{ read_only: bool }
 }
 
 impl BufferRole {
-    /// Convert the buffer role into it's equivalent wgpu Buffer Usage
-    fn as_usage(&self) -> wgpu::BufferUsages {
-        match self {
-            BufferRole::Uniform => wgpu::BufferUsages::UNIFORM,
-            BufferRole::Storage(_) => wgpu::BufferUsages::STORAGE
-        }
-    }
-
     /// Convert the buffer role into it's equivalent wgpu binding type
-    fn as_binding_type(&self) -> wgpu::BindingType {
+    pub fn as_binding_type(&self) -> wgpu::BindingType {
         match self {
             BufferRole::Uniform => wgpu::BindingType::Buffer {
                 ty: wgpu::BufferBindingType::Uniform,
                 has_dynamic_offset: false,
                 min_binding_size: None,
             },
-            BufferRole::Storage(read_only) => wgpu::BindingType::Buffer {
+            BufferRole::Storage{read_only} => wgpu::BindingType::Buffer {
                 ty: wgpu::BufferBindingType::Storage { read_only: *read_only },
                 has_dynamic_offset: false,
                 min_binding_size: None
@@ -41,17 +31,6 @@ impl BufferRole {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BufferHandle {
     pub buffer: Arc<wgpu::Buffer>,
-    pub role: BufferRole,
-}
-
-impl WgpuResource for BufferHandle {
-    fn binding_type(&self) -> wgpu::BindingType {
-        self.role.as_binding_type()
-    }
-
-    fn as_binding(&self) -> wgpu::BindingResource<'_> {
-        self.buffer.as_entire_binding()
-    }
 }
 
 impl Deref for BufferHandle {
@@ -71,19 +50,17 @@ pub enum BufferContents {
 }
 
 pub struct BufferBuilder {
-    label: String,
-    usage: wgpu::BufferUsages,
-    contents: BufferContents,
-    role: BufferRole,
+    pub label: String,
+    pub usage: wgpu::BufferUsages,
+    pub contents: BufferContents,
 }
 
 impl BufferBuilder {
-    pub fn new(role: BufferRole, contents: BufferContents) -> Self {
+    pub fn new(usage: wgpu::BufferUsages, contents: BufferContents) -> Self {
         Self {
             label: "buffer".to_string(),
-            usage: role.as_usage(),
+            usage,
             contents,
-            role,
         }
     }
 
@@ -102,12 +79,12 @@ impl BufferBuilder {
             _ => { contents }
         };
 
-        BufferBuilder::new(BufferRole::Uniform, contents)
+        BufferBuilder::new(wgpu::BufferUsages::UNIFORM, contents)
     }
 
     /// Create a buffer builder with the storage usage type
-    pub fn as_storage(contents: BufferContents, read_only: bool) -> Self {
-        BufferBuilder::new(BufferRole::Storage(read_only), contents)
+    pub fn as_storage(contents: BufferContents) -> Self {
+        BufferBuilder::new(wgpu::BufferUsages::STORAGE, contents)
     }
 
     /// Set the label for gpu profiling of the resultant buffer
@@ -131,34 +108,5 @@ impl BufferBuilder {
         }
 
         data
-    }
-}
-
-impl ResourceBuilder for BufferBuilder {
-    type Resource = BufferHandle;
-
-    fn build(&self, gpu: GpuHandle) -> BufferHandle {
-        let buffer = match &self.contents {
-            BufferContents::Empty(size) => {
-                gpu.device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some(&self.label),
-                    size: *size,
-                    usage: self.usage,
-                    mapped_at_creation: false
-                })
-            },
-            BufferContents::WithData(data) => {
-                gpu.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some(&self.label),
-                    contents: &data,
-                    usage: self.usage
-                })
-            }
-        };
-
-        BufferHandle {
-            buffer: Arc::new(buffer),
-            role: self.role
-        }
     }
 }

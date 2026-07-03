@@ -82,6 +82,29 @@ impl<M: Clone> MouseHandler<M> {
         std::mem::take(&mut self.held_buttons).into_iter()
     }
 
+    /// Peek at mouse button press events non-destructively
+    pub fn peek_on_press(&mut self) -> impl IntoIterator<Item = &M> {
+        self.just_pressed.iter()
+    }
+
+    /// Peek at mouse button release events non-destructively
+    pub fn peek_on_release(&mut self) -> impl IntoIterator<Item = &M> {
+        self.just_released.iter()
+    }
+
+    /// Peek at mouse button hold events non-destructively
+    pub fn peek_on_held(&mut self) -> impl IntoIterator<Item = &M> {
+        self.held_buttons.clear();
+
+        for button in &self.raw_held_buttons {
+            if let Some(action) = self.bindings.get(button) {
+                self.held_buttons.push(action.clone());
+            }
+        }
+
+        self.held_buttons.iter()
+    }
+
     /// Poll mouse motion events that occurred since the last poll
     pub fn poll_motion(&mut self) -> DeltaMotion {
         let motion = self.delta_motion.clone();

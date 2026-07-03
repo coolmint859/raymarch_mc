@@ -1,10 +1,7 @@
 use std::sync::Arc;
-use winit::window::Window;
+use winit::window::{CursorGrabMode, Window};
 
-use crate::graphics::{
-    RenderTarget,
-    GpuHandle
-};
+use crate::graphics::GpuHandle;
 
 /// Descriptor for the current canvas settings
 #[derive(Clone, Copy)]
@@ -23,38 +20,14 @@ impl CanvasDescriptor {
     }
 }
 
-/// A transient handle representing a single rendering frame
-pub struct CanvasFrame {
-    output: wgpu::SurfaceTexture,
-    view: wgpu::TextureView,
-    format: wgpu::TextureFormat,
-    desc: CanvasDescriptor
-}
-
-impl RenderTarget for CanvasFrame {
-    fn get_view(&self) -> &wgpu::TextureView {
-        &self.view
-    }
-
-    fn format(&self) -> wgpu::TextureFormat {
-        self.format
-    }
-
-    fn present(self) {
-        self.output.present();
-    }
-
-    fn dimensions(&self) -> (u32, u32) {
-        (self.desc.width, self.desc.height)
-    }
-}
-
 /// Represents the window and rendering surface for which to issue draw commands
 pub struct Canvas {
     pub window: Arc<Window>,
     pub surface: wgpu::Surface<'static>,
     pub config: wgpu::SurfaceConfiguration,
     pub desc: CanvasDescriptor,
+
+    pub is_cursor_locked: bool,
 }
 
 impl Canvas {
@@ -69,7 +42,7 @@ impl Canvas {
     }
 
     /// Reset the window to match the configuration width and height
-    pub fn reset_canvas(&mut self, gpu: &GpuHandle) {
+    pub fn reset(&mut self, gpu: &GpuHandle) {
         self.resize(gpu, self.config.width, self.config.height);
     }
 
@@ -78,17 +51,19 @@ impl Canvas {
         &self.desc
     }
 
-    /// Get the next rendering frame from the canvas.
-    pub fn get_next_frame(&self) -> Result<CanvasFrame, wgpu::SurfaceError> {
-        let output = self.surface.get_current_texture()?;
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let format = self.config.format;
-
-        Ok(CanvasFrame { 
-            output, 
-            view, 
-            format, 
-            desc: self.desc.clone() 
-        })
+    /// Set the window cursor lock status
+    pub fn set_cursor_lock(&mut self, lock: bool) {
+        if lock {
+            if self.window.set_cursor_grab(CursorGrabMode::Locked).is_ok() 
+                || self.window.set_cursor_grab(CursorGrabMode::Confined).is_ok()
+            {
+                self.window.set_cursor_visible(false);
+                self.is_cursor_locked = true;
+            }
+        } else {
+            let _ = self.window.set_cursor_grab(CursorGrabMode::None);
+            self.window.set_cursor_visible(true);
+            self.is_cursor_locked = false;
+        }
     }
 }

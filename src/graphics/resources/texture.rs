@@ -1,11 +1,10 @@
 use std::{ops::Deref, sync::Arc};
-use crate::graphics::{GpuHandle, ResourceBuilder};
 
-/// Describes the role of the texture as used by the gpu
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Describes the role of a texture as used by in a bind group
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TextureRole {
-    /// A sampled texture for use in rendering
-    Sampled,
+    /// The texture is used to be sampled using a sampler in the shader
+    Sampled{ filterable: bool },
     /// A texture thats stored and accessed only through shaders
     Storage,
 }
@@ -14,8 +13,8 @@ impl TextureRole {
     /// // Convert the texture role into it's equivalent wgpu binding type
     pub fn as_binding_type(&self) -> wgpu::BindingType {
         match self {
-            TextureRole::Sampled => wgpu::BindingType::Texture {
-                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+            TextureRole::Sampled{ filterable} => wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable: *filterable },
                 view_dimension: wgpu::TextureViewDimension::D2,
                 multisampled: false
             },
@@ -31,8 +30,8 @@ impl TextureRole {
 /// A lightweight handle to a gpu texture
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TextureHandle {
-    texture: Arc<wgpu::Texture>,
-    view: Arc<wgpu::TextureView>,
+    pub texture: Arc<wgpu::Texture>,
+    pub view: Arc<wgpu::TextureView>,
 }
 
 impl Deref for TextureHandle {
@@ -75,11 +74,11 @@ impl TextureType {
 }
 
 pub struct TextureBuilder {
-    label: String,
-    texture_type: TextureType,
-    format: wgpu::TextureFormat,
-    dimensions: wgpu::TextureDimension,
-    usage: wgpu::TextureUsages,
+    pub label: String,
+    pub texture_type: TextureType,
+    pub format: wgpu::TextureFormat,
+    pub dimensions: wgpu::TextureDimension,
+    pub usage: wgpu::TextureUsages,
 }
 
 impl TextureBuilder {
@@ -115,29 +114,5 @@ impl TextureBuilder {
     pub fn with_additional_usage(mut self, usage: wgpu::TextureUsages) -> Self {
         self.usage |= usage;
         self
-    }
-}
-
-impl ResourceBuilder for TextureBuilder {
-    type Resource = TextureHandle;
-
-    fn build(&self, gpu: GpuHandle) -> Self::Resource {
-        let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(&self.label),
-            size: self.texture_type.extent(),
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: self.dimensions,
-            format: self.format,
-            usage: self.usage,
-            view_formats: &[],
-        });
-
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-        TextureHandle {
-            texture: Arc::new(texture),
-            view: Arc::new(view),
-        }
     }
 }
