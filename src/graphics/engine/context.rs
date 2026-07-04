@@ -28,39 +28,6 @@ pub enum GpuPass {
     Compute(ComputePass),
 }
 
-#[derive(Clone, Debug)]
-/// builders for gpu pipelines
-pub enum PipelineBuilder {
-    Render(RenderPipelineBuilder),
-    Compute(ComputePipelineBuilder)
-}
-
-impl PipelineBuilder {
-    /// Attempts to convert the Pipeline Builder variant into a render builder type.
-    pub fn as_render(&self) -> Option<&RenderPipelineBuilder> {
-        match self {
-            PipelineBuilder::Render(builder) => Some(builder),
-            _ => None
-        }
-    }
-
-    /// Attempts to convert the Pipeline Builder variant into a compute builder type.
-    pub fn as_compute(&self) -> Option<&ComputePipelineBuilder> {
-        match self {
-            PipelineBuilder::Compute(builder) => Some(builder),
-            _ => None
-        }
-    }
-
-    /// Get a reference to the bind group ids this pipeline builder references
-    pub fn bind_groups(&self) -> &Vec<BindGroupId> {
-        match self {
-            PipelineBuilder::Compute(builder) => &builder.bg_layouts,
-            PipelineBuilder::Render(builder) => &builder.bg_layouts
-        }
-    }
-}
-
 /// unique identifier to a buffer
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] pub struct BufferId(pub &'static str);
 

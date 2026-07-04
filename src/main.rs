@@ -6,7 +6,7 @@ use winit::{
 };
 
 pub mod game;
-pub mod controls;
+pub mod utils;
 
 pub mod graphics;
 use crate::{game::{Game, Screen, ScreenTransition}, graphics::*};

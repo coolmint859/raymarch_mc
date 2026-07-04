@@ -2,7 +2,7 @@ use glam::{Quat, Vec3};
 use winit::{event::MouseButton, keyboard::KeyCode};
 
 use crate::{
-    Graphics, InputEvent, controls::{CameraController, KeyboardHandler, MouseHandler}, game::{Screen, ScreenTransition, VoxelWorld}, graphics::*,
+    Graphics, InputEvent, game::{Screen, ScreenTransition, VoxelWorld}, graphics::*, utils::{CameraController, KeyboardHandler, MouseHandler, PerspectiveCamera},
 };
 
 #[derive(Clone, Copy)]

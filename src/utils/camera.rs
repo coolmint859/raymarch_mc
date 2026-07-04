@@ -1,6 +1,6 @@
 use glam::*;
 
-use crate::graphics::Transform;
+use crate::utils::Transform;
 
 /// A camera that embodies perspective projection
 pub struct PerspectiveCamera {

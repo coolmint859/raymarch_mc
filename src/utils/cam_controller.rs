@@ -1,4 +1,4 @@
-use crate::graphics::PerspectiveCamera;
+use crate::utils::PerspectiveCamera;
 
 /// Provides methods to update a camera's orientation
 pub struct CameraController {

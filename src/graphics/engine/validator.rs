@@ -81,7 +81,7 @@ impl GpuValidator {
         self.known_pipelines.borrow_mut().remove(pip_id);
     }
 
-    /// Validates a bind group given it's id by validating it's entries are ready.
+    /// Validates a bind group by ensuring it's entries are ready.
     /// 
     /// Returns an option containing the handle to the bind group if ready, else None
     pub fn verify_bind_group<'a>(
