@@ -16,21 +16,22 @@ impl Deref for RenderPipelineHandle {
     }
 }
 
-pub struct RenderPipelineBuilder<'a> {
+#[derive(Clone, Debug)]
+pub struct RenderPipelineBuilder {
     pub label: String,
     pub bg_layouts: Vec<BindGroupId>,
-    pub shader_desc: Option<wgpu::ShaderModuleDescriptor<'a>>,
+    pub shader_source: Option<&'static str>,
     pub vs_main: String,
     pub fs_main: String,
     pub target_format: Option<wgpu::TextureFormat>
 }
 
-impl<'a> RenderPipelineBuilder<'a> {
+impl RenderPipelineBuilder {
     pub fn new() -> Self {
         Self {
             label: "render_pipeline".to_string(),
             bg_layouts: Vec::new(),
-            shader_desc: None,
+            shader_source: None,
             vs_main: "vs_main".to_string(),
             fs_main: "fs_main".to_string(),
             target_format: None
@@ -50,8 +51,8 @@ impl<'a> RenderPipelineBuilder<'a> {
     }
 
     /// Add a shader descriptor to the pipeline
-    pub fn with_shader(mut self, desc: wgpu::ShaderModuleDescriptor<'a>) -> Self {
-        self.shader_desc = Some(desc);
+    pub fn with_shader(mut self, source: &'static str) -> Self {
+        self.shader_source = Some(source);
         self
     }
 

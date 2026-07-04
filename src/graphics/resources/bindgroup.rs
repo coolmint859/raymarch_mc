@@ -17,17 +17,20 @@ impl Deref for BindGroupHandle {
     }
 }
 
+#[derive(Clone, Debug)]
 pub enum BindingTarget {
     Buffer(BufferId),
     Texture(TextureId),
     // Sampler(SamplerId),
 }
 
+#[derive(Clone, Debug)]
 pub struct GroupEntry {
     pub target: BindingTarget,
     pub slot: u32
 }
 
+#[derive(Clone, Debug)]
 pub struct BindGroupBuilder {
     pub label: String,
     pub layout_entries: Vec<wgpu::BindGroupLayoutEntry>,

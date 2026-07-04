@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use winit::window::{CursorGrabMode, Window};
 
-/// Represents the window and rendering surface for which to issue draw commands
+/// Represents the window and rendering surface
 pub struct Canvas {
     pub window: Arc<Window>,
     pub surface: wgpu::Surface<'static>,
@@ -22,7 +22,7 @@ impl Canvas {
         }
     }
 
-    /// Reset the window to match the configuration width and height
+    /// Reset the canvas window to match the configuration width and height
     pub fn reset(&mut self) {
         self.resize( self.config.width, self.config.height);
     }

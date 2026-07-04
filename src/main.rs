@@ -27,15 +27,9 @@ pub enum InputEvent {
     }
 }
 
-/// Contains the gpu context and rendering canvas
-pub struct AppEnv {
-    pub gpu: GpuContext,
-    pub canvas: Canvas,
-}
-
 /// Core window driver
 struct App {
-    env: Option<AppEnv>,
+    graphics: Option<Graphics>,
     active_screen: Option<Box<dyn Screen>>,
 
     previous_time: Instant,
@@ -45,7 +39,7 @@ struct App {
 impl App {
     pub fn new() -> Self {
         Self {
-            env: None,
+            graphics: None,
             active_screen: None,
             previous_time: Instant::now(),
             elapsed_time: 0.0,
@@ -53,37 +47,37 @@ impl App {
     }
     
     pub fn run_frame(&mut self, event_loop: &ActiveEventLoop) {
-        let Some(env) = &mut self.env else { return; };
+        let Some(graphics) = &mut self.graphics else { return; };
 
         let current_time = Instant::now();
         let dt = (current_time - self.previous_time).as_secs_f32();
         self.previous_time = current_time;
         self.elapsed_time += dt;
 
-        if env.canvas.is_focused && let Some(ref mut screen) = self.active_screen {
-            match screen.process_input(env, dt) {
+        if graphics.canvas.is_focused && let Some(ref mut screen) = self.active_screen {
+            match screen.process_input(graphics, dt) {
                 ScreenTransition::Exit => {
                     event_loop.exit();
                     return;
                 }
                 ScreenTransition::SwitchTo(mut screen) => {
-                    screen.init(env);
+                    screen.init(graphics);
                     self.active_screen = Some(screen);
                     return;
                 }
                 ScreenTransition::None => {
-                    screen.update(env, dt)
+                    screen.update(graphics, dt)
                 }
             }
         }
 
-        env.canvas.window.request_redraw();
+        graphics.request_redraw();
     }
 }
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.env.is_none() {
+        if self.graphics.is_none() {
             let window_attrs = WindowAttributes::default()
                 .with_inner_size(Size::Physical (
                     PhysicalSize { width: 2560, height: 1440 }
@@ -92,14 +86,14 @@ impl ApplicationHandler for App {
             let window = Arc::new(event_loop.create_window(window_attrs).unwrap());
             event_loop.listen_device_events(DeviceEvents::Always);
 
-            let (gpu, canvas) = pollster::block_on(init_graphics(window));
-            let mut app_env = AppEnv { gpu, canvas };
+            let mut graphics_init = GraphicsInit::new();
+            let mut graphics = pollster::block_on(graphics_init.init(window)).unwrap();
 
             let mut game_screen = Game::new();
-            game_screen.init(&mut app_env);
+            game_screen.init(&mut graphics);
 
             self.active_screen = Some(Box::new(game_screen));
-            self.env = Some(app_env);
+            self.graphics = Some(graphics);
         }
     }
 
@@ -108,7 +102,7 @@ impl ApplicationHandler for App {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
-        let (Some(env), Some(screen)) = (&mut self.env, &mut self.active_screen) else { return; };
+        let (Some(graphics), Some(screen)) = (&mut self.graphics, &mut self.active_screen) else { return; };
 
         let current_time = Instant::now();
         let dt = (current_time - self.previous_time).as_secs_f32();
@@ -118,19 +112,18 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(physical_size) => {        
-                env.canvas.resize(physical_size.width, physical_size.height);
-                env.gpu.configure_surface(&mut env.canvas);
+                graphics.on_resize(physical_size.width, physical_size.height);
+                screen.on_resize(graphics);
 
-                screen.on_resize(env);
-                screen.update(env, dt);
+                screen.update(graphics, dt);
             }
             WindowEvent::RedrawRequested => {
-                let passes = screen.render(env);
+                let result = screen.render(graphics);
 
                 // println!("{:#?}", passes);
-                match env.gpu.execute_passes(passes, &mut env.canvas) {
+                match result {
                     Err(wgpu::SurfaceError::OutOfMemory) => event_loop.exit(),
-                    Err(wgpu::SurfaceError::Lost) => env.canvas.reset(),
+                    Err(wgpu::SurfaceError::Lost) => graphics.reset(),
                     _ => {}
                 }
             }
@@ -138,8 +131,8 @@ impl ApplicationHandler for App {
                 screen.input_event(InputEvent::Key(event));
             }
             WindowEvent::Focused(focused) => {
-                env.canvas.is_focused = focused;
-                env.canvas.set_cursor_lock(focused);
+                graphics.canvas.is_focused = focused;
+                graphics.canvas.set_cursor_lock(focused);
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 screen.input_event(InputEvent::MouseButton { state, button });
