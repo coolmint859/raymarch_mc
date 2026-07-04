@@ -4,23 +4,23 @@ use crate::game::{EnvironmentUniform, colors::*};
 
 pub struct VoxelWorld {
     in_game_time: f32,
-    day_length_min: f32,
+    day_length: f32,
     dusk_y_transtion: f32,
     night_y_transition: f32
 }
 
 impl VoxelWorld {
-    pub fn new()-> Self {
+    pub fn new(day_length: f32)-> Self {
         Self {
             in_game_time: 12.0, // starts at noon
-            day_length_min: 10.0, // day cycle lasts 10 minutes
+            day_length,
             dusk_y_transtion: 0.3,
             night_y_transition: -0.1
         }
     }
 
     pub fn update(&mut self, dt: f32) {
-        let time_modifer = 24.0 / (self.day_length_min * 60.0);
+        let time_modifer = 24.0 / (self.day_length * 60.0);
         self.in_game_time = (self.in_game_time + dt * time_modifer) % 24.0;
         // println!("day_time: {}", self.in_game_time);
     }

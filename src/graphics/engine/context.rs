@@ -5,6 +5,7 @@ use wgpu::{BindGroupLayout, CommandEncoder, util::DeviceExt};
 use crate::graphics::*;
 
 /// Represents a render pass
+#[derive(Clone, Debug)]
 pub struct RenderPass {
     pub pipeline_id: PipelineId,
     pub bind_groups: Vec<BindGroupId>,
@@ -13,6 +14,7 @@ pub struct RenderPass {
 }
 
 /// Represents a compute pass
+#[derive(Clone, Debug)]
 pub struct ComputePass {
     pub pipeline_id: PipelineId,
     pub bind_groups: Vec<BindGroupId>,
@@ -20,6 +22,7 @@ pub struct ComputePass {
 }
 
 /// Represents a render or compute pass.
+#[derive(Clone, Debug)]
 pub enum GpuPass {
     Render(RenderPass),
     Compute(ComputePass),
@@ -27,21 +30,21 @@ pub enum GpuPass {
 
 /// builders for gpu pipelines
 pub enum PipelineBuilder<'a> {
-    Render(&'a RenderPipelineBuilder),
-    Compute(&'a ComputePipelineBuilder)
+    Render(&'a RenderPipelineBuilder<'a>),
+    Compute(&'a ComputePipelineBuilder<'a>)
 }
 
 /// unique identifier to a buffer
-#[derive(Clone, Copy, PartialEq, Eq, Hash)] pub struct BufferId(pub &'static str);
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] pub struct BufferId(pub &'static str);
 
 /// unique identifier for a texture
-#[derive(Clone, Copy, PartialEq, Eq, Hash)] pub struct TextureId(pub &'static str);
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] pub struct TextureId(pub &'static str);
 
 /// unique identifier for a pipeline
-#[derive(Clone, Copy, PartialEq, Eq, Hash)] pub struct PipelineId(pub &'static str);
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] pub struct PipelineId(pub &'static str);
 
 /// unique identifier for a bind group
-#[derive(Clone, Copy, PartialEq, Eq, Hash)] pub struct BindGroupId(pub &'static str);
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] pub struct BindGroupId(pub &'static str);
 
 /// Esncasulates updates to gpu buffers
 pub struct BufferUpdate<T: bytemuck::Pod> {
@@ -51,7 +54,8 @@ pub struct BufferUpdate<T: bytemuck::Pod> {
 
 /// Represents the state of the gpu, providing means to create and modify resources, and execute pipelines
 pub struct GpuContext {
-    pub gpu: GpuHandle,
+    device: Arc<wgpu::Device>,
+    queue: Arc<wgpu::Queue>,
 
     buffers: HashMap<BufferId, BufferHandle>,
     textures: HashMap<TextureId, TextureHandle>,
@@ -61,22 +65,28 @@ pub struct GpuContext {
 }
 
 impl GpuContext {
-    pub fn new(gpu: &GpuHandle) -> Self {
+    pub fn new(device: wgpu::Device, queue: wgpu::Queue) -> Self {
         Self {
             buffers: HashMap::new(),
             textures: HashMap::new(),
             bind_groups: HashMap::new(),
             r_pipelines: HashMap::new(),
             c_pipelines: HashMap::new(),
-            gpu: gpu.clone()
+            device: Arc::new(device),
+            queue: Arc::new(queue)
         }
+    }
+
+    /// Reconfigure the surface texture to match the canvas
+    pub fn configure_surface(&self, canvas: &mut Canvas) {
+        canvas.surface.configure(&self.device, &canvas.config);
     }
 
     /// Request a buffer to be created from the provided builder and mapped to the provided id.
     pub fn request_buffer(&mut self, id: &BufferId, builder: &BufferBuilder) {
         if self.buffers.contains_key(id) { return; }
 
-        let buffer = create_buffer(self.gpu.clone(), builder);
+        let buffer = create_buffer(self.device.clone(), builder);
         self.buffers.insert(id.clone(), buffer);
     }
 
@@ -84,7 +94,7 @@ impl GpuContext {
     pub fn request_texture(&mut self, id: &TextureId, builder: &TextureBuilder) {
         if self.textures.contains_key(id) { return; }
 
-        let texture = create_texture(self.gpu.clone(), builder);
+        let texture = create_texture(self.device.clone(), builder);
         self.textures.insert(id.clone(), texture);
     }
 
@@ -113,7 +123,7 @@ impl GpuContext {
             })
             .collect();
 
-        let bind_group = create_bind_group(self.gpu.clone(), builder, entries);
+        let bind_group = create_bind_group(self.device.clone(), builder, entries);
         self.bind_groups.insert(id.clone(), bind_group);
     }
 
@@ -132,7 +142,7 @@ impl GpuContext {
                     })
                     .collect();
             
-                let r_pipeline= create_render_pipeline(self.gpu.clone(), r_pip_builder, &bg_layouts);
+                let r_pipeline= create_render_pipeline(self.device.clone(), r_pip_builder, &bg_layouts);
                 self.r_pipelines.insert(id.clone(), r_pipeline);
             },
             PipelineBuilder::Compute(c_pip_builder) => {
@@ -145,7 +155,7 @@ impl GpuContext {
                     })
                     .collect();
 
-                let c_pipeline = create_compute_pipeline(self.gpu.clone(), c_pip_builder, &bg_layouts);
+                let c_pipeline = create_compute_pipeline(self.device.clone(), c_pip_builder, &bg_layouts);
                 self.c_pipelines.insert(id.clone(), c_pipeline);
             }
         };
@@ -157,7 +167,7 @@ impl GpuContext {
             let update_size = update.offset + data.len() as u64;
             assert!(update_size <= buffer.size());
 
-            self.gpu.queue.write_buffer(buffer, update.offset, data);
+            self.queue.write_buffer(buffer, update.offset, data);
         }
     }
 
@@ -173,7 +183,7 @@ impl GpuContext {
 
     /// Execute the provided gpu passes in order
     pub fn execute_passes(&self, passes: Vec<GpuPass>, canvas: &Canvas) -> Result<(), wgpu::SurfaceError> {
-        let mut encoder = self.gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
         let output = canvas.surface.get_current_texture()?;
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -185,7 +195,7 @@ impl GpuContext {
                 GpuPass::Compute(pass) => self.execute_compute_pass(&mut encoder, pass),
             }
         }
-        self.gpu.queue.submit(std::iter::once(encoder.finish()));
+        self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
 
         Ok(())
@@ -239,10 +249,10 @@ impl GpuContext {
 }
 
 /// Create a buffer from the given configuration builder
-pub fn create_buffer(gpu: GpuHandle, builder: &BufferBuilder) -> BufferHandle {
+pub fn create_buffer(device: Arc<wgpu::Device>, builder: &BufferBuilder) -> BufferHandle {
     let buffer = match &builder.contents {
         BufferContents::Empty(size) => {
-            gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some(&builder.label),
                 size: *size,
                 usage: builder.usage,
@@ -250,7 +260,7 @@ pub fn create_buffer(gpu: GpuHandle, builder: &BufferBuilder) -> BufferHandle {
             })
         },
         BufferContents::WithData(data) => {
-            gpu.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(&builder.label),
                 contents: &data,
                 usage: builder.usage
@@ -266,8 +276,8 @@ pub fn create_buffer(gpu: GpuHandle, builder: &BufferBuilder) -> BufferHandle {
 }
 
 /// Create a new texture from the given configuration builder
-pub fn create_texture(gpu: GpuHandle, builder: &TextureBuilder) -> TextureHandle {
-    let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
+pub fn create_texture(device: Arc<wgpu::Device>, builder: &TextureBuilder) -> TextureHandle {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some(&builder.label),
         size: builder.texture_type.extent(),
         mip_level_count: 1,
@@ -290,16 +300,16 @@ pub fn create_texture(gpu: GpuHandle, builder: &TextureBuilder) -> TextureHandle
 
 /// Create a new bind group from the given configuration builder and resource map
 pub fn create_bind_group(
-    gpu: GpuHandle, 
+    device: Arc<wgpu::Device>, 
     builder: &BindGroupBuilder, 
     entries: Vec<wgpu::BindGroupEntry<'_>>
 ) -> BindGroupHandle {
-    let layout = Arc::new(gpu.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor{
+    let layout = Arc::new(device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor{
         label: Some(&format!("Layout: {}", builder.label)),
         entries: &builder.layout_entries
     }));
 
-    let bind_group = Arc::new(gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+    let bind_group = Arc::new(device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some(&builder.label),
         layout: &layout,
         entries: &entries,
@@ -315,22 +325,26 @@ pub fn create_bind_group(
 
 /// Create a new render pipeline from the given configuration builder
 pub fn create_render_pipeline(
-    gpu: GpuHandle, 
+    device: Arc<wgpu::Device>, 
     builder: &RenderPipelineBuilder,
     bg_layouts: &[&'_ BindGroupLayout]
 ) -> RenderPipelineHandle {
-    let shader = builder.shader_module.as_ref()
-        .expect("[Render Pipeline] Expected pipeline to be configured with a shader module, but none was found.");
+    let shader_desc = builder.shader_desc
+        .as_ref()
+        .expect("[Render Pipeline] Expected pipeline to be configured with a shader descriptor, but none was found")
+        .clone();
+
     let format = builder.target_format
         .expect("[Render Pipeline] Expected pipeline to be configured with a target format, but none was found.");
 
-    let layout = gpu.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+    let shader = device.create_shader_module(shader_desc);
+    let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some(&format!("{}_layout", builder.label)),
         bind_group_layouts: bg_layouts,
         immediate_size: 0,
     });
 
-    let pipeline = gpu.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+    let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some(&builder.label),
         layout: Some(&layout),
         vertex: wgpu::VertexState {
@@ -364,20 +378,23 @@ pub fn create_render_pipeline(
 }
 
 pub fn create_compute_pipeline(
-    gpu: GpuHandle, 
+    device: Arc<wgpu::Device>, 
     builder: &ComputePipelineBuilder,
     bg_layouts: &[&'_ BindGroupLayout]
 ) -> ComputePipelineHandle {
-    let shader = builder.shader_module.as_ref()
-        .expect("[Compute Pipeline] Expected pipeline to be configured with a shader module, but none was found.");
+    let shader_desc = builder.shader_desc
+        .as_ref()
+        .expect("[Compute Pipeline] Expected pipeline to be configured with a shader descriptor, but none was found")
+        .clone();
 
-    let layout = gpu.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+    let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some(&format!("{} Layout", builder.label)),
         bind_group_layouts: bg_layouts,
         immediate_size: 0,
     });
 
-    let pipeline = gpu.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+    let shader = device.create_shader_module(shader_desc);
+    let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
         label: Some(&builder.label),
         layout: Some(&layout),
         module: &shader,

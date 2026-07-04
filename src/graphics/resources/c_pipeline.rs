@@ -16,19 +16,19 @@ impl Deref for ComputePipelineHandle {
     }
 }
 
-pub struct ComputePipelineBuilder {
+pub struct ComputePipelineBuilder<'a> {
     pub label: String,
     pub bg_layouts: Vec<BindGroupId>,
-    pub shader_module: Option<wgpu::ShaderModule>,
+    pub shader_desc: Option<wgpu::ShaderModuleDescriptor<'a>>,
     pub main: String,
 }
 
-impl ComputePipelineBuilder {
+impl<'a> ComputePipelineBuilder<'a> {
     pub fn new() -> Self {
         Self {
             label: "compute_pipeline".to_string(),
             bg_layouts: Vec::new(),
-            shader_module: None,
+            shader_desc: None,
             main: "cs_main".to_string()
         }
     }
@@ -40,8 +40,8 @@ impl ComputePipelineBuilder {
     }
 
     /// Set the shader program this pipeline will execute with
-    pub fn with_shader(mut self, module: wgpu::ShaderModule) -> Self {
-        self.shader_module = Some(module);
+    pub fn with_shader(mut self, desc: wgpu::ShaderModuleDescriptor<'a>) -> Self {
+        self.shader_desc = Some(desc);
         self
     }
 

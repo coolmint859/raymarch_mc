@@ -2,17 +2,10 @@ use std::sync::Arc;
 
 use winit::window::Window;
 
-use crate::{canvas::Canvas, graphics::CanvasDescriptor};
+use crate::{Canvas, graphics::GpuContext};
 
-/// A lightwight handle representing the physical gpu
-#[derive(Clone, Debug)]
-pub struct GpuHandle {
-    pub device: Arc<wgpu::Device>,
-    pub queue: Arc<wgpu::Queue>,
-}
-
-/// Initialize the graphics context, creating a gpu handle and rendering canvas
-pub async fn init_graphics(window: Arc<Window>) -> (GpuHandle, Canvas) {
+/// Initialize the graphics context, creating a gpu context and rendering canvas
+pub async fn init_graphics(window: Arc<Window>) -> (GpuContext, Canvas) {
     let size = window.inner_size();
     let instance = wgpu::Instance::default();
     let surface = instance.create_surface(window.clone()).unwrap();
@@ -31,11 +24,6 @@ pub async fn init_graphics(window: Arc<Window>) -> (GpuHandle, Canvas) {
         .await
         .unwrap();
 
-    let gpu = GpuHandle {
-        device: Arc::new(device),
-        queue: Arc::new(queue)
-    };
-
     let surface_caps = surface.get_capabilities(&adapter);
     let surface_format = surface_caps.formats[0];
     let config = wgpu::SurfaceConfiguration {
@@ -48,19 +36,18 @@ pub async fn init_graphics(window: Arc<Window>) -> (GpuHandle, Canvas) {
         view_formats: vec![],
         desired_maximum_frame_latency: 2,
     };
-    surface.configure(&gpu.device, &config);
+    surface.configure(&device, &config);
 
     let canvas = Canvas {
-        desc: CanvasDescriptor {
-            width: config.width,
-            height: config.height,
-            aspect: (config.width as f32) / (config.height as f32),
-        },
         window,
         surface,
+        aspect: (config.width as f32) / (config.height as f32),
         config,
         is_cursor_locked: false,
+        is_focused: true,
     };
+
+    let gpu = GpuContext::new(device, queue);
 
     (gpu, canvas)
 }

@@ -33,7 +33,7 @@ impl<K: Clone> KeyboardHandler<K> {
     }
 
     /// Mark a key event as detected. Should be called for each Keyboard OS event.
-    pub fn key_event(&mut self, key_event: &KeyEvent) {
+    pub fn key_event(&mut self, key_event: KeyEvent) {
         if key_event.repeat { return; }
 
         let key_code = match key_event.physical_key {
