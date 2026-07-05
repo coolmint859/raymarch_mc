@@ -53,11 +53,14 @@ pub struct GpuContext {
     pass_queue: Vec<GpuPass>,
     validator: GpuValidator,
 
-    pub(crate) buffers: HashMap<BufferId, BufferHandle>,
-    pub(crate) textures: HashMap<TextureId, TextureHandle>,
-    pub(crate) bind_groups: HashMap<BindGroupId, BindGroupHandle>,
-    pub(crate) r_pipelines: HashMap<PipelineId, RenderPipelineHandle>,
-    pub(crate) c_pipelines: HashMap<PipelineId, ComputePipelineHandle>,
+    def_bind_groups: HashMap<BindGroupId, BindGroupBuilder>,
+    def_pipelines: HashMap<PipelineId, PipelineBuilder>,
+
+    pub(crate) buffers: ResourceHandler<BufferId, BufferHandle>,
+    pub(crate) textures: ResourceHandler<TextureId, TextureHandle>,
+    pub(crate) bind_groups: ResourceHandler<BindGroupId, BindGroupHandle>,
+    pub(crate) r_pipelines: ResourceHandler<PipelineId, RenderPipelineHandle>,
+    pub(crate) c_pipelines: ResourceHandler<PipelineId, ComputePipelineHandle>,
 
     pub(crate) bg_blueprints: HashMap<BindGroupId, BindGroupBuilder>,
     pub(crate) pip_blueprints: HashMap<PipelineId, PipelineBuilder>,
@@ -70,11 +73,15 @@ impl GpuContext {
             queue: Arc::new(queue),
             pass_queue: Vec::new(),
             validator: GpuValidator::new(),
-            buffers: HashMap::new(),
-            textures: HashMap::new(),
-            bind_groups: HashMap::new(),
-            r_pipelines: HashMap::new(),
-            c_pipelines: HashMap::new(),
+
+            def_bind_groups: HashMap::new(),
+            def_pipelines: HashMap::new(),
+
+            buffers: ResourceHandler::new(),
+            textures: ResourceHandler::new(),
+            bind_groups: ResourceHandler::new(),
+            r_pipelines: ResourceHandler::new(),
+            c_pipelines: ResourceHandler::new(),
             bg_blueprints: HashMap::new(),
             pip_blueprints: HashMap::new()
         }
@@ -86,77 +93,146 @@ impl GpuContext {
     }
 
     /// Request a buffer to be created from the provided builder and mapped to the provided id.
-    pub fn request_buffer(&mut self, id: &BufferId, builder: &BufferBuilder) {
-        if self.buffers.contains_key(id) { return; }
+    pub fn request_buffer(&mut self, id: &BufferId, builder: BufferBuilder) {
+        if self.buffers.contains(id) { return; }
 
-        let buffer = create_buffer(self.device.clone(), builder);
-        self.buffers.insert(id.clone(), buffer);
+        let buffer_task = Task::non_blocking(
+            create_buffer(self.device.clone(), builder)
+        );
+        self.buffers.request_new(id, buffer_task);
     }
 
     /// Request a texture to be created from the provided builder and mapped to the provided id.
-    pub fn request_texture(&mut self, id: &TextureId, builder: &TextureBuilder) {
-        if self.textures.contains_key(id) { return; }
+    pub fn request_texture(&mut self, id: &TextureId, builder: TextureBuilder) {
+        if self.textures.contains(id) { return; }
 
-        let texture = create_texture(self.device.clone(), builder);
-        self.textures.insert(id.clone(), texture);
+        let texture_task = Task::non_blocking(
+            create_texture(self.device.clone(), builder)
+        );
+        self.textures.request_new(id, texture_task);
     }
 
     /// Request a bind group to be created from the provided builder and mapped to the provided id.
     pub fn request_bind_group(&mut self, id: &BindGroupId, builder: &BindGroupBuilder) {
-        if self.bind_groups.contains_key(id) { return; }
+        if self.bind_groups.contains(id) { return; }
 
-        self.bg_blueprints.insert(*id, builder.clone());
+        if !self.bg_blueprints.contains_key(id) {
+            self.bg_blueprints.insert(*id, builder.clone());
+        }
 
-        let entries = builder.bindings
-            .iter()
-            .map(|binding| {
-                let resource = match &binding.target {
-                    BindingTarget::Buffer(id) => {
-                        let buffer = self.buffers.get(id).unwrap();
-                        wgpu::BindingResource::Buffer(buffer.as_entire_buffer_binding())
+        let mut buffer_handles = Vec::new();
+        let mut texture_handles = Vec::new();
+        let mut expected_tex_len = 0usize;
+        let mut expected_buf_len = 0usize;
+
+        for binding in &builder.bindings {
+            match &binding.target {
+                BindingTarget::Buffer(buf_id) => {
+                    if let Some(handle) = self.buffers.get(buf_id) {
+                        buffer_handles.push((*buf_id, handle.clone(), binding.slot));
                     }
-                    BindingTarget::Texture(id) => {
-                        let texture = self.textures.get(id).unwrap();
-                        wgpu::BindingResource::TextureView(texture)
+                    expected_buf_len += 1;
+                },
+                BindingTarget::Texture(tex_id) => {
+                    if let Some(handle) = self.textures.get(tex_id) {
+                        texture_handles.push((*tex_id, handle.clone(), binding.slot));
                     }
-                };
-
-                wgpu::BindGroupEntry {
-                    resource,
-                    binding: binding.slot
+                    expected_tex_len += 1;
                 }
-            })
-            .collect();
+            }
+        }
 
-        let bind_group = create_bind_group(self.device.clone(), builder, entries);
-        self.bind_groups.insert(id.clone(), bind_group);
+        let ok_buffers = expected_buf_len == buffer_handles.len();
+        let ok_textures = expected_tex_len == texture_handles.len();
+
+        if !(ok_buffers && ok_textures) { 
+            self.def_bind_groups.insert(*id, builder.clone());
+            return; 
+        };
+
+        self.def_bind_groups.remove(id);
+
+        let device = self.device.clone();
+        let builder = builder.clone();
+
+        let bind_group_task = Task::non_blocking(async move {
+            let mut entries = Vec::new();
+
+            for (_id, buf, slot) in &buffer_handles {
+                entries.push(wgpu::BindGroupEntry {
+                    binding: *slot,
+                    resource: buf.as_entire_binding()
+                });
+            }
+            for (_id, tex, slot) in &texture_handles {
+                entries.push(wgpu::BindGroupEntry {
+                    binding: *slot,
+                    resource: wgpu::BindingResource::TextureView(tex)
+                });
+            }
+
+            create_bind_group(device, builder, entries).await
+        });
+
+        self.bind_groups.request_new(id, bind_group_task);
     }
 
     /// Request a pipeline to be created from the provided builder and mapped to the provided id.
     pub fn request_pipeline(&mut self, id: &PipelineId, builder: PipelineBuilder) {
-        if self.r_pipelines.contains_key(id) || self.c_pipelines.contains_key(id) { return; }
+        if self.r_pipelines.contains(id) || self.c_pipelines.contains(id) { return; }
 
-        self.pip_blueprints.insert(*id, builder.clone());
+        if !self.pip_blueprints.contains_key(id) {
+            self.pip_blueprints.insert(*id, builder.clone());
+        }
 
-        let bg_layouts: Vec<&'_ BindGroupLayout> = builder.bind_groups()
-            .iter()
-            .map(|bg_id| {
-                let bg = self.bind_groups.get(bg_id).unwrap();
-                
-                bg.layout.as_ref()
-            })
-            .collect();
+        let pip_bgs = builder.bind_groups();
+        let mut bg_layouts = Vec::new();
 
+        for bg_id in pip_bgs {
+            if let Some(bind_group) = self.bind_groups.get(bg_id) {
+                bg_layouts.push(bind_group.layout.clone())
+            }
+        }
+
+        if pip_bgs.len() != bg_layouts.len() {
+            self.def_pipelines.insert(*id, builder.clone());
+            return; 
+        }
+
+        self.def_pipelines.remove(id);
         match builder {
             PipelineBuilder::Render(r_pip_builder) => {
-                let r_pipeline= create_render_pipeline(self.device.clone(), &r_pip_builder, &bg_layouts);
-                self.r_pipelines.insert(id.clone(), r_pipeline);
+                let r_pip_task = Task::non_blocking(
+                    create_render_pipeline(self.device.clone(), r_pip_builder.clone(), bg_layouts)
+                );
+
+                self.r_pipelines.request_new(id, r_pip_task);
             },
             PipelineBuilder::Compute(c_pip_builder) => {
-                let c_pipeline = create_compute_pipeline(self.device.clone(), &c_pip_builder, &bg_layouts);
-                self.c_pipelines.insert(id.clone(), c_pipeline);
+                let c_pip_task = Task::non_blocking(
+                    create_compute_pipeline(self.device.clone(), c_pip_builder.clone(), bg_layouts)
+                );
+                self.c_pipelines.request_new(id, c_pip_task);
             }
         };
+    }
+
+    pub fn prepare_frame(&mut self) {
+        self.buffers.sync();
+        self.textures.sync();
+        self.bind_groups.sync();
+        self.r_pipelines.sync();
+        self.c_pipelines.sync();
+
+        let pending_bgs = std::mem::take(&mut self.def_bind_groups);
+        for (id, builder) in &pending_bgs {
+            self.request_bind_group(id, builder);
+        }
+
+        let pending_pips = std::mem::take(&mut self.def_pipelines);
+        for (id, builder) in &pending_pips {
+            self.request_pipeline(id, builder.clone());
+        }
     }
 
     pub fn update_buffer<T: bytemuck::Pod>(&mut self, id: &BufferId, update: BufferUpdate<T>) {
@@ -236,14 +312,14 @@ impl GpuContext {
         });
 
         let Some(pipeline) = self.validator.validate_render_pipeline(&pass.pipeline_id, self) else { 
-            println!("[GpuContext] Failed to validate render pipeline @{:?}", pass.pipeline_id);
+            // println!("[GpuContext] Failed to validate render pipeline @{:?}", pass.pipeline_id);
             return; 
         };
         render_pass.set_pipeline(pipeline);
 
         for (idx, bg_id) in pass.bind_groups.iter().enumerate() {
             let Some(bg) = self.validator.verify_bind_group(bg_id, self) else { 
-                println!("[GpuContext] Failed to validate bind group @{:?} for render pipeline @{:?}", bg_id, pass.pipeline_id);
+                // println!("[GpuContext] Failed to validate bind group @{:?} for render pipeline @{:?}", bg_id, pass.pipeline_id);
                 return; 
             };
             render_pass.set_bind_group(idx as u32, bg.deref(), &[]);
@@ -259,14 +335,14 @@ impl GpuContext {
         });
 
         let Some(pipeline) = self.validator.validate_compute_pipeline(&pass.pipeline_id, self) else {
-            println!("[GpuContext] Failed to validate compute pipeline @{:?}", pass.pipeline_id);
+            // println!("[GpuContext] Failed to validate compute pipeline @{:?}", pass.pipeline_id);
             return; 
         };
         compute_pass.set_pipeline(pipeline);
 
         for (idx, bg_id) in pass.bind_groups.iter().enumerate() {
             let Some(bg) = self.validator.verify_bind_group(bg_id, self) else { 
-                println!("[GpuContext] Failed to validate bind group @{:?} for compute pipeline @{:?}", bg_id, pass.pipeline_id);
+                // println!("[GpuContext] Failed to validate bind group @{:?} for compute pipeline @{:?}", bg_id, pass.pipeline_id);
                 return; 
             };
             compute_pass.set_bind_group(idx as u32, bg.deref(), &[]);
@@ -278,7 +354,7 @@ impl GpuContext {
 }
 
 /// Create a buffer from the given configuration builder
-pub fn create_buffer(device: Arc<wgpu::Device>, builder: &BufferBuilder) -> BufferHandle {
+pub async fn create_buffer(device: Arc<wgpu::Device>, builder: BufferBuilder) -> Result<BufferHandle, String> {
     let buffer = match &builder.contents {
         BufferContents::Empty(size) => {
             device.create_buffer(&wgpu::BufferDescriptor {
@@ -299,13 +375,13 @@ pub fn create_buffer(device: Arc<wgpu::Device>, builder: &BufferBuilder) -> Buff
 
     println!("[GpuContext] Created new buffer with label '{}'", builder.label);
 
-    BufferHandle {
+    Ok(BufferHandle {
         buffer: Arc::new(buffer),
-    }
+    })
 }
 
 /// Create a new texture from the given configuration builder
-pub fn create_texture(device: Arc<wgpu::Device>, builder: &TextureBuilder) -> TextureHandle {
+pub async fn create_texture(device: Arc<wgpu::Device>, builder: TextureBuilder) -> Result<TextureHandle, String> {
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some(&builder.label),
         size: builder.texture_type.extent(),
@@ -321,18 +397,18 @@ pub fn create_texture(device: Arc<wgpu::Device>, builder: &TextureBuilder) -> Te
 
     println!("[GpuContext] Created new texture with label '{}'", builder.label);
 
-    TextureHandle {
+    Ok(TextureHandle {
         texture: Arc::new(texture),
         view: Arc::new(view),
-    }
+    })
 }
 
 /// Create a new bind group from the given configuration builder and resource map
-pub fn create_bind_group(
+pub async fn create_bind_group(
     device: Arc<wgpu::Device>, 
-    builder: &BindGroupBuilder, 
+    builder: BindGroupBuilder, 
     entries: Vec<wgpu::BindGroupEntry<'_>>
-) -> BindGroupHandle {
+) -> Result<BindGroupHandle, String> {
     let layout = Arc::new(device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor{
         label: Some(&format!("Layout: {}", builder.label)),
         entries: &builder.layout_entries
@@ -346,18 +422,18 @@ pub fn create_bind_group(
 
     println!("[GpuContext] Created new bind group with label '{}'", builder.label);
 
-    BindGroupHandle { 
+    Ok(BindGroupHandle { 
         layout, 
         bind_group 
-    }
+    })
 }
 
 /// Create a new render pipeline from the given configuration builder
-pub fn create_render_pipeline(
+pub async fn create_render_pipeline(
     device: Arc<wgpu::Device>, 
-    builder: &RenderPipelineBuilder,
-    bg_layouts: &[&'_ BindGroupLayout]
-) -> RenderPipelineHandle {
+    builder: RenderPipelineBuilder,
+    bg_layouts: Vec<Arc<BindGroupLayout>>
+) -> Result<RenderPipelineHandle, String> {
     let shader_source = builder.shader_source
         .as_ref()
         .expect("[Render Pipeline] Expected pipeline to be configured with a shader descriptor, but none was found");
@@ -369,9 +445,15 @@ pub fn create_render_pipeline(
         label: Some(&format!("{}_source", builder.label)),
         source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(shader_source))
     });
+
+    let bg_layout_refs: Vec<&wgpu::BindGroupLayout> = bg_layouts
+        .iter()
+        .map(|layout| { layout.as_ref() })
+        .collect();
+
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some(&format!("{}_layout", builder.label)),
-        bind_group_layouts: bg_layouts,
+        bind_group_layouts: &bg_layout_refs,
         immediate_size: 0,
     });
 
@@ -403,23 +485,28 @@ pub fn create_render_pipeline(
 
     println!("[GpuContext] Created new render pipeline with label '{}'", builder.label);
 
-    RenderPipelineHandle {
+    Ok(RenderPipelineHandle {
         pipeline: Arc::new(pipeline),
-    }
+    })
 }
 
-pub fn create_compute_pipeline(
+pub async fn create_compute_pipeline(
     device: Arc<wgpu::Device>, 
-    builder: &ComputePipelineBuilder,
-    bg_layouts: &[&'_ BindGroupLayout]
-) -> ComputePipelineHandle {
+    builder: ComputePipelineBuilder,
+    bg_layouts: Vec<Arc<BindGroupLayout>>
+) -> Result<ComputePipelineHandle, String> {
     let shader_source = builder.shader_source
         .as_ref()
         .expect("[Compute Pipeline] Expected pipeline to be configured with a shader descriptor, but none was found");
 
+    let bg_layout_refs: Vec<&wgpu::BindGroupLayout> = bg_layouts
+        .iter()
+        .map(|layout| { layout.as_ref() })
+        .collect();
+
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some(&format!("{} Layout", builder.label)),
-        bind_group_layouts: bg_layouts,
+        bind_group_layouts: &bg_layout_refs,
         immediate_size: 0,
     });
 
@@ -427,6 +514,7 @@ pub fn create_compute_pipeline(
         label: Some(&format!("{}_source", builder.label)),
         source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(shader_source))
     });
+
     let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
         label: Some(&builder.label),
         layout: Some(&layout),
@@ -438,7 +526,7 @@ pub fn create_compute_pipeline(
 
     println!("[GpuContext] Created new compute pipeline with label '{}'", builder.label);
 
-    ComputePipelineHandle { 
+    Ok(ComputePipelineHandle { 
         pipeline: Arc::new(pipeline) 
-    }
+    })
 }

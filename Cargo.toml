@@ -14,3 +14,4 @@ image = "0.23"
 rand = "0.8.0"
 rand_distr = "0.4.0"
 env_logger = "0.10"
+tokio = { version = "1", features = ["full"] }

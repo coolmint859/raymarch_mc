@@ -49,6 +49,8 @@ impl App {
     pub fn run_frame(&mut self, event_loop: &ActiveEventLoop) {
         let Some(graphics) = &mut self.graphics else { return; };
 
+        graphics.gpu.prepare_frame();
+
         let current_time = Instant::now();
         let dt = (current_time - self.previous_time).as_secs_f32();
         self.previous_time = current_time;
@@ -153,7 +155,8 @@ impl ApplicationHandler for App {
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll);
     env_logger::init();

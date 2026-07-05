@@ -122,12 +122,12 @@ impl Screen for Game {
         let cam_buf_builder = BufferBuilder::as_uniform(BufferContents::Empty(128))
             .with_label("Camera Buffer")
             .with_additional_usage(wgpu::BufferUsages::COPY_DST);
-        graphics.gpu.request_buffer(&ids.cam_id, &cam_buf_builder);
+        graphics.gpu.request_buffer(&ids.cam_id, cam_buf_builder);
 
         let env_buf_builder = BufferBuilder::as_uniform(BufferContents::Empty(64))
             .with_label("Environment Buffer")
             .with_additional_usage(wgpu::BufferUsages::COPY_DST);
-        graphics.gpu.request_buffer(&ids.env_id, &env_buf_builder);
+        graphics.gpu.request_buffer(&ids.env_id, env_buf_builder);
 
         let tex_type = TextureType::Computed { 
             width: graphics.canvas.config.width, 
@@ -137,7 +137,7 @@ impl Screen for Game {
             .with_label("Voxel Storage Texture")
             .with_format(wgpu::TextureFormat::Rgba8Unorm)
             .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING);
-        graphics.gpu.request_texture(&ids.rtex_id, &rtex_builder);
+        graphics.gpu.request_texture(&ids.rtex_id, rtex_builder);
 
         let voxel_bg_builder = BindGroupBuilder::new()
             .with_label("Compute Bind Group")
@@ -181,7 +181,7 @@ impl Screen for Game {
             .with_label("Voxel Storage Texture")
             .with_format(wgpu::TextureFormat::Rgba8Unorm)
             .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING);
-        graphics.gpu.request_texture(&ids.rtex_id, &rtex_builder);
+        graphics.gpu.request_texture(&ids.rtex_id, rtex_builder);
 
         graphics.gpu.remove_bind_group(&ids.voxel_bg_id);
         let voxel_bg_builder = BindGroupBuilder::new()

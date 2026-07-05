@@ -5,14 +5,14 @@ use crate::graphics::{BindGroupHandle, BindGroupId, BindingTarget, BufferId, Com
 /// Validates the readiness of gpu resources. Stores resources it knows to be ready for fast retrieval
 pub struct GpuValidator {
     known_bind_groups: RefCell<HashSet<BindGroupId>>,
-    known_pipelines: RefCell<HashSet<PipelineId>>,
+    known_pipelines: RefCell<HashSet<PipelineId>>
 }
 
 impl GpuValidator {
     pub fn new() -> Self {
         Self {
             known_bind_groups: RefCell::new(HashSet::new()),
-            known_pipelines: RefCell::new(HashSet::new())
+            known_pipelines: RefCell::new(HashSet::new()),
         }
     }
 
@@ -98,14 +98,14 @@ impl GpuValidator {
         for entry in &bg_blueprint.bindings {
             match &entry.target {
                 BindingTarget::Buffer(buf_id) => {
-                    if !context.buffers.contains_key(buf_id) {
-                        println!("[GpuValidator] Validation failed for bind group @{:?}: Missing Buffer @{:?}", bg_id, buf_id);
+                    if !context.buffers.contains(buf_id) {
+                        // println!("[GpuValidator] Validation failed for bind group @{:?}: Missing Buffer @{:?}", bg_id, buf_id);
                         return None; 
                     }
                 },
                 BindingTarget::Texture(tex_id) => {
-                    if !context.textures.contains_key(tex_id) { 
-                        println!("[GpuValidator] Validation failed for bind group @{:?}: Missing Texture @{:?}", bg_id, tex_id);
+                    if !context.textures.contains(tex_id) { 
+                        // println!("[GpuValidator] Validation failed for bind group @{:?}: Missing Texture @{:?}", bg_id, tex_id);
                         return None; 
                     }
                 }
@@ -132,7 +132,7 @@ impl GpuValidator {
 
         for bg_id in &pip_blueprint.bg_layouts {
             if self.verify_bind_group(bg_id, context).is_none() {
-                println!("[GpuValidator] Validation failed for render pipeline @{:?}: Missing Bind Group @{:?}", pip_id, bg_id);
+                // println!("[GpuValidator] Validation failed for render pipeline @{:?}: Missing Bind Group @{:?}", pip_id, bg_id);
                 return None;
             }
         }
@@ -157,7 +157,7 @@ impl GpuValidator {
 
         for bg_id in &pip_blueprint.bg_layouts {
             if self.verify_bind_group(bg_id, context).is_none() {
-                println!("[GpuValidator] Validation failed for compute pipeline @{:?}: Missing Bind Group @{:?}", pip_id, bg_id);
+                // println!("[GpuValidator] Validation failed for compute pipeline @{:?}: Missing Bind Group @{:?}", pip_id, bg_id);
                 return None; 
             }
         }
