@@ -1,5 +1,7 @@
 use std::{ops::Deref, sync::Arc};
 
+use crate::graphics::GpuHandle;
+
 /// Describes the role of a texture as used by in a bind group
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TextureRole {
@@ -115,4 +117,27 @@ impl TextureBuilder {
         self.usage |= usage;
         self
     }
+}
+
+/// Create a new texture from the given configuration builder
+pub async fn create_texture(gpu: GpuHandle, builder: TextureBuilder) -> Result<TextureHandle, String> {
+    let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(&builder.label),
+        size: builder.texture_type.extent(),
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: builder.dimensions,
+        format: builder.format,
+        usage: builder.usage,
+        view_formats: &[],
+    });
+
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+    println!("[GpuContext] Created new texture with label '{}'", builder.label);
+
+    Ok(TextureHandle {
+        texture: Arc::new(texture),
+        view: Arc::new(view),
+    })
 }

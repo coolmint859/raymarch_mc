@@ -3,12 +3,12 @@ use std::{cell::RefCell, collections::HashSet};
 use crate::graphics::{BindGroupHandle, BindGroupId, BindingTarget, BufferId, ComputePipelineHandle, GpuContext, PipelineId, RenderPipelineHandle, TextureId};
 
 /// Validates the readiness of gpu resources. Stores resources it knows to be ready for fast retrieval
-pub struct GpuValidator {
+pub struct PassValidator {
     known_bind_groups: RefCell<HashSet<BindGroupId>>,
     known_pipelines: RefCell<HashSet<PipelineId>>
 }
 
-impl GpuValidator {
+impl PassValidator {
     pub fn new() -> Self {
         Self {
             known_bind_groups: RefCell::new(HashSet::new()),
@@ -20,7 +20,7 @@ impl GpuValidator {
     pub fn invalidate_buffer(&self, id: &BufferId, context: &GpuContext) {
         let mut invalid_bgs = HashSet::new();
 
-        for (bd_id, bg_blueprint) in &context.bg_blueprints {
+        for (bd_id, bg_blueprint) in context.bg_registry.get_blueprints() {
             for entry in &bg_blueprint.bindings {
                 if let BindingTarget::Buffer(buf_id) = &entry.target {
                     if buf_id == id {
@@ -40,7 +40,7 @@ impl GpuValidator {
     pub fn invalidate_texture(&self, id: &TextureId, context: &GpuContext) {
         let mut invalid_bgs = HashSet::new();
 
-        for (bd_id, bg_blueprint) in &context.bg_blueprints {
+        for (bd_id, bg_blueprint) in context.bg_registry.get_blueprints() {
             for entry in &bg_blueprint.bindings {
                 if let BindingTarget::Texture(tex_id) = &entry.target {
                     if tex_id == id {
@@ -62,8 +62,8 @@ impl GpuValidator {
 
         let mut invalid_pipelines = HashSet::new();
         
-        for (pip_id, pip_blueprint) in &context.pip_blueprints {
-            for other_bg_id in pip_blueprint.bind_groups() {
+        for (pip_id, pip_blueprint) in context.pip_registry.get_blueprints() {
+            for other_bg_id in &pip_blueprint.bg_layouts {
                 if other_bg_id == bg_id {
                     invalid_pipelines.insert(*pip_id);
                     continue;
@@ -88,12 +88,12 @@ impl GpuValidator {
         &self, 
         bg_id: &BindGroupId, 
         context: &'a GpuContext
-    ) -> Option<&'a BindGroupHandle> {
+    ) -> Option<BindGroupHandle> {
         if self.known_bind_groups.borrow_mut().contains(bg_id) {
-            return context.bind_groups.get(bg_id);
+            return context.bg_registry.get_cloned(bg_id);
         }
 
-        let bg_blueprint = context.bg_blueprints.get(bg_id)?;
+        let bg_blueprint = context.bg_registry.get_blueprint(bg_id)?;
 
         for entry in &bg_blueprint.bindings {
             match &entry.target {
@@ -113,7 +113,7 @@ impl GpuValidator {
         }
 
         self.known_bind_groups.borrow_mut().insert(*bg_id);
-        context.bind_groups.get(bg_id)
+        context.bg_registry.get_cloned(bg_id)
     }
 
     /// Validates a render pipeline given it's id by validating it's bind groups are ready.
@@ -123,12 +123,12 @@ impl GpuValidator {
         &self,
         pip_id: &PipelineId,
         context: &'a GpuContext
-    ) -> Option<&'a RenderPipelineHandle> {
+    ) -> Option<RenderPipelineHandle> {
         if self.known_pipelines.borrow_mut().contains(pip_id) {
-            return context.r_pipelines.get(pip_id);
+            return context.pip_registry.get_render_handle(pip_id);
         }
 
-        let pip_blueprint = context.pip_blueprints.get(&pip_id)?.as_render()?;
+        let pip_blueprint = context.pip_registry.get_blueprint(&pip_id)?;
 
         for bg_id in &pip_blueprint.bg_layouts {
             if self.verify_bind_group(bg_id, context).is_none() {
@@ -138,7 +138,7 @@ impl GpuValidator {
         }
 
         self.known_pipelines.borrow_mut().insert(*pip_id);
-        context.r_pipelines.get(pip_id)
+        context.pip_registry.get_render_handle(pip_id)
     }
 
     /// Validates a compute pipeline given it's id by validating it's bind groups are ready.
@@ -148,12 +148,12 @@ impl GpuValidator {
         &self,
         pip_id: &PipelineId,
         context: &'a GpuContext
-    ) -> Option<&'a ComputePipelineHandle> {
+    ) -> Option<ComputePipelineHandle> {
         if self.known_pipelines.borrow_mut().contains(pip_id) {
-            return context.c_pipelines.get(pip_id);
+            return context.pip_registry.get_compute_handle(pip_id);
         }
 
-        let pip_blueprint = context.pip_blueprints.get(&pip_id)?.as_compute()?;
+        let pip_blueprint = context.pip_registry.get_blueprint(&pip_id)?;
 
         for bg_id in &pip_blueprint.bg_layouts {
             if self.verify_bind_group(bg_id, context).is_none() {
@@ -163,6 +163,6 @@ impl GpuValidator {
         }
 
         self.known_pipelines.borrow_mut().insert(*pip_id);
-        context.c_pipelines.get(pip_id)
+        context.pip_registry.get_compute_handle(pip_id)
     }
 }

@@ -1,6 +1,6 @@
 use std::{ops::Deref, sync::Arc};
 
-use crate::graphics::{BufferId, BufferRole, TextureId, TextureRole};
+use crate::graphics::{BufferId, BufferRole, GpuHandle, TextureId, TextureRole};
 
 /// A lightweight handle to a bind group and its associated layout
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -100,4 +100,29 @@ impl BindGroupBuilder {
         self.curr_slot += 1;
         self
     }
+}
+
+/// Create a new bind group from the given configuration builder and resource map
+pub async fn create_bind_group(
+    gpu: GpuHandle, 
+    builder: BindGroupBuilder, 
+    entries: Vec<wgpu::BindGroupEntry<'_>>
+) -> Result<BindGroupHandle, String> {
+    let layout = Arc::new(gpu.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor{
+        label: Some(&format!("Layout: {}", builder.label)),
+        entries: &builder.layout_entries
+    }));
+
+    let bind_group = Arc::new(gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some(&builder.label),
+        layout: &layout,
+        entries: &entries,
+    }));
+
+    println!("[GpuContext] Created new bind group with label '{}'", builder.label);
+
+    Ok(BindGroupHandle { 
+        layout, 
+        bind_group 
+    })
 }

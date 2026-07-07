@@ -3,7 +3,7 @@ use std::{
     cell::Cell, collections::HashMap, fmt::Debug, hash::Hash, marker::PhantomData, sync::mpsc, time::{Duration, Instant}
 };
 
-use tokio::task::JoinHandle;
+use tokio::{runtime::Handle, task::JoinHandle};
 
 /// Specfifies whether a task is io-bound (Non-Blocking) or cpu-bound (Blocking)
 #[derive(Debug)]
@@ -14,7 +14,7 @@ pub enum TaskType {
     NonBlocking
 }
 
-/// An operation performed by a Future, where the result R is stored in a
+/// An operation performed by a Future F, where the result R is stored in a
 /// ResourceHandler of the matching type.
 #[derive(Debug)]
 pub struct Task<F, R> {
@@ -140,7 +140,7 @@ pub struct ResourceHandler<K, R> {
     tx: mpsc::Sender<(K, Result<Ready<R>, String>)>,
     rx: mpsc::Receiver<(K, Result<Ready<R>, String>)>,
 
-    thread_timeout: Duration, // time before a builder thread is considered 'dead' by the main thread
+    thread_timeout: Duration, // time before a worker thread is considered 'dead' by the main thread
     failed_timeout: Duration, // time before a failed resource is removed from the map
 }
 
@@ -160,7 +160,7 @@ where
         }
     }
 
-    /// Set the resource timeout for threads, in seconds. The default is 5 seconds.
+    /// Set the resource timeout for worker threads, in seconds. The default is 5 seconds.
     /// 
     /// This is the amount of time before a thread is considered 'dead' and is told to stop executing.
     pub fn set_thread_tmt(&mut self,  timeout: u64) {
@@ -198,7 +198,7 @@ where
         self.get(key)
     }
 
-    /// Request a thread to create a resource via a Future if previously failed.
+    /// Request a worker thread to create a resource via a Future if previously failed.
     /// 
     /// If the resource does not exist, this method still spawns a thread.
     /// If the resource exists and is pending or ready, no thread is spawned.
@@ -221,7 +221,7 @@ where
         }
     }
 
-    /// Request a new thread to create a resource via a Future.
+    /// Request a new worker thread to create a resource via a Future.
     /// Does nothing if a resource with the matching key was already requested.
     /// 
     /// * 'key' - A handle K to query the handler for the resource
@@ -237,18 +237,37 @@ where
 
         let tx = self.tx.clone();
 
-        let tokio_handle = tokio::task::spawn( async move {
-            let result = task.fut.await;
+        let tokio_handle = match task.ty {
+            TaskType::NonBlocking => {
+                tokio::task::spawn( async move {
+                    let result = task.fut.await;
 
-            let ready_result = result
-                .map(|rsc| { Ready { 
-                    rsc, 
-                    hold_time: task.hold_time, 
-                    accessed: Cell::new(Instant::now()) 
-                }});
+                    let ready_result = result
+                        .map(|rsc| { Ready { 
+                            rsc, 
+                            hold_time: task.hold_time, 
+                            accessed: Cell::new(Instant::now()) 
+                        }});
 
-            let _ = tx.send((key_cpy, ready_result));
-        });
+                    let _ = tx.send((key_cpy, ready_result));
+                })
+            },
+            TaskType::Blocking => {
+                let handle = Handle::current();
+                tokio::task::spawn_blocking(move || {
+                    let result = handle.block_on(task.fut);
+
+                    let ready_result = result
+                        .map(|rsc| { Ready { 
+                            rsc, 
+                            hold_time: task.hold_time, 
+                            accessed: Cell::new(Instant::now()) 
+                        }});
+
+                    let _ = tx.send((key_cpy, ready_result));
+                })
+            }
+        };
 
         let status = ResourceStatus::Pending(Pending {
             thread_handle: tokio_handle,
@@ -256,7 +275,7 @@ where
         });
         self.resource_map.insert(key.clone(), status);
     }
-    
+
     /// Request a new resource and wait for it's completion.
     /// 
     /// Returns a result object containing the completed resource, or an error message if failed.

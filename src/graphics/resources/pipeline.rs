@@ -1,36 +1,28 @@
-use std::{ops::Deref, sync::Arc};
+use std::{borrow::Cow, ops::Deref, sync::Arc};
 
-use crate::graphics::BindGroupId;
+use crate::graphics::{BindGroupId, GpuHandle};
 
-#[derive(Clone, Debug)]
-/// builders for gpu pipelines
-pub enum PipelineBuilder {
-    Render(RenderPipelineBuilder),
-    Compute(ComputePipelineBuilder)
-}
+/// Represents a handle to a render/compute pipeline
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PipelineHandle {
+    Render(RenderPipelineHandle),
+    Compute(ComputePipelineHandle)
+} 
 
-impl PipelineBuilder {
-    /// Attempts to convert the Pipeline Builder variant into a render builder type.
-    pub fn as_render(&self) -> Option<&RenderPipelineBuilder> {
+impl PipelineHandle {
+    /// Get the render pipeline handle if this handle is the Render variant
+    pub fn as_render(&self) -> Option<RenderPipelineHandle> {
         match self {
-            PipelineBuilder::Render(builder) => Some(builder),
-            _ => None
+            PipelineHandle::Render(handle) => Some(handle.clone()),
+            PipelineHandle::Compute(_) => None
         }
     }
 
-    /// Attempts to convert the Pipeline Builder variant into a compute builder type.
-    pub fn as_compute(&self) -> Option<&ComputePipelineBuilder> {
+    /// Get the compute pipeline handle if this handle is the Compute variant
+    pub fn as_compute(&self) -> Option<ComputePipelineHandle> {
         match self {
-            PipelineBuilder::Compute(builder) => Some(builder),
-            _ => None
-        }
-    }
-
-    /// Get a reference to the bind group ids this pipeline builder references
-    pub fn bind_groups(&self) -> &Vec<BindGroupId> {
-        match self {
-            PipelineBuilder::Compute(builder) => &builder.bg_layouts,
-            PipelineBuilder::Render(builder) => &builder.bg_layouts
+            PipelineHandle::Compute(handle) => Some(handle.clone()),
+            PipelineHandle::Render(_) => None
         }
     }
 }
@@ -49,25 +41,73 @@ impl Deref for RenderPipelineHandle {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct RenderPipelineBuilder {
-    pub label: String,
-    pub bg_layouts: Vec<BindGroupId>,
-    pub shader_source: Option<&'static str>,
-    pub vs_main: String,
-    pub fs_main: String,
-    pub target_format: Option<wgpu::TextureFormat>
+/// A lightweight handle to a compute pipeline
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ComputePipelineHandle {
+    pub pipeline: Arc<wgpu::ComputePipeline>
 }
 
-impl RenderPipelineBuilder {
-    pub fn new() -> Self {
+impl Deref for ComputePipelineHandle {
+    type Target = wgpu::ComputePipeline;
+
+    fn deref(&self) -> &Self::Target {
+        &self.pipeline
+    }
+}
+
+/// A render pipeline
+#[derive(Clone, Copy, Debug)]
+pub struct RenderPipelineType {
+    pub vs_main: &'static str, 
+    pub fs_main: &'static str, 
+    pub format: wgpu::TextureFormat
+}
+
+impl Default for RenderPipelineType {
+    fn default() -> Self {
         Self {
-            label: "render_pipeline".to_string(),
+            vs_main: "vs_main",
+            fs_main: "fs_main",
+            format: wgpu::TextureFormat::Bgra8UnormSrgb
+        }
+    }
+}
+
+/// A compute pipeline
+#[derive(Clone, Copy, Debug)]
+pub struct ComputePipelineType {
+    pub main: &'static str
+}
+
+impl Default for ComputePipelineType {
+    fn default() -> Self {
+        Self { main: "cs_main"}
+    }
+}
+
+/// The type of gpu pipeline
+#[derive(Clone, Copy, Debug)]
+pub enum PipelineType {
+    Render(RenderPipelineType),
+    Compute(ComputePipelineType)
+}
+
+/// Blueprint for render/compute pipelines
+#[derive(Clone, Debug)]
+pub struct PipelineBuilder {
+    pub label: String,
+    pub pip_type: PipelineType,
+    pub bg_layouts: Vec<BindGroupId>,
+    pub shader_source: Option<&'static str>,
+}
+
+impl PipelineBuilder {
+    pub fn new(ty: PipelineType) -> Self {
+        Self {
+            label: "pipeline".to_string(),
+            pip_type: ty,
             bg_layouts: Vec::new(),
             shader_source: None,
-            vs_main: "vs_main".to_string(),
-            fs_main: "fs_main".to_string(),
-            target_format: None
         }
     }
 
@@ -88,74 +128,111 @@ impl RenderPipelineBuilder {
         self.shader_source = Some(source);
         self
     }
-
-    /// Set the names to the entry points as defined in the shader
-    pub fn with_entry_points(mut self, vs: &str, fs: &str) -> Self {
-        self.vs_main = vs.to_string();
-        self.fs_main = fs.to_string();
-        self
-    }
-
-    /// Set the target format of the pipeline
-    pub fn with_target_format(mut self, format: wgpu::TextureFormat) -> Self {
-        self.target_format = Some(format);
-        self
-    }
 }
 
-/// A lightweight handle to a compute pipeline
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ComputePipelineHandle {
-    pub pipeline: Arc<wgpu::ComputePipeline>
-}
 
-impl Deref for ComputePipelineHandle {
-    type Target = wgpu::ComputePipeline;
+/// Create a new render pipeline from the given configuration builder
+pub async fn create_render_pipeline(
+    gpu: GpuHandle,
+    builder: PipelineBuilder,
+    ty: RenderPipelineType,
+    bg_layouts: Vec<Arc<wgpu::BindGroupLayout>>
+) -> Result<PipelineHandle, String> {
+    let shader_source = builder.shader_source
+        .as_ref()
+        .expect("[Render Pipeline] Expected pipeline to be configured with a shader descriptor, but none was found");
 
-    fn deref(&self) -> &Self::Target {
-        &self.pipeline
-    }
-}
+    let shader = gpu.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some(&format!("{}_source", builder.label)),
+        source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(shader_source))
+    });
 
-#[derive(Clone, Debug)]
-pub struct ComputePipelineBuilder {
-    pub label: String,
-    pub bg_layouts: Vec<BindGroupId>,
-    pub shader_source: Option<&'static str>,
-    pub main: String,
-}
+    let bg_layout_refs: Vec<&wgpu::BindGroupLayout> = bg_layouts
+        .iter()
+        .map(|layout| { layout.as_ref() })
+        .collect();
 
-impl ComputePipelineBuilder {
-    pub fn new() -> Self {
-        Self {
-            label: "compute_pipeline".to_string(),
-            bg_layouts: Vec::new(),
-            shader_source: None,
-            main: "cs_main".to_string()
+    let layout = gpu.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some(&format!("{}_layout", builder.label)),
+        bind_group_layouts: &bg_layout_refs,
+        immediate_size: 0,
+    });
+
+    let pipeline = gpu.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some(&builder.label),
+        layout: Some(&layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: Some(&ty.vs_main),
+            compilation_options: Default::default(),
+            buffers: &[], // Full-screen procedurally drawn triangle requires no input VBO buffers!
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &shader,
+            entry_point: Some(&ty.fs_main),
+            compilation_options: Default::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: ty.format,
+                blend: Some(wgpu::BlendState::REPLACE),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        primitive: wgpu::PrimitiveState::default(),
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState::default(),
+        multiview_mask: None,
+        cache: None,
+    });
+
+    println!("[GpuContext] Created new render pipeline with label '{}'", builder.label);
+
+    Ok(PipelineHandle::Render(
+        RenderPipelineHandle {
+            pipeline: Arc::new(pipeline),
         }
-    }
+    ))
+}
 
-    /// Set the label for gpu profiling of the resultant buffer
-    pub fn with_label(mut self, label: &str) -> Self {
-        self.label = label.to_string();
-        self
-    }
+pub async fn create_compute_pipeline(
+    gpu: GpuHandle, 
+    builder: PipelineBuilder,
+    ty: ComputePipelineType,
+    bg_layouts: Vec<Arc<wgpu::BindGroupLayout>>
+) -> Result<PipelineHandle, String> {
+    let shader_source = builder.shader_source
+        .as_ref()
+        .expect("[Compute Pipeline] Expected pipeline to be configured with a shader descriptor, but none was found");
 
-    /// Set the shader program this pipeline will execute with
-    pub fn with_shader(mut self, source: &'static str) -> Self {
-        self.shader_source = Some(source);
-        self
-    }
+    let bg_layout_refs: Vec<&wgpu::BindGroupLayout> = bg_layouts
+        .iter()
+        .map(|layout| { layout.as_ref() })
+        .collect();
 
-    /// Add bind group layouts to the pipeline
-    pub fn with_bg_layouts(mut self, layouts: &[BindGroupId]) -> Self {
-        self.bg_layouts.extend_from_slice(layouts);
-        self
-    }
+    let layout = gpu.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some(&format!("{} Layout", builder.label)),
+        bind_group_layouts: &bg_layout_refs,
+        immediate_size: 0,
+    });
 
-    /// Set the name to the entry point as defined in the shader
-    pub fn with_entry_point(mut self, cs: &str) -> Self {
-        self.main = cs.to_string();
-        self
-    }
+    let shader = gpu.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some(&format!("{}_source", builder.label)),
+        source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(shader_source))
+    });
+
+    let pipeline = gpu.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some(&builder.label),
+        layout: Some(&layout),
+        module: &shader,
+        entry_point: Some(&ty.main),
+        compilation_options: Default::default(),
+        cache: None
+    });
+
+    println!("[GpuContext] Created new compute pipeline with label '{}'", builder.label);
+
+    Ok(PipelineHandle::Compute(
+        ComputePipelineHandle { 
+            pipeline: Arc::new(pipeline) 
+        }
+    ))
 }

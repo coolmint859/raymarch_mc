@@ -1,5 +1,9 @@
 use std::{ops::Deref, sync::Arc};
 
+use wgpu::util::DeviceExt;
+
+use crate::graphics::GpuHandle;
+
 /// Describes the role of a buffer as used in a bind group
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum BufferRole {
@@ -109,4 +113,31 @@ impl BufferBuilder {
 
         data
     }
+}
+
+/// Create a buffer from the given configuration builder
+pub async fn create_buffer(gpu: GpuHandle, builder: BufferBuilder) -> Result<BufferHandle, String> {
+    let buffer = match &builder.contents {
+        BufferContents::Empty(size) => {
+            gpu.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(&builder.label),
+                size: *size,
+                usage: builder.usage,
+                mapped_at_creation: false
+            })
+        },
+        BufferContents::WithData(data) => {
+            gpu.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some(&builder.label),
+                contents: &data,
+                usage: builder.usage
+            })
+        }
+    };
+
+    println!("[GpuContext] Created new buffer with label '{}'", builder.label);
+
+    Ok(BufferHandle {
+        buffer: Arc::new(buffer),
+    })
 }

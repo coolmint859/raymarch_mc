@@ -146,24 +146,22 @@ impl Screen for Game {
             .with_texture(ids.rtex_id.clone(), TextureRole::Storage, wgpu::ShaderStages::COMPUTE);
         graphics.gpu.request_bind_group(&ids.voxel_bg_id, &voxel_bg_builder);
 
-        let voxel_pip_builder = ComputePipelineBuilder::new()
+        let voxel_pip_builder = PipelineBuilder::new(PipelineType::Compute(ComputePipelineType::default()))
             .with_label("Voxel Ray Marching Pipeline")
             .with_bg_layouts(&[ids.voxel_bg_id])
             .with_shader(include_str!("../../shaders/ray_march.wgsl"));
-        graphics.gpu.request_pipeline(&ids.voxel_pip_id, PipelineBuilder::Compute(voxel_pip_builder.clone()));
+        graphics.gpu.request_pipeline(&ids.voxel_pip_id, &voxel_pip_builder);
  
         let blit_bg_builder = BindGroupBuilder::new()
             .with_label("Blit Bind Group")
             .with_texture(ids.rtex_id.clone(), TextureRole::Sampled { filterable: true }, wgpu::ShaderStages::FRAGMENT);
         graphics.gpu.request_bind_group(&ids.blit_bg_id, &blit_bg_builder);
 
-        let blit_pip_id = PipelineId("blit_pipeline");
-        let blit_pip_builder = RenderPipelineBuilder::new()
+        let blit_pip_builder = PipelineBuilder::new(PipelineType::Render(RenderPipelineType::default()))
             .with_label("Voxel Render Pipeline")
             .with_bg_layouts(&[ids.blit_bg_id])
-            .with_shader(include_str!("../../shaders/blit.wgsl"))
-            .with_target_format(graphics.canvas.config.format);
-        graphics.gpu.request_pipeline(&blit_pip_id, PipelineBuilder::Render(blit_pip_builder.clone()));
+            .with_shader(include_str!("../../shaders/blit.wgsl"));
+        graphics.gpu.request_pipeline(&ids.blit_pip_id, &blit_pip_builder);
 
         self.ids = Some(ids);
         self.init_input();
@@ -278,15 +276,15 @@ impl Screen for Game {
         let wx = (graphics.canvas.config.width + 15) / 16;
         let wy = (graphics.canvas.config.height + 15) / 16;
 
-        graphics.gpu.add_pass(GpuPass::Compute(
-            ComputePass {
+        graphics.gpu.add_pass(PassInfo::Compute(
+            ComputePassInfo {
                 pipeline_id: ids.voxel_pip_id,
                 bind_groups: vec![ids.voxel_bg_id],
                 work_groups: (wx, wy, 1)
             })
         );
-        graphics.gpu.add_pass(GpuPass::Render(
-            RenderPass { 
+        graphics.gpu.add_pass(PassInfo::Render(
+            RenderPassInfo { 
                 pipeline_id: ids.blit_pip_id,
                 bind_groups: vec![ids.blit_bg_id], 
                 vertex_count: 3, 

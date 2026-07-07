@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::sync::Arc;
 
 use winit::window::Window;
@@ -57,6 +58,13 @@ impl Graphics {
     pub fn request_redraw(&self) {
         self.canvas.window.request_redraw();
     }
+}
+
+/// Handle to the gpu device and queue
+#[derive(Clone, Debug)]
+pub struct GpuHandle {
+    pub device: wgpu::Device,
+    pub queue: wgpu::Queue
 }
 
 /// Initializes the graphics environment for a given window
@@ -122,13 +130,12 @@ impl GraphicsInit {
                 compatible_surface: Some(&surface),
                 force_fallback_adapter: false,
             })
-            .await
-            .unwrap();
+            .await?;
 
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor::default())
-            .await
-            .unwrap();
+            .await?;
+        let gpu = GpuHandle { device, queue };
 
         let surface_caps = surface.get_capabilities(&adapter);
         let surface_format = surface_caps.formats[0];
@@ -142,7 +149,7 @@ impl GraphicsInit {
             view_formats: vec![],
             desired_maximum_frame_latency: self.frame_latency,
         };
-        surface.configure(&device, &config);
+        surface.configure(&gpu.device, &config);
 
         let canvas = Canvas {
             window,
@@ -153,7 +160,7 @@ impl GraphicsInit {
             is_focused: true,
         };
 
-        let gpu = GpuContext::new(device, queue);
+        let gpu = GpuContext::new(gpu);
 
         Ok(Graphics { gpu, canvas })
     }
