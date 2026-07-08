@@ -1,47 +1,90 @@
-use std::{ops::Deref, sync::Arc};
+use std::{num::NonZero, ops::Deref};
 
-use wgpu::util::DeviceExt;
+use wgpu::{util::DeviceExt};
 
-use crate::graphics::GpuHandle;
+use crate::graphics::{Bindable, BindingTarget, BufferId, GpuHandle};
 
-/// Describes the role of a buffer as used in a bind group
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum BufferRole {
-    /// The buffer is used as a uniform in a shader
-    Uniform,
-    /// The buffer is used for storage in a shader
-    Storage{ read_only: bool }
+/// Represents a buffer binding and entry in a bind group
+pub struct BufferBinding {
+    buf_id: BufferId,
+    ty: wgpu::BufferBindingType,
+    visibility: wgpu::ShaderStages,
+    has_dyn_offset: bool,
+    min_binding_size: Option<NonZero<u64>>
 }
 
-impl BufferRole {
-    /// Convert the buffer role into it's equivalent wgpu binding type
-    pub fn as_binding_type(&self) -> wgpu::BindingType {
-        match self {
-            BufferRole::Uniform => wgpu::BindingType::Buffer {
-                ty: wgpu::BufferBindingType::Uniform,
-                has_dynamic_offset: false,
-                min_binding_size: None,
-            },
-            BufferRole::Storage{read_only} => wgpu::BindingType::Buffer {
-                ty: wgpu::BufferBindingType::Storage { read_only: *read_only },
-                has_dynamic_offset: false,
-                min_binding_size: None
-            }
+impl BufferBinding {
+    pub fn new(target: BufferId, ty: wgpu::BufferBindingType) -> Self {
+        Self {
+            buf_id: target,
+            ty,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            has_dyn_offset: false,
+            min_binding_size: None,
         }
+    }
+
+    /// Create a new storage buffer binding
+    pub fn as_storage(target: BufferId, read_only: bool) -> Self {
+        let ty = wgpu::BufferBindingType::Storage { read_only };
+        BufferBinding::new(target, ty)
+    }
+
+    /// Create a new uniform buffer binding
+    pub fn as_uniform(target: BufferId) -> Self {
+        let ty = wgpu::BufferBindingType::Uniform;
+        BufferBinding::new(target, ty)
+    }
+
+    /// Set the shader stage visibility for the buffer binding
+    pub fn with_visibility(mut self, visibility: wgpu::ShaderStages) -> Self {
+        self.visibility = visibility;
+        self
+    }
+
+    /// Set the binding to have a dynamic offset
+    pub fn with_dynamic_offset(mut self) -> Self {
+        self.has_dyn_offset = true;
+        self
+    }
+
+    /// Set the minimum buffer size for the binding. Must be greater than 0.
+    pub fn with_min_size(mut self, size: u64) -> Self {
+        self.min_binding_size = Some(NonZero::new(size)
+            .expect("[Buffer Binding] Expected minimum binding size to be a non zero unsigned number."));
+        self
+    }
+}
+
+impl Bindable for BufferBinding {
+    fn as_binding(&self) -> wgpu::BindingType {
+        wgpu::BindingType::Buffer {
+            ty: self.ty,
+            has_dynamic_offset: self.has_dyn_offset,
+            min_binding_size: self.min_binding_size
+        }
+    }
+
+    fn target(&self) -> BindingTarget {
+        BindingTarget::Buffer(self.buf_id)
+    }
+
+    fn visibility(&self) -> wgpu::ShaderStages {
+        self.visibility
     }
 }
 
 /// A lightweight handle to a gpu buffer
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BufferHandle {
-    pub buffer: Arc<wgpu::Buffer>,
+    pub buffer: wgpu::Buffer,
 }
 
 impl Deref for BufferHandle {
     type Target = wgpu::Buffer;
 
     fn deref(&self) -> &Self::Target {
-        &*self.buffer
+        &self.buffer
     }
 }
 
@@ -53,13 +96,13 @@ pub enum BufferContents {
     Empty(u64)
 }
 
-pub struct BufferBuilder {
+pub struct Buffer {
     pub label: String,
     pub usage: wgpu::BufferUsages,
     pub contents: BufferContents,
 }
 
-impl BufferBuilder {
+impl Buffer {
     pub fn new(usage: wgpu::BufferUsages, contents: BufferContents) -> Self {
         Self {
             label: "buffer".to_string(),
@@ -77,18 +120,18 @@ impl BufferBuilder {
         let contents = match contents {
             BufferContents::WithData(data) => {
                 BufferContents::WithData(
-                    BufferBuilder::pad_bytes(data, 16)
+                    Buffer::pad_bytes(data, 16)
                 )
             },
             _ => { contents }
         };
 
-        BufferBuilder::new(wgpu::BufferUsages::UNIFORM, contents)
+        Buffer::new(wgpu::BufferUsages::UNIFORM, contents)
     }
 
     /// Create a buffer builder with the storage usage type
     pub fn as_storage(contents: BufferContents) -> Self {
-        BufferBuilder::new(wgpu::BufferUsages::STORAGE, contents)
+        Buffer::new(wgpu::BufferUsages::STORAGE, contents)
     }
 
     /// Set the label for gpu profiling of the resultant buffer
@@ -116,7 +159,7 @@ impl BufferBuilder {
 }
 
 /// Create a buffer from the given configuration builder
-pub async fn create_buffer(gpu: GpuHandle, builder: BufferBuilder) -> Result<BufferHandle, String> {
+pub async fn create_buffer(gpu: GpuHandle, builder: Buffer) -> Result<BufferHandle, String> {
     let buffer = match &builder.contents {
         BufferContents::Empty(size) => {
             gpu.device.create_buffer(&wgpu::BufferDescriptor {
@@ -137,7 +180,5 @@ pub async fn create_buffer(gpu: GpuHandle, builder: BufferBuilder) -> Result<Buf
 
     println!("[GpuContext] Created new buffer with label '{}'", builder.label);
 
-    Ok(BufferHandle {
-        buffer: Arc::new(buffer),
-    })
+    Ok(BufferHandle { buffer })
 }

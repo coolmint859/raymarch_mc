@@ -6,7 +6,8 @@ pub struct VoxelWorld {
     in_game_time: f32,
     day_length: f32,
     dusk_y_transtion: f32,
-    night_y_transition: f32
+    night_y_transition: f32,
+    is_paused: bool,
 }
 
 impl VoxelWorld {
@@ -15,14 +16,22 @@ impl VoxelWorld {
             in_game_time: 12.0, // starts at noon
             day_length,
             dusk_y_transtion: 0.3,
-            night_y_transition: -0.1
+            night_y_transition: -0.3,
+            is_paused: false,
         }
     }
 
-    pub fn update(&mut self, dt: f32) {
-        let time_modifer = 24.0 / (self.day_length * 60.0);
-        self.in_game_time = (self.in_game_time + dt * time_modifer) % 24.0;
-        // println!("day_time: {}", self.in_game_time);
+    pub fn toggle_pause(&mut self) {
+        self.is_paused = !self.is_paused;
+        println!("Is Paused: {}", self.is_paused);
+    }
+
+    pub fn update(&mut self, dt: f32, is_step: bool) {
+        if !self.is_paused || is_step {
+            let time_modifer = 24.0 / (self.day_length * 60.0);
+            self.in_game_time = (self.in_game_time + dt * time_modifer) % 24.0;
+            // println!("day_time: {}", self.in_game_time);
+        }
     }
 
     pub fn calc_environment(&self) -> EnvironmentUniform {

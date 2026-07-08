@@ -2,14 +2,15 @@ use std::collections::HashMap;
 
 use crate::graphics::*;
 
+/// Keeps track of and validates requests for bind groups
 pub struct BindGroupRegistry {
     gpu: GpuHandle,
     /// The handles to bind groups
     handles: ResourceHandler<BindGroupId, BindGroupHandle>,
     /// maps bind groups to their blueprints
-    blueprints: HashMap<BindGroupId, BindGroupBuilder>,
+    blueprints: HashMap<BindGroupId, BindGroup>,
     /// map of ids of bind group that have yet to pass request validation
-    deffered: HashMap<BindGroupId, BindGroupBuilder>,
+    deffered: HashMap<BindGroupId, BindGroup>,
 }
 
 impl BindGroupRegistry {
@@ -26,7 +27,7 @@ impl BindGroupRegistry {
     pub fn request<'a>(
         &mut self,
         id: &BindGroupId,
-        builder: &BindGroupBuilder,
+        builder: &BindGroup,
         buffers: &'a ResourceHandler<BufferId, BufferHandle>,
         textures: &'a ResourceHandler<TextureId, TextureHandle>,
     ) {
@@ -119,20 +120,21 @@ impl BindGroupRegistry {
         return self.handles.get(id).cloned()
     }
 
-    pub fn get_blueprints(&self) -> &HashMap<BindGroupId, BindGroupBuilder> {
+    pub fn get_blueprints(&self) -> &HashMap<BindGroupId, BindGroup> {
         &self.blueprints
     }
 
-    pub fn get_blueprint(&self, id: &BindGroupId) -> Option<&BindGroupBuilder> {
+    pub fn get_blueprint(&self, id: &BindGroupId) -> Option<&BindGroup> {
         self.blueprints.get(id)
     }
 }
 
+/// Keeps track of and validates requests for render/compute pipelines
 pub struct PipelineRegistry {
     gpu: GpuHandle,
     handles: ResourceHandler<PipelineId, PipelineHandle>,
-    blueprints: HashMap<PipelineId, PipelineBuilder>,
-    deferred: HashMap<PipelineId, PipelineBuilder>
+    blueprints: HashMap<PipelineId, Pipeline>,
+    deferred: HashMap<PipelineId, Pipeline>
 }
 
 impl PipelineRegistry {
@@ -149,7 +151,7 @@ impl PipelineRegistry {
     pub fn request<'a>(
         &mut self,
         id: &PipelineId,
-        builder: &PipelineBuilder,
+        builder: &Pipeline,
         bind_groups: &'a BindGroupRegistry,
     ) {
         if self.handles.contains(id) { return; }
@@ -206,20 +208,20 @@ impl PipelineRegistry {
     }
 
     /// returns a clone of the handle to a stored render pipeline
-    pub fn get_render_handle(&self, id: &PipelineId) -> Option<RenderPipelineHandle> {
+    pub fn get_render_handle(&self, id: &PipelineId) -> Option<wgpu::RenderPipeline> {
         return self.handles.get(id)?.as_render()
     }
 
     /// returns a clone of the handle to a stored compute pipeline
-    pub fn get_compute_handle(&self, id: &PipelineId) -> Option<ComputePipelineHandle> {
+    pub fn get_compute_handle(&self, id: &PipelineId) -> Option<wgpu::ComputePipeline> {
         return self.handles.get(id)?.as_compute()
     }
 
-    pub fn get_blueprints(&self) -> &HashMap<PipelineId, PipelineBuilder> {
+    pub fn get_blueprints(&self) -> &HashMap<PipelineId, Pipeline> {
         &self.blueprints
     }
 
-    pub fn get_blueprint(&self, id: &PipelineId) -> Option<&PipelineBuilder> {
+    pub fn get_blueprint(&self, id: &PipelineId) -> Option<&Pipeline> {
         self.blueprints.get(id)
     }
 }

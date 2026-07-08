@@ -74,7 +74,7 @@ impl GpuContext {
     }
 
     /// Request a buffer to be created from the provided builder and mapped to the provided id.
-    pub fn request_buffer(&mut self, id: &BufferId, builder: BufferBuilder) {
+    pub fn request_buffer(&mut self, id: &BufferId, builder: Buffer) {
         if self.buffers.contains(id) { return; }
 
         let buffer_task = Task::non_blocking(
@@ -84,7 +84,7 @@ impl GpuContext {
     }
 
     /// Request a texture to be created from the provided builder and mapped to the provided id.
-    pub fn request_texture(&mut self, id: &TextureId, builder: TextureBuilder) {
+    pub fn request_texture(&mut self, id: &TextureId, builder: Texture) {
         if self.textures.contains(id) { return; }
 
         let texture_task = Task::non_blocking(
@@ -94,12 +94,12 @@ impl GpuContext {
     }
 
     /// Request a bind group to be created from the provided builder and mapped to the provided id.
-    pub fn request_bind_group(&mut self, id: &BindGroupId, builder: &BindGroupBuilder) {
+    pub fn request_bind_group(&mut self, id: &BindGroupId, builder: &BindGroup) {
         self.bg_registry.request(id, builder, &self.buffers, &self.textures);
     }
 
     /// Request a pipeline to be created from the provided builder and mapped to the provided id.
-    pub fn request_pipeline(&mut self, id: &PipelineId, builder: &PipelineBuilder) {
+    pub fn request_pipeline(&mut self, id: &PipelineId, builder: &Pipeline) {
         self.pip_registry.request(id, &builder, &self.bg_registry);
     }
 

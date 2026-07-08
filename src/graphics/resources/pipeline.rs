@@ -1,17 +1,17 @@
-use std::{borrow::Cow, ops::Deref, sync::Arc};
+use std::{borrow::Cow, sync::Arc};
 
 use crate::graphics::{BindGroupId, GpuHandle};
 
 /// Represents a handle to a render/compute pipeline
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PipelineHandle {
-    Render(RenderPipelineHandle),
-    Compute(ComputePipelineHandle)
+    Render(wgpu::RenderPipeline),
+    Compute(wgpu::ComputePipeline)
 } 
 
 impl PipelineHandle {
     /// Get the render pipeline handle if this handle is the Render variant
-    pub fn as_render(&self) -> Option<RenderPipelineHandle> {
+    pub fn as_render(&self) -> Option<wgpu::RenderPipeline> {
         match self {
             PipelineHandle::Render(handle) => Some(handle.clone()),
             PipelineHandle::Compute(_) => None
@@ -19,39 +19,11 @@ impl PipelineHandle {
     }
 
     /// Get the compute pipeline handle if this handle is the Compute variant
-    pub fn as_compute(&self) -> Option<ComputePipelineHandle> {
+    pub fn as_compute(&self) -> Option<wgpu::ComputePipeline> {
         match self {
             PipelineHandle::Compute(handle) => Some(handle.clone()),
             PipelineHandle::Render(_) => None
         }
-    }
-}
-
-/// A lightweight handle to a rendering pipeline
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RenderPipelineHandle {
-    pub pipeline: Arc<wgpu::RenderPipeline>
-}
-
-impl Deref for RenderPipelineHandle {
-    type Target = wgpu::RenderPipeline;
-
-    fn deref(&self) -> &Self::Target {
-        &self.pipeline
-    }
-}
-
-/// A lightweight handle to a compute pipeline
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ComputePipelineHandle {
-    pub pipeline: Arc<wgpu::ComputePipeline>
-}
-
-impl Deref for ComputePipelineHandle {
-    type Target = wgpu::ComputePipeline;
-
-    fn deref(&self) -> &Self::Target {
-        &self.pipeline
     }
 }
 
@@ -94,14 +66,14 @@ pub enum PipelineType {
 
 /// Blueprint for render/compute pipelines
 #[derive(Clone, Debug)]
-pub struct PipelineBuilder {
+pub struct Pipeline {
     pub label: String,
     pub pip_type: PipelineType,
     pub bg_layouts: Vec<BindGroupId>,
     pub shader_source: Option<&'static str>,
 }
 
-impl PipelineBuilder {
+impl Pipeline {
     pub fn new(ty: PipelineType) -> Self {
         Self {
             label: "pipeline".to_string(),
@@ -134,7 +106,7 @@ impl PipelineBuilder {
 /// Create a new render pipeline from the given configuration builder
 pub async fn create_render_pipeline(
     gpu: GpuHandle,
-    builder: PipelineBuilder,
+    builder: Pipeline,
     ty: RenderPipelineType,
     bg_layouts: Vec<Arc<wgpu::BindGroupLayout>>
 ) -> Result<PipelineHandle, String> {
@@ -186,16 +158,12 @@ pub async fn create_render_pipeline(
 
     println!("[GpuContext] Created new render pipeline with label '{}'", builder.label);
 
-    Ok(PipelineHandle::Render(
-        RenderPipelineHandle {
-            pipeline: Arc::new(pipeline),
-        }
-    ))
+    Ok(PipelineHandle::Render(pipeline))
 }
 
 pub async fn create_compute_pipeline(
     gpu: GpuHandle, 
-    builder: PipelineBuilder,
+    builder: Pipeline,
     ty: ComputePipelineType,
     bg_layouts: Vec<Arc<wgpu::BindGroupLayout>>
 ) -> Result<PipelineHandle, String> {
@@ -230,9 +198,5 @@ pub async fn create_compute_pipeline(
 
     println!("[GpuContext] Created new compute pipeline with label '{}'", builder.label);
 
-    Ok(PipelineHandle::Compute(
-        ComputePipelineHandle { 
-            pipeline: Arc::new(pipeline) 
-        }
-    ))
+    Ok(PipelineHandle::Compute(pipeline))
 }

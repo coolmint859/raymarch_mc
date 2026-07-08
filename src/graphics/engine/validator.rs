@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashSet};
 
-use crate::graphics::{BindGroupHandle, BindGroupId, BindingTarget, BufferId, ComputePipelineHandle, GpuContext, PipelineId, RenderPipelineHandle, TextureId};
+use crate::graphics::{BindGroupHandle, BindGroupId, BindingTarget, BufferId, GpuContext, PipelineId, TextureId};
 
 /// Validates the readiness of gpu resources. Stores resources it knows to be ready for fast retrieval
 pub struct PassValidator {
@@ -84,7 +84,7 @@ impl PassValidator {
     /// Validates a bind group by ensuring it's entries are ready.
     /// 
     /// Returns an option containing the handle to the bind group if ready, else None
-    pub fn verify_bind_group<'a>(
+    pub fn validate_bind_group<'a>(
         &self, 
         bg_id: &BindGroupId, 
         context: &'a GpuContext
@@ -123,7 +123,7 @@ impl PassValidator {
         &self,
         pip_id: &PipelineId,
         context: &'a GpuContext
-    ) -> Option<RenderPipelineHandle> {
+    ) -> Option<wgpu::RenderPipeline> {
         if self.known_pipelines.borrow_mut().contains(pip_id) {
             return context.pip_registry.get_render_handle(pip_id);
         }
@@ -131,7 +131,7 @@ impl PassValidator {
         let pip_blueprint = context.pip_registry.get_blueprint(&pip_id)?;
 
         for bg_id in &pip_blueprint.bg_layouts {
-            if self.verify_bind_group(bg_id, context).is_none() {
+            if self.validate_bind_group(bg_id, context).is_none() {
                 // println!("[GpuValidator] Validation failed for render pipeline @{:?}: Missing Bind Group @{:?}", pip_id, bg_id);
                 return None;
             }
@@ -148,7 +148,7 @@ impl PassValidator {
         &self,
         pip_id: &PipelineId,
         context: &'a GpuContext
-    ) -> Option<ComputePipelineHandle> {
+    ) -> Option<wgpu::ComputePipeline> {
         if self.known_pipelines.borrow_mut().contains(pip_id) {
             return context.pip_registry.get_compute_handle(pip_id);
         }
@@ -156,7 +156,7 @@ impl PassValidator {
         let pip_blueprint = context.pip_registry.get_blueprint(&pip_id)?;
 
         for bg_id in &pip_blueprint.bg_layouts {
-            if self.verify_bind_group(bg_id, context).is_none() {
+            if self.validate_bind_group(bg_id, context).is_none() {
                 // println!("[GpuValidator] Validation failed for compute pipeline @{:?}: Missing Bind Group @{:?}", pip_id, bg_id);
                 return None; 
             }
