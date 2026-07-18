@@ -99,13 +99,13 @@ impl PassValidator {
             match &entry.target {
                 BindingTarget::Buffer(buf_id) => {
                     if !context.buffers.contains(buf_id) {
-                        // println!("[GpuValidator] Validation failed for bind group @{:?}: Missing Buffer @{:?}", bg_id, buf_id);
+                        println!("[GpuValidator] Validation failed for bind group @{:?}: Missing Buffer @{:?}", bg_id, buf_id);
                         return None; 
                     }
                 },
                 BindingTarget::Texture(tex_id) => {
                     if !context.textures.contains(tex_id) { 
-                        // println!("[GpuValidator] Validation failed for bind group @{:?}: Missing Texture @{:?}", bg_id, tex_id);
+                        println!("[GpuValidator] Validation failed for bind group @{:?}: Missing Texture @{:?}", bg_id, tex_id);
                         return None; 
                     }
                 }

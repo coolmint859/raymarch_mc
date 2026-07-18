@@ -29,6 +29,7 @@ struct GameIds {
     pub cam_id: BufferId,
     pub env_id: BufferId,
     pub vox_id: BufferId,
+    pub reg_id: BufferId,
     pub pal_id: BufferId,
     pub rtex_id: TextureId,
 
@@ -91,6 +92,7 @@ impl Screen for Game {
             cam_id: BufferId("main_camera"),
             env_id: BufferId("environment"),
             vox_id: BufferId("voxels"),
+            reg_id: BufferId("Region"),
             pal_id: BufferId("palette"),
             rtex_id: TextureId("render_texture"),
             voxel_bg_id: BindGroupId("voxel_bind_group"),
@@ -124,6 +126,12 @@ impl Screen for Game {
             .with_additional_usage(wgpu::BufferUsages::COPY_DST);
         graphics.gpu.request_buffer(&ids.vox_id, voxel_buffer);
 
+        let region_data = self.world.region_data();
+        let region_buffer = Buffer::as_storage(BufferContents::WithData(region_data))
+            .with_label("Region Buffer")
+            .with_additional_usage(wgpu::BufferUsages::COPY_DST);
+        graphics.gpu.request_buffer(&ids.reg_id, region_buffer);
+
         let render_texture = Texture::new(TextureType::Computed)
             .with_label("Voxel Storage Texture")
             .with_size_2d(graphics.canvas.config.width, graphics.canvas.config.height)
@@ -136,6 +144,7 @@ impl Screen for Game {
             .with_entry(BufferBinding::as_uniform(ids.cam_id).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_uniform(ids.env_id).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_uniform(ids.pal_id).with_visibility(wgpu::ShaderStages::COMPUTE))
+            .with_entry(BufferBinding::as_storage(ids.reg_id, true).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_storage(ids.vox_id, true).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_storage(ids.rtex_id, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE));
         graphics.gpu.request_bind_group(&ids.voxel_bg_id, &raymarch_bind_group);
@@ -180,6 +189,7 @@ impl Screen for Game {
             .with_entry(BufferBinding::as_uniform(ids.env_id).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_uniform(ids.pal_id).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_storage(ids.vox_id, true).with_visibility(wgpu::ShaderStages::COMPUTE))
+            .with_entry(BufferBinding::as_storage(ids.reg_id, true).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_storage(ids.rtex_id, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE));
         graphics.gpu.request_bind_group(&ids.voxel_bg_id, &raymarch_bind_group);
 
@@ -233,19 +243,21 @@ impl Screen for Game {
                     PlayerKeyAction::StrafeRight => self.controller.strafe_right(&mut self.camera, dt),
                     PlayerKeyAction::MoveUp => self.controller.move_up(&mut self.camera, dt),
                     PlayerKeyAction::MoveDown => self.controller.move_down(&mut self.camera, dt),
-                    PlayerKeyAction::ResetCamera => {
-                        self.camera.transform.move_to(self.default_cam_pos);
-                        self.camera.transform.set_rotation(Quat::IDENTITY);
-                        self.controller.reset_delta();
-                    },
                     _ => {}
                 }
             }
+
+            // println!("cam pos: {:?}", self.camera.transform.get_position())
 
             for action in self.keyboard.poll_on_press() {
                 match action {
                     PlayerKeyAction::PauseSimulation => self.world.toggle_pause(),
                     PlayerKeyAction::StepSimulation => self.world.update(dt, true),
+                    PlayerKeyAction::ResetCamera => {
+                        self.camera.transform.move_to(self.default_cam_pos);
+                        self.camera.transform.set_rotation(Quat::IDENTITY);
+                        self.controller.reset_delta();
+                    },
                     _ => {}
                 }
             }

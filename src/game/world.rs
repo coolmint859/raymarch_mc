@@ -18,19 +18,20 @@ impl VoxelWorld {
         let world_gen = WorldGenerator;
         let mut regions = Vec::new();
 
-        // for x in -1..1 {
-        //     for z in -1..1 {
-        //         let location = RegionLocation { x: x, y: 0, z: z };
-        //         let region_data = world_gen.gen_region(location);
+        for x in -1..=1 {
+            for z in -1..=1 {
+                let location = RegionLocation { x: x, y: 0, z: z, _pad: 0 };
+                let region_data = world_gen.gen_region(location);
 
-        //         regions.push(Region::new(region_data, location));
-        //     }
-        // }
+                // println!("{:?}", location);
 
-        let location = RegionLocation { x: 0, y: 0, z: 0 };
-        let region_data = world_gen.gen_region(location);
+                regions.push(Region::new(region_data, location));
+            }
+        }
 
-        regions.push(Region::new(region_data, location));
+        // let location = RegionLocation { x: 0, y: 0, z: 0 };
+        // let region_data = world_gen.gen_region(location);
+        // regions.push(Region::new(region_data, location));
 
         Self {
             env: Environment::new(),
@@ -60,6 +61,8 @@ impl VoxelWorld {
         let bytes_per_region = REGION_VOLUME * 4;
         let total_size = bytes_per_region * self.regions.len();
 
+        // println!("total voxel bytes: {total_size}, num regions: {}", self.regions.len());
+
         let mut total_bytes = Vec::with_capacity(total_size);
 
         for region in &self.regions {
@@ -69,7 +72,17 @@ impl VoxelWorld {
         total_bytes
     }
 
-    // pub fn voxel_loc_data(&self) -> Vec<u8> {
-        
-    // }
+    pub fn region_data(&self) -> Vec<u8> {
+        let total_size = self.regions.len() * 16; // One i32 is 4 bytes, there are 3 i32s per location
+
+        let mut loc_bytes = Vec::with_capacity(total_size);
+
+        for region in &self.regions {
+            loc_bytes.extend_from_slice(&region.loc_bytes());
+        }
+
+        // println!("total location bytes: {:?}, num regions: {}", loc_bytes.len(), self.regions.len());
+
+        loc_bytes
+    }
 }

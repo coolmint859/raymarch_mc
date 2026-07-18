@@ -16,9 +16,9 @@ pub const RENDER_DISTANCE: usize = 5;
 pub struct Voxel(pub u32);
 
 #[repr(C)]
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct RegionLocation {
-    pub x: i32, pub y: i32, pub z: i32
+    pub x: i32, pub y: i32, pub z: i32, pub _pad: i32
 }
 
 pub struct Region {
@@ -41,7 +41,7 @@ impl Region {
         bytemuck::cast_slice(self.voxels.as_ref()).to_vec()
     }
 
-    pub fn get_location(&self) -> Vec<u8> {
+    pub fn loc_bytes(&self) -> Vec<u8> {
         bytemuck::bytes_of(&self.location).to_vec()
     }
 }

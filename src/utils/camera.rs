@@ -25,7 +25,7 @@ impl PerspectiveCamera {
             transform: Transform::default(),
             fov_y: 60.0_f32.to_radians(),
             z_near: 0.01,
-            z_far: 100.0,
+            z_far: 1000.0,
             view_proj: Mat4::IDENTITY,
         }
     }

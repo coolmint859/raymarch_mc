@@ -18,11 +18,16 @@ struct PaletteUniform {
     colors: array<vec4<f32>, 4>,
 }
 
+struct Region {
+    coord: vec4<i32>,
+}
+
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
 @group(0) @binding(1) var<uniform> env: EnvironmentUniform;
 @group(0) @binding(2) var<uniform> palette: PaletteUniform;
 @group(0) @binding(3) var<storage, read> voxels: array<u32>;
-@group(0) @binding(4) var output: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(4) var<storage, read> regions: array<Region, 9>;
+@group(0) @binding(5) var output: texture_storage_2d<rgba16float, write>;
 
 struct Material {
     normal: vec3f,
@@ -41,7 +46,7 @@ struct Ray {
 }
 
 struct DDA {
-    map_pos: vec3<i32>,
+    step_pos: vec3<i32>,
     delta_dist: vec3<f32>,
     step_dir: vec3<i32>,
     side_dist: vec3<f32>
@@ -92,11 +97,10 @@ fn get_background_color(ray_dir: vec3f, sun_dir: vec3f) -> vec3<f32> {
 
 fn init_dda(ray: Ray) -> DDA {
     var dda: DDA;
-    dda.map_pos = vec3<i32>(floor(ray.org));
+    dda.step_pos = vec3i(floor(ray.org));
 
     // Calculate how far the ray must travel along an axis to cross a full 1.0 grid unit
-    // (Protects against divide-by-zero using a massive fallback distance)
-    dda.delta_dist = vec3<f32>(
+    dda.delta_dist = vec3f(
         select(1e30, abs(1.0 / ray.dir.x), ray.dir.x != 0.0),
         select(1e30, abs(1.0 / ray.dir.y), ray.dir.y != 0.0),
         select(1e30, abs(1.0 / ray.dir.z), ray.dir.z != 0.0)
@@ -105,26 +109,26 @@ fn init_dda(ray: Ray) -> DDA {
     // Initialize tracking steps and start offsets based on ray direction vector
     if (ray.dir.x < 0.0) {
         dda.step_dir.x = -1;
-        dda.side_dist.x = (ray.org.x - f32(dda.map_pos.x)) * dda.delta_dist.x;
+        dda.side_dist.x = (ray.org.x - f32(dda.step_pos.x)) * dda.delta_dist.x;
     } else {
         dda.step_dir.x = 1;
-        dda.side_dist.x = (f32(dda.map_pos.x + 1) - ray.org.x) * dda.delta_dist.x;
+        dda.side_dist.x = (f32(dda.step_pos.x + 1) - ray.org.x) * dda.delta_dist.x;
     }
 
     if (ray.dir.y < 0.0) {
         dda.step_dir.y = -1;
-        dda.side_dist.y = (ray.org.y - f32(dda.map_pos.y)) * dda.delta_dist.y;
+        dda.side_dist.y = (ray.org.y - f32(dda.step_pos.y)) * dda.delta_dist.y;
     } else {
         dda.step_dir.y = 1;
-        dda.side_dist.y = (f32(dda.map_pos.y + 1) - ray.org.y) * dda.delta_dist.y;
+        dda.side_dist.y = (f32(dda.step_pos.y + 1) - ray.org.y) * dda.delta_dist.y;
     }
 
     if (ray.dir.z < 0.0) {
         dda.step_dir.z = -1;
-        dda.side_dist.z = (ray.org.z - f32(dda.map_pos.z)) * dda.delta_dist.z;
+        dda.side_dist.z = (ray.org.z - f32(dda.step_pos.z)) * dda.delta_dist.z;
     } else {
         dda.step_dir.z = 1;
-        dda.side_dist.z = (f32(dda.map_pos.z + 1) - ray.org.z) * dda.delta_dist.z;
+        dda.side_dist.z = (f32(dda.step_pos.z + 1) - ray.org.z) * dda.delta_dist.z;
     }
 
     return dda;
@@ -140,29 +144,40 @@ fn march(ray: Ray) -> HitInfo {
 
     var last_side_hit = 0; 
     let CHUNK_SIZE = 32;
-    var entry_t: f32 = 0.0;
+    let CHUNK_VOL = u32(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE);
+    var enter_t: f32 = 0.0;
 
-    let world_pos = vec3f(0.0) - camera.position;
+    let cam_int = vec3i(floor(camera.position)); // integer part of camera position
 
-    for (var i = 0; i < 200; i++) {
-        // Current continuous float position of the ray right now
+    for (var i = 0; i < 300; i++) {
         let exit_t = min(dda.side_dist.x, min(dda.side_dist.y, dda.side_dist.z));
-        let p = ray.org + ray.dir * exit_t;
 
-        let block_pos = dda.map_pos - vec3<i32>(floor(world_pos));
+        // map step pos to region space, then add 1 to get between 0 and 2, use to find index
+        // if region is step pos is (16, 20, -2), region is (0, 0, -1), which maps to index 3
+        let world_pos = dda.step_pos + cam_int;
+        let region_x = world_pos.x >> 5u;
+        let region_y = world_pos.y >> 5u;
+        let region_z = world_pos.z >> 5u;
 
-        // --- Standard Voxel Solid Hit Detection ---
-        // if (dda.map_pos.x >= 0 && dda.map_pos.x < CHUNK_SIZE &&
-        //     dda.map_pos.y >= 0 && dda.map_pos.y < CHUNK_SIZE &&
-        //     dda.map_pos.z >= 0 && dda.map_pos.z < CHUNK_SIZE) {
+        if (region_x >= -1 && region_x <= 1 && 
+            region_y == 0 && 
+            // region_y >= -1 && region_y <= 1 &&
+            region_z >= -1 && region_z <= 1) 
+        {
+            let r_x = region_x + 1;
+            let r_z = region_z + 1;
 
-        if (block_pos.x >= 0 && block_pos.x < CHUNK_SIZE &&
-            block_pos.y >= 0 && block_pos.y < CHUNK_SIZE &&
-            block_pos.z >= 0 && block_pos.z < CHUNK_SIZE) {
-            
+            let region_idx = (r_x * 3) + r_z;
+            let region_start = u32(region_idx) * CHUNK_VOL;
+
+            let block_pos = vec3i(
+                world_pos.x & 31,
+                world_pos.y & 31,
+                world_pos.z & 31,
+            );
+
             let voxel_index = u32(block_pos.x + (block_pos.y * CHUNK_SIZE) + (block_pos.z * CHUNK_SIZE * CHUNK_SIZE));
-            // let voxel_index = u32(dda.map_pos.x + (dda.map_pos.y * CHUNK_SIZE) + (dda.map_pos.z * CHUNK_SIZE * CHUNK_SIZE));
-            let block_id = voxels[voxel_index] & 0xFFu;
+            let block_id = voxels[region_start + voxel_index] & 0xFFu;
 
             if (block_id > 0u) {
                 hit_info.did_hit = true;
@@ -180,25 +195,25 @@ fn march(ray: Ray) -> HitInfo {
             }
         }
 
-        entry_t = exit_t;
-
         // DDA Step
         if (dda.side_dist.x < dda.side_dist.y && dda.side_dist.x < dda.side_dist.z) {
             dda.side_dist.x += dda.delta_dist.x; 
-            dda.map_pos.x += dda.step_dir.x; 
+            dda.step_pos.x += dda.step_dir.x; 
             last_side_hit = 0;
         } else if (dda.side_dist.y < dda.side_dist.z) {
             dda.side_dist.y += dda.delta_dist.y; 
-            dda.map_pos.y += dda.step_dir.y; 
+            dda.step_pos.y += dda.step_dir.y; 
             last_side_hit = 1;
         } else {
             dda.side_dist.z += dda.delta_dist.z; 
-            dda.map_pos.z += dda.step_dir.z; 
+            dda.step_pos.z += dda.step_dir.z; 
             last_side_hit = 2;
         }
+
+        enter_t = exit_t;
     }
 
-    hit_info.t = entry_t;
+    hit_info.t = enter_t;
     return hit_info;
 }
 
@@ -211,11 +226,8 @@ fn init_ray(id: vec3<u32>, size: vec2<u32>) -> Ray {
     let near_target = camera.inv_view_proj * vec4f(uv.x, uv.y, 0.0, 1.0);
     let far_target = camera.inv_view_proj * vec4f(uv.x, uv.y, 1.0, 1.0);
 
-    let cam_int = vec3<i32>(floor(camera.position));
-    let cam_frac = camera.position - floor(camera.position);
-
     var ray: Ray;
-    ray.org = (near_target.xyz / near_target.w) + cam_frac;
+    ray.org = camera.position - floor(camera.position); // fractional part of camera position
     ray.dir = normalize((far_target.xyz / far_target.w) - (near_target.xyz / near_target.w));
 
     return ray;
@@ -241,7 +253,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
         color = get_background_color(ray.dir, sun_dir);
     }
 
-    // let max_dist: f32 = 100.0;
+    // let max_dist: f32 = 1000.0;
     // let depth = clamp(hit_info.t / max_dist, 0.0, 1.0);
     // color = vec3f(depth, depth, depth);
 
