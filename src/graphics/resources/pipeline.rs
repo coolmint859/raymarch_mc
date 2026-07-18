@@ -70,7 +70,7 @@ pub struct Pipeline {
     pub label: String,
     pub pip_type: PipelineType,
     pub bg_layouts: Vec<BindGroupId>,
-    pub shader_source: Option<&'static str>,
+    pub shader_path: Option<&'static str>,
 }
 
 impl Pipeline {
@@ -79,7 +79,7 @@ impl Pipeline {
             label: "pipeline".to_string(),
             pip_type: ty,
             bg_layouts: Vec::new(),
-            shader_source: None,
+            shader_path: None,
         }
     }
 
@@ -96,8 +96,8 @@ impl Pipeline {
     }
 
     /// Add a shader descriptor to the pipeline
-    pub fn with_shader(mut self, source: &'static str) -> Self {
-        self.shader_source = Some(source);
+    pub fn with_shader(mut self, path: &'static str) -> Self {
+        self.shader_path = Some(path);
         self
     }
 }
@@ -110,13 +110,20 @@ pub async fn create_render_pipeline(
     ty: RenderPipelineType,
     bg_layouts: Vec<Arc<wgpu::BindGroupLayout>>
 ) -> Result<PipelineHandle, String> {
-    let shader_source = builder.shader_source
+    let shader_path = builder.shader_path
         .as_ref()
-        .expect("[Render Pipeline] Expected pipeline to be configured with a shader descriptor, but none was found");
+        .expect("[Render Pipeline] Expected pipeline to be configured with a path to a shader, but none was found");
+
+    let shader_source = match std::fs::read_to_string(&shader_path) {
+        Ok(source) => source,
+        Err(e) => {
+            return Err(format!("[Render Pipeline] Failed to read shader file '{}': {e}", shader_path));
+        }
+    };
 
     let shader = gpu.device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some(&format!("{}_source", builder.label)),
-        source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(shader_source))
+        source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(&shader_source))
     });
 
     let bg_layout_refs: Vec<&wgpu::BindGroupLayout> = bg_layouts
@@ -167,9 +174,21 @@ pub async fn create_compute_pipeline(
     ty: ComputePipelineType,
     bg_layouts: Vec<Arc<wgpu::BindGroupLayout>>
 ) -> Result<PipelineHandle, String> {
-    let shader_source = builder.shader_source
+    let shader_path = builder.shader_path
         .as_ref()
-        .expect("[Compute Pipeline] Expected pipeline to be configured with a shader descriptor, but none was found");
+        .expect("[Compute Pipeline] Expected pipeline to be configured with a path to a shader, but none was found");
+
+    let shader_source = match std::fs::read_to_string(&shader_path) {
+        Ok(source) => source,
+        Err(e) => {
+            return Err(format!("[Compute Pipeline] Failed to read shader file '{}': {e}", shader_path));
+        }
+    };
+
+    let shader = gpu.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some(&format!("{}_source", builder.label)),
+        source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(&shader_source))
+    });
 
     let bg_layout_refs: Vec<&wgpu::BindGroupLayout> = bg_layouts
         .iter()
@@ -180,11 +199,6 @@ pub async fn create_compute_pipeline(
         label: Some(&format!("{} Layout", builder.label)),
         bind_group_layouts: &bg_layout_refs,
         immediate_size: 0,
-    });
-
-    let shader = gpu.device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some(&format!("{}_source", builder.label)),
-        source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(shader_source))
     });
 
     let pipeline = gpu.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {

@@ -198,6 +198,8 @@ impl PipelineRegistry {
         for (id, builder) in &pending_bgs {
             self.request(id, builder, bind_groups);
         }
+
+        // println!("{:?}", self.handles.status_of_all());
     }
 
     /// remove a bind group from the registry

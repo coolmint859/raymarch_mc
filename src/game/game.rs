@@ -2,7 +2,7 @@ use glam::{Quat, Vec3};
 use winit::{event::MouseButton, keyboard::KeyCode};
 
 use crate::{
-    Graphics, InputEvent, game::{Screen, ScreenTransition, VoxelWorld}, graphics::*, utils::{CameraController, KeyboardHandler, MouseHandler, PerspectiveCamera},
+    Graphics, InputEvent, game::{Screen, ScreenTransition, VoxelPalette, VoxelWorld}, graphics::*, utils::{CameraController, KeyboardHandler, MouseHandler, PerspectiveCamera},
 };
 
 #[derive(Clone, Copy)]
@@ -25,37 +25,11 @@ pub enum PlayerMouseAction {
     UnlockMouse,
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct CameraUniform {
-    view_proj: [[f32; 4]; 4],
-    inv_view_proj: [[f32; 4]; 4]
-}
-
-impl CameraUniform {
-    pub fn build_from(camera: &mut PerspectiveCamera, aspect: f32) -> Self {
-        let view_proj = camera.get_view_proj(aspect);
-        let inv_view_proj = view_proj.inverse();
-
-        CameraUniform { 
-            view_proj: view_proj.to_cols_array_2d(), 
-            inv_view_proj: inv_view_proj.to_cols_array_2d()
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct EnvironmentUniform {
-    pub sun_dir: [f32; 4],
-    pub sun_color: [f32; 4],
-    pub sky_zenith: [f32; 4],
-    pub sky_horizon: [f32; 4]
-}
-
 struct GameIds {
     pub cam_id: BufferId,
     pub env_id: BufferId,
+    pub vox_id: BufferId,
+    pub pal_id: BufferId,
     pub rtex_id: TextureId,
 
     pub voxel_bg_id: BindGroupId,
@@ -66,8 +40,8 @@ struct GameIds {
 }
 
 pub struct Game {
-    camera: PerspectiveCamera,
     controller: CameraController,
+    camera: PerspectiveCamera,
     keyboard: KeyboardHandler<PlayerKeyAction>,
     mouse: MouseHandler<PlayerMouseAction>,
 
@@ -79,17 +53,17 @@ pub struct Game {
 
 impl Game {
     pub fn new() -> Self {
-        let default_cam_pos = glam::vec3(0.0, 0.0, -2.0);
+        let default_cam_pos = glam::vec3(16.0, 20.0, -2.0);
         let mut camera = PerspectiveCamera::new();
         camera.transform.move_to(default_cam_pos);
 
         Self {
             camera,
-            controller: CameraController::new(5.0, 0.003),
+            controller: CameraController::new(10.0, 0.003),
             keyboard: KeyboardHandler::new(),
             mouse: MouseHandler::new(),
             default_cam_pos,
-            world: VoxelWorld::new(1.0),
+            world: VoxelWorld::new(),
             ids: None,
         }
     }
@@ -116,6 +90,8 @@ impl Screen for Game {
         let ids = GameIds {
             cam_id: BufferId("main_camera"),
             env_id: BufferId("environment"),
+            vox_id: BufferId("voxels"),
+            pal_id: BufferId("palette"),
             rtex_id: TextureId("render_texture"),
             voxel_bg_id: BindGroupId("voxel_bind_group"),
             voxel_pip_id: PipelineId("voxel_pipeline"),
@@ -123,48 +99,66 @@ impl Screen for Game {
             blit_pip_id: PipelineId("blit_pipeline")
         };
 
-        let cam_buf_builder = Buffer::as_uniform(BufferContents::Empty(128))
+        self.camera.update(graphics.canvas.aspect);
+        let camera_data = self.camera.to_uniform().to_bytes().to_vec();
+        let camera_buffer = Buffer::as_uniform(BufferContents::WithData(camera_data))
             .with_label("Camera Buffer")
             .with_additional_usage(wgpu::BufferUsages::COPY_DST);
-        graphics.gpu.request_buffer(&ids.cam_id, cam_buf_builder);
+        graphics.gpu.request_buffer(&ids.cam_id, camera_buffer);
 
-        let env_buf_builder = Buffer::as_uniform(BufferContents::Empty(64))
+        let env_data = self.world.env_uniform().to_bytes().to_vec();
+        let env_buffer = Buffer::as_uniform(BufferContents::WithData(env_data))
             .with_label("Environment Buffer")
             .with_additional_usage(wgpu::BufferUsages::COPY_DST);
-        graphics.gpu.request_buffer(&ids.env_id, env_buf_builder);
+        graphics.gpu.request_buffer(&ids.env_id, env_buffer);
 
-        let rtex_builder = Texture::new(TextureType::Computed)
+        let palette_data = VoxelPalette::create().colors;
+        let palette_buffer = Buffer::as_uniform(BufferContents::WithData(palette_data))
+            .with_label("Palette Buffer")
+            .with_additional_usage(wgpu::BufferUsages::COPY_DST);
+        graphics.gpu.request_buffer(&ids.pal_id, palette_buffer);
+
+        let voxel_data = self.world.voxel_data();
+        let voxel_buffer = Buffer::as_storage(BufferContents::WithData(voxel_data))
+            .with_label("Voxel Buffer")
+            .with_additional_usage(wgpu::BufferUsages::COPY_DST);
+        graphics.gpu.request_buffer(&ids.vox_id, voxel_buffer);
+
+        let render_texture = Texture::new(TextureType::Computed)
             .with_label("Voxel Storage Texture")
             .with_size_2d(graphics.canvas.config.width, graphics.canvas.config.height)
-            .with_format(wgpu::TextureFormat::Rgba8Unorm)
+            .with_format(wgpu::TextureFormat::Rgba16Float)
             .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING);
-        graphics.gpu.request_texture(&ids.rtex_id, rtex_builder);
+        graphics.gpu.request_texture(&ids.rtex_id, render_texture);
 
-        let voxel_bg_builder = BindGroup::new()
+        let raymarch_bind_group = BindGroup::new()
             .with_label("Compute Bind Group")
             .with_entry(BufferBinding::as_uniform(ids.cam_id).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_uniform(ids.env_id).with_visibility(wgpu::ShaderStages::COMPUTE))
+            .with_entry(BufferBinding::as_uniform(ids.pal_id).with_visibility(wgpu::ShaderStages::COMPUTE))
+            .with_entry(BufferBinding::as_storage(ids.vox_id, true).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_storage(ids.rtex_id, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE));
-        graphics.gpu.request_bind_group(&ids.voxel_bg_id, &voxel_bg_builder);
+        graphics.gpu.request_bind_group(&ids.voxel_bg_id, &raymarch_bind_group);
 
-        let voxel_pip_builder = Pipeline::new(PipelineType::Compute(ComputePipelineType::default()))
+        let raymarch_pipeline = Pipeline::new(PipelineType::Compute(ComputePipelineType::default()))
             .with_label("Voxel Ray Marching Pipeline")
             .with_bg_layouts(&[ids.voxel_bg_id])
-            .with_shader(include_str!("../../shaders/ray_march.wgsl"));
-        graphics.gpu.request_pipeline(&ids.voxel_pip_id, &voxel_pip_builder);
+            .with_shader("./shaders/ray_march.wgsl");
+        graphics.gpu.request_pipeline(&ids.voxel_pip_id, &raymarch_pipeline);
  
-        let blit_bg_builder = BindGroup::new()
+        let blit_bind_group = BindGroup::new()
             .with_label("Blit Bind Group")
             .with_entry(TextureBinding::as_sampled(ids.rtex_id, TextureTypeSampled::default()));
-        graphics.gpu.request_bind_group(&ids.blit_bg_id, &blit_bg_builder);
+        graphics.gpu.request_bind_group(&ids.blit_bg_id, &blit_bind_group);
 
-        let blit_pip_builder = Pipeline::new(PipelineType::Render(RenderPipelineType::default()))
+        let blit_pipeline = Pipeline::new(PipelineType::Render(RenderPipelineType::default()))
             .with_label("Voxel Render Pipeline")
             .with_bg_layouts(&[ids.blit_bg_id])
-            .with_shader(include_str!("../../shaders/blit.wgsl"));
-        graphics.gpu.request_pipeline(&ids.blit_pip_id, &blit_pip_builder);
+            .with_shader("./shaders/blit.wgsl");
+        graphics.gpu.request_pipeline(&ids.blit_pip_id, &blit_pipeline);
 
         self.ids = Some(ids);
+        self.world.toggle_pause();
         self.init_input();
     }
 
@@ -172,26 +166,28 @@ impl Screen for Game {
         let Some(ref ids) = self.ids else { return; };
 
         graphics.gpu.remove_texture(&ids.rtex_id);
-        let rtex_builder = Texture::new(TextureType::Computed)
+        let render_texture = Texture::new(TextureType::Computed)
             .with_label("Voxel Storage Texture")
             .with_size_2d(graphics.canvas.config.width, graphics.canvas.config.height)
-            .with_format(wgpu::TextureFormat::Rgba8Unorm)
+            .with_format(wgpu::TextureFormat::Rgba16Float)
             .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING);
-        graphics.gpu.request_texture(&ids.rtex_id, rtex_builder);
+        graphics.gpu.request_texture(&ids.rtex_id, render_texture);
 
         graphics.gpu.remove_bind_group(&ids.voxel_bg_id);
-        let voxel_bg_builder = BindGroup::new()
+        let raymarch_bind_group = BindGroup::new()
             .with_label("Compute Bind Group")
             .with_entry(BufferBinding::as_uniform(ids.cam_id).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_uniform(ids.env_id).with_visibility(wgpu::ShaderStages::COMPUTE))
+            .with_entry(BufferBinding::as_uniform(ids.pal_id).with_visibility(wgpu::ShaderStages::COMPUTE))
+            .with_entry(BufferBinding::as_storage(ids.vox_id, true).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_storage(ids.rtex_id, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE));
-        graphics.gpu.request_bind_group(&ids.voxel_bg_id, &voxel_bg_builder);
+        graphics.gpu.request_bind_group(&ids.voxel_bg_id, &raymarch_bind_group);
 
         graphics.gpu.remove_bind_group(&ids.blit_bg_id);
-        let blit_bg_builder = BindGroup::new()
+        let blit_bind_group = BindGroup::new()
             .with_label("Blit Bind Group")
             .with_entry(TextureBinding::as_sampled(ids.rtex_id, TextureTypeSampled::default()));
-        graphics.gpu.request_bind_group(&ids.blit_bg_id, &blit_bg_builder);
+        graphics.gpu.request_bind_group(&ids.blit_bg_id, &blit_bind_group);
     }
 
     fn input_event(&mut self, event: crate::InputEvent) {
@@ -264,15 +260,14 @@ impl Screen for Game {
     fn update(&mut self, graphics: &mut Graphics, dt: f32) {
         let Some(ref ids) = self.ids else { return; };
         self.world.update(dt, false);
+        self.camera.update(graphics.canvas.aspect);
 
-        graphics.gpu.update_buffer(&ids.cam_id, BufferUpdate {
-            data_struct: CameraUniform::build_from(&mut self.camera, graphics.canvas.aspect),
-            offset: 0
+        graphics.gpu.update_buffer(&ids.cam_id, StructuredUpdate {
+            data: &self.camera.to_uniform(),
         });
 
-        graphics.gpu.update_buffer(&ids.env_id, BufferUpdate { 
-            data_struct: self.world.calc_environment(),
-            offset: 0
+        graphics.gpu.update_buffer(&ids.env_id, StructuredUpdate { 
+            data: &self.world.env_uniform(),
         });
     }
 

@@ -4,6 +4,56 @@ use wgpu::{util::DeviceExt};
 
 use crate::graphics::{Bindable, BindingTarget, BufferId, GpuHandle};
 
+/// Represents structs that can be serialized into raw bytes
+pub trait Serializable {
+    fn to_bytes(&self) -> &[u8];
+}
+
+// Any struct that implements Pod and Zeroable is serializable into bytes
+impl<T> Serializable for T 
+where T: bytemuck::Pod + bytemuck::Zeroable
+{
+    /// Converts the T struct into an array slice of bytes
+    fn to_bytes(&self) -> &[u8] { bytemuck::bytes_of(self) }
+}
+
+/// Represents an update into an existing gpu buffer
+pub trait BufferUpdate {
+    /// The data payload as an array slice of bytes
+    fn bytes(&self) -> &[u8];
+    /// The offset at which to apply the update.
+    fn offset(&self) -> u64;
+}
+
+/// A buffer update from any struct that implements the Serializable trait
+/// 
+/// Structs which implement bytemuck's POD and Zeroable automatically implement Serializable
+pub struct StructuredUpdate<'a, T: Serializable> {
+    pub data: &'a T
+}
+
+impl<'a, T: Serializable> BufferUpdate for StructuredUpdate<'a, T> {
+    #[inline]
+    fn bytes(&self) -> &[u8] { self.data.to_bytes() }
+
+    #[inline]
+    fn offset(&self) -> u64 { 0 } // all structures have an offset of 0
+}
+
+/// A buffer update from raw bytes, inserted at an offset
+pub struct RawBytesUpdate<'a> {
+    pub offset: u64,
+    pub data: &'a [u8]
+}
+
+impl<'a> BufferUpdate for RawBytesUpdate<'a> {
+    #[inline]
+    fn bytes(&self) -> &[u8] { self.data }
+
+    #[inline]
+    fn offset(&self) -> u64 { self.offset }
+}
+
 /// Represents a buffer binding and entry in a bind group
 pub struct BufferBinding {
     buf_id: BufferId,
@@ -90,7 +140,7 @@ impl Deref for BufferHandle {
 
 /// Describes the contents of a buffer
 pub enum BufferContents {
-    /// A buffer created with initial data
+    /// A buffer created with initial byte data
     WithData(Vec<u8>),
     /// A buffer created with no initial data but with an initial capacity
     Empty(u64)

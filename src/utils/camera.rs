@@ -1,6 +1,13 @@
 use glam::*;
 
-use crate::utils::Transform;
+use crate::{utils::Transform};
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct CameraUniform {
+    inv_view_proj: [[f32; 4]; 4],
+    camera_postion: [f32; 3],
+}
 
 /// A camera that embodies perspective projection
 pub struct PerspectiveCamera {
@@ -8,7 +15,8 @@ pub struct PerspectiveCamera {
 
     fov_y: f32,
     z_near: f32,
-    z_far: f32
+    z_far: f32,
+    view_proj: Mat4,
 }
 
 impl PerspectiveCamera {
@@ -17,16 +25,27 @@ impl PerspectiveCamera {
             transform: Transform::default(),
             fov_y: 60.0_f32.to_radians(),
             z_near: 0.01,
-            z_far: 100.0
+            z_far: 100.0,
+            view_proj: Mat4::IDENTITY,
         }
     }
 
-    /// Get the view-projection matrix for this camera
-    pub fn get_view_proj(&self, aspect: f32) -> Mat4 {
-        let view_mat = self.transform.to_updated().inverse();
+    /// Update the camera's view and projection
+    pub fn update(&mut self, aspect: f32) {
         let proj_mat = Mat4::perspective_lh(self.fov_y, aspect, self.z_near, self.z_far);
-        
-        return proj_mat * view_mat;
+        self.transform.to_updated();
+        // let view_mat = self.transform.to_updated().inverse();
+        let view_mat = Mat4::from_quat(self.transform.get_rotation()).inverse();
+
+        self.view_proj = proj_mat * view_mat;
+    }
+
+    /// get this camera in it's uniform representation
+    pub fn to_uniform(&self) -> CameraUniform {
+        CameraUniform {
+            inv_view_proj: self.view_proj.inverse().to_cols_array_2d(),
+            camera_postion: self.transform.get_position().to_array()
+        }
     }
 
     /// Get the camera's current forward axis

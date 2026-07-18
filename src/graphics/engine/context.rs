@@ -36,12 +36,6 @@ pub enum PassInfo {
 /// unique identifier for a bind group
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] pub struct BindGroupId(pub &'static str);
 
-/// Esncasulates updates to gpu buffers
-pub struct BufferUpdate<T: bytemuck::Pod> {
-    pub offset: u64,
-    pub data_struct: T
-}
-
 /// Represents the state of the gpu, providing means to create and modify resources, and execute pipelines
 pub struct GpuContext {
     gpu: GpuHandle,
@@ -112,13 +106,15 @@ impl GpuContext {
     }
 
     /// Update a buffer with the provided id, if found. The data payload must not exceed the buffer size
-    pub fn update_buffer<T: bytemuck::Pod>(&mut self, id: &BufferId, update: BufferUpdate<T>) {
+    pub fn update_buffer(&mut self, id: &BufferId, update: impl BufferUpdate) {
         if let Some(buffer) = self.buffers.get(id) {
-            let data = bytemuck::bytes_of(&update.data_struct);
-            let update_size = update.offset + data.len() as u64;
+            let data = update.bytes();
+            let offset = update.offset();
+
+            let update_size = offset + data.len() as u64;
             assert!(update_size <= buffer.size());
 
-            self.gpu.queue.write_buffer(buffer, update.offset, data);
+            self.gpu.queue.write_buffer(buffer, offset, data);
         }
     }
 

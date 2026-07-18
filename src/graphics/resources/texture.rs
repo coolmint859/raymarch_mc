@@ -14,7 +14,7 @@ impl Default for TextureTypeStorage {
     fn default() -> Self {
         Self {
             access: wgpu::StorageTextureAccess::WriteOnly,
-            fmt: wgpu::TextureFormat::Rgba8Unorm
+            fmt: wgpu::TextureFormat::Rgba16Float
         }
     }
 }
