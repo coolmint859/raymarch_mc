@@ -67,14 +67,14 @@ impl PassExecutor {
         });
 
         let Some(pipeline) = self.validator.validate_render_pipeline(&info.pipeline_id, context) else { 
-            println!("[PassExecutor] Failed to validate render pipeline @{:?}", info.pipeline_id);
+            // println!("[PassExecutor] Failed to validate render pipeline @{:?}", info.pipeline_id);
             return; 
         };
         render_pass.set_pipeline(&pipeline);
 
         for (idx, bg_id) in info.bind_groups.iter().enumerate() {
             let Some(bg) = self.validator.validate_bind_group(bg_id, context) else { 
-                println!("[PassExecutor] Failed to validate bind group @{:?} for render pipeline @{:?}", bg_id, info.pipeline_id);
+                // println!("[PassExecutor] Failed to validate bind group @{:?} for render pipeline @{:?}", bg_id, info.pipeline_id);
                 return; 
             };
             render_pass.set_bind_group(idx as u32, bg.deref(), &[]);
@@ -90,14 +90,14 @@ impl PassExecutor {
         });
 
         let Some(pipeline) = self.validator.validate_compute_pipeline(&info.pipeline_id, context) else {
-            println!("[PassExecutor] Failed to validate compute pipeline @{:?}", info.pipeline_id);
+            // println!("[PassExecutor] Failed to validate compute pipeline @{:?}", info.pipeline_id);
             return; 
         };
         compute_pass.set_pipeline(&pipeline);
 
         for (idx, bg_id) in info.bind_groups.iter().enumerate() {
             let Some(bg) = self.validator.validate_bind_group(bg_id, context) else { 
-                println!("[PassExecutor] Failed to validate bind group @{:?} for compute pipeline @{:?}", bg_id, info.pipeline_id);
+                // println!("[PassExecutor] Failed to validate bind group @{:?} for compute pipeline @{:?}", bg_id, info.pipeline_id);
                 return; 
             };
             compute_pass.set_bind_group(idx as u32, bg.deref(), &[]);

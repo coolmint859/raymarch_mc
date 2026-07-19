@@ -2,7 +2,7 @@ use std::ops::Deref;
 
 use image::GenericImageView;
 
-use crate::graphics::{Bindable, BindingTarget, GpuHandle, TextureId};
+use crate::graphics::{Bindable, BindingTarget, TextureId};
 
 /// Options for configurating a storage texture binding
 pub struct TextureTypeStorage {
@@ -234,49 +234,4 @@ impl Texture {
             }
         }
     }
-}
-
-/// Create a new texture from the given configuration builder
-pub async fn create_texture(gpu: GpuHandle, builder: Texture) -> Result<TextureHandle, String> {
-    let tex_info = builder.get_info().await?;
-    let extent = wgpu::Extent3d {
-        width: tex_info.width,
-        height: tex_info.height,
-        depth_or_array_layers: tex_info.depth
-    };
-    
-    let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
-        label: Some(&builder.label),
-        size: extent,
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: tex_info.dim,
-        format: builder.format,
-        usage: builder.usage,
-        view_formats: &[],
-    });
-
-    if let Some(data) = &tex_info.data {
-        gpu.queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            }, 
-            data,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(builder.bytes_per_pixel() * tex_info.width),
-                rows_per_image: Some(tex_info.height)
-            }, 
-            extent,
-        );
-    }
-
-    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-    println!("[GpuContext] Created new texture with label '{}'", builder.label);
-
-    Ok(TextureHandle { texture, view })
 }

@@ -71,9 +71,10 @@ impl GpuContext {
     pub fn request_buffer(&mut self, id: &BufferId, builder: Buffer) {
         if self.buffers.contains(id) { return; }
 
-        let buffer_task = Task::non_blocking(
-            create_buffer(self.gpu.clone(), builder)
-        );
+        let gpu = self.gpu.clone();
+        let buffer_task = Task::non_blocking( async move {
+            gpu.create_buffer(builder).await
+        });
         self.buffers.request_new(id, buffer_task);
     }
 
@@ -81,9 +82,10 @@ impl GpuContext {
     pub fn request_texture(&mut self, id: &TextureId, builder: Texture) {
         if self.textures.contains(id) { return; }
 
-        let texture_task = Task::non_blocking(
-            create_texture(self.gpu.clone(), builder)
-        );
+        let gpu = self.gpu.clone();
+        let texture_task = Task::non_blocking(async move {
+            gpu.create_texture(builder).await
+        });
         self.textures.request_new(id, texture_task);
     }
 

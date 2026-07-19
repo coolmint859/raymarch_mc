@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use winit::window::Window;
 
-use crate::{Canvas, graphics::GpuContext};
+use crate::{Canvas, graphics::{GpuContext, GpuHandle}};
 
 /// Graphics initialization errors
 #[derive(Clone, Debug)]
@@ -58,13 +58,6 @@ impl Graphics {
     pub fn request_redraw(&self) {
         self.canvas.window.request_redraw();
     }
-}
-
-/// Handle to the gpu device and queue
-#[derive(Clone, Debug)]
-pub struct GpuHandle {
-    pub device: wgpu::Device,
-    pub queue: wgpu::Queue
 }
 
 /// Initializes the graphics environment for a given window

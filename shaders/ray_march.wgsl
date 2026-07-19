@@ -15,7 +15,7 @@ struct EnvironmentUniform {
 }
 
 struct PaletteUniform {
-    colors: array<vec4<f32>, 4>,
+    colors: array<vec4<f32>, 5>,
 }
 
 struct Region {
@@ -53,85 +53,40 @@ struct DDA {
 }
 
 fn calc_lighting(material: Material, sun_dir: vec3f, view_dir: vec3f) -> vec3f {
-    let sun_intensity = env.sun_color.w;
-    let amb_strength = dot(sun_dir, vec3f(0.0, 1.0, 0.0));
-    let ambient: vec3f = amb_strength * env.sun_color.xyz;
+    let amb_strength = clamp(sun_dir.y * 0.5 + 0.5, 0.05, 1.0);
+    let ambient = env.sky_zenith.xyz * amb_strength + 0.1;
+
+    let diff_strength = max(dot(material.normal, sun_dir), 0.0);
+    let diffuse = env.sun_color.xyz * diff_strength;
 
     let half = normalize(sun_dir + view_dir);
-    let spec = pow(max(dot(material.normal, half), 0.0), 256.0);
-    let specular = env.sun_color.xyz * spec;
+    let spec_strength = pow(max(dot(material.normal, half), 0.0), 256.0);
+    let specular = env.sun_color.xyz * spec_strength;
 
-    let diffuse = max(dot(material.normal, sun_dir) * sun_intensity, 0.3);
     return (ambient + diffuse + specular) * material.color;
 }
 
 fn get_background_color(ray_dir: vec3f, sun_dir: vec3f) -> vec3<f32> {
-    let sky_zenith = env.sky_zenith.xyz;
-    let sky_horizon = env.sky_horizon.xyz;
-    let sun_color = env.sun_color.xyz;
-    let sun_intensity = env.sun_color.w;
-    let ground_color = env.ground_color.xyz;
-    var sky_color = vec3f(0.0);
-
     let y = ray_dir.y;
+    var color: vec3f;
+
     if (y >= 0.0) {
         let sky_blend = pow(y, 0.5); 
-        sky_color = mix(sky_horizon, sky_zenith, sky_blend);
+        color = mix(env.sky_horizon.xyz, env.sky_zenith.xyz, sqrt(y));
     } else {
         let horizon_glow = smoothstep(-0.05, 0.0, y);
-        sky_color = mix(ground_color, sky_horizon, horizon_glow * 0.4);
+        color = mix(env.ground_color.xyz, env.sky_horizon.xyz, horizon_glow * 0.4);
     }
 
-    let sun_alignment = dot(ray_dir, sun_dir);
-    if (sun_intensity > 0.0 && sun_alignment > 0.0) {
-        let sky_mask = smoothstep(-0.2, 0.0, ray_dir.y);
-        let corona_glow = pow(sun_alignment, 16.0);
-        let sun_disk = pow(sun_alignment, 2000.0);
+    let align = max(dot(ray_dir, sun_dir), 0.0);
+    let mask = smoothstep(-0.2, 0.0, y);
+    let corona = pow(align, 16.0) * 0.2;
+    let disk = pow(align, 2000.0) * 2.0;
 
-        sky_color += sun_color * corona_glow * sky_mask * 0.2;
-        sky_color += sun_color * sun_disk * sky_mask * 2.0; 
-    }
+    let sun_factor = (corona + disk) * mask * env.sun_color.w;
+    color += env.sun_color.xyz * sun_factor;
 
-    return clamp(sky_color, vec3<f32>(0.0), vec3<f32>(1.0));
-}
-
-fn init_dda(ray: Ray) -> DDA {
-    var dda: DDA;
-    dda.step_pos = vec3i(floor(ray.org));
-
-    // Calculate how far the ray must travel along an axis to cross a full 1.0 grid unit
-    dda.delta_dist = vec3f(
-        select(1e30, abs(1.0 / ray.dir.x), ray.dir.x != 0.0),
-        select(1e30, abs(1.0 / ray.dir.y), ray.dir.y != 0.0),
-        select(1e30, abs(1.0 / ray.dir.z), ray.dir.z != 0.0)
-    );
-
-    // Initialize tracking steps and start offsets based on ray direction vector
-    if (ray.dir.x < 0.0) {
-        dda.step_dir.x = -1;
-        dda.side_dist.x = (ray.org.x - f32(dda.step_pos.x)) * dda.delta_dist.x;
-    } else {
-        dda.step_dir.x = 1;
-        dda.side_dist.x = (f32(dda.step_pos.x + 1) - ray.org.x) * dda.delta_dist.x;
-    }
-
-    if (ray.dir.y < 0.0) {
-        dda.step_dir.y = -1;
-        dda.side_dist.y = (ray.org.y - f32(dda.step_pos.y)) * dda.delta_dist.y;
-    } else {
-        dda.step_dir.y = 1;
-        dda.side_dist.y = (f32(dda.step_pos.y + 1) - ray.org.y) * dda.delta_dist.y;
-    }
-
-    if (ray.dir.z < 0.0) {
-        dda.step_dir.z = -1;
-        dda.side_dist.z = (ray.org.z - f32(dda.step_pos.z)) * dda.delta_dist.z;
-    } else {
-        dda.step_dir.z = 1;
-        dda.side_dist.z = (f32(dda.step_pos.z + 1) - ray.org.z) * dda.delta_dist.z;
-    }
-
-    return dda;
+    return saturate(color);
 }
 
 fn march(ray: Ray) -> HitInfo {
@@ -159,13 +114,13 @@ fn march(ray: Ray) -> HitInfo {
         let region_y = world_pos.y >> 5u;
         let region_z = world_pos.z >> 5u;
 
-        if (region_x >= -1 && region_x <= 1 && 
+        if (region_x >= -2 && region_x <= 2 && 
             region_y == 0 && 
             // region_y >= -1 && region_y <= 1 &&
-            region_z >= -1 && region_z <= 1) 
+            region_z >= -2 && region_z <= 2) 
         {
-            let r_x = region_x + 1;
-            let r_z = region_z + 1;
+            let r_x = region_x + 2;
+            let r_z = region_z + 2;
 
             let region_idx = (r_x * 3) + r_z;
             let region_start = u32(region_idx) * CHUNK_VOL;
@@ -217,19 +172,36 @@ fn march(ray: Ray) -> HitInfo {
     return hit_info;
 }
 
+fn init_dda(ray: Ray) -> DDA {
+    var dda: DDA;
+
+    dda.step_pos = vec3i(floor(ray.org));
+    dda.step_dir = vec3i(sign(ray.dir));
+
+    let inv_dir = 1.0 / ray.dir;
+    dda.delta_dist = abs(inv_dir);
+
+    let init_side_dist = ray.org - vec3f(dda.step_pos);
+    let t = select(init_side_dist, 1.0 - init_side_dist, ray.dir >= vec3f(0.0));
+    dda.side_dist = t * dda.delta_dist;
+    dda.side_dist = max(dda.side_dist, vec3f(1e-6));
+
+    return dda;
+}
+
 // transform the shader invocation id into the ray used for rendering
 fn init_ray(id: vec3<u32>, size: vec2<u32>) -> Ray {
-    let x = (f32(id.x) / f32(size.x)) * 2.0 - 1.0;
-    let y = 1.0 - (f32(id.y) / f32(size.y)) * 2.0;
-    let uv = vec2f(x, y);
+    let uv = ((vec2f(id.xy) / vec2f(size) * 2.0) - 1.0) * vec2f(1.0, -1.0);
 
-    let near_target = camera.inv_view_proj * vec4f(uv.x, uv.y, 0.0, 1.0);
-    let far_target = camera.inv_view_proj * vec4f(uv.x, uv.y, 1.0, 1.0);
+    let near = camera.inv_view_proj * vec4f(uv.x, uv.y, 0.0, 1.0);
+    let near_pos = near.xyz / near.w;
+
+    let far = camera.inv_view_proj * vec4f(uv.x, uv.y, 1.0, 1.0);
+    let far_pos = far.xyz / far.w;
 
     var ray: Ray;
-    ray.org = camera.position - floor(camera.position); // fractional part of camera position
-    ray.dir = normalize((far_target.xyz / far_target.w) - (near_target.xyz / near_target.w));
-
+    ray.org = (camera.position - floor(camera.position)); // fractional part of camera position
+    ray.dir = normalize(far_pos - near_pos);
     return ray;
 }
 

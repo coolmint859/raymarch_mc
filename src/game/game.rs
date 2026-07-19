@@ -54,7 +54,7 @@ pub struct Game {
 
 impl Game {
     pub fn new() -> Self {
-        let default_cam_pos = glam::vec3(16.0, 20.0, -2.0);
+        let default_cam_pos = glam::vec3(16.0, 20.0, 16.0);
         let mut camera = PerspectiveCamera::new();
         camera.transform.move_to(default_cam_pos);
 

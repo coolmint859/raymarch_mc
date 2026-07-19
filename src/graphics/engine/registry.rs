@@ -88,7 +88,7 @@ impl BindGroupRegistry {
                 });
             }
 
-            create_bind_group(gpu, builder, entries).await
+            gpu.create_bind_group(builder, entries).await
         });
 
         self.handles.request_new(id, bind_group_task);
@@ -173,18 +173,22 @@ impl PipelineRegistry {
         }
 
         self.deferred.remove(id);
+
+        let gpu = self.gpu.clone();
+        let pip_builder = builder.clone();
         match builder.pip_type {
             PipelineType::Render(ty) => {
-                let r_pip_task = Task::non_blocking(
-                    create_render_pipeline(self.gpu.clone(), builder.clone(), ty, bg_layouts)
-                );
+                let r_pip_task = Task::non_blocking(async move {
+                    gpu.create_render_pipeline(pip_builder, ty, bg_layouts).await
+                });
 
                 self.handles.request_new(id, r_pip_task);
             },
             PipelineType::Compute(ty) => {
-                let c_pip_task = Task::non_blocking(
-                    create_compute_pipeline(self.gpu.clone(), builder.clone(), ty, bg_layouts)
-                );
+                let c_pip_task = Task::non_blocking(async move {
+                    gpu.create_compute_pipeline(pip_builder, ty, bg_layouts).await
+                });
+
                 self.handles.request_new(id, c_pip_task);
             }
         };
