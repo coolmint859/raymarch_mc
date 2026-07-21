@@ -1,6 +1,9 @@
 /// Performs voxel raymarching into a scene using the provided camera and voxel data.
 /// Saves the final colors into a storage texture.
 
+const REGION_SIZE: i32 = 32;
+const REGION_VOL: u32 = u32(REGION_SIZE * REGION_SIZE * REGION_SIZE);
+
 struct CameraUniform {
     inv_view_proj: mat4x4f,
     position: vec3f,
@@ -30,12 +33,21 @@ struct Region {
 @group(0) @binding(5) var output: texture_storage_2d<rgba16float, write>;
 
 struct Material {
-    normal: vec3f,
     color: vec3f,
+}
+
+struct VoxelFace {
+    uv: vec2f,
+    normal: vec3f,
+    tan1: vec3f,
+    tan2: vec3f,
 }
 
 struct HitInfo {
     did_hit: bool,
+    hit_pos: vec3f,
+    world_pos: vec3i,
+    face: VoxelFace,
     t: f32,
     material: Material
 }
@@ -52,18 +64,94 @@ struct DDA {
     side_dist: vec3<f32>
 }
 
-fn calc_lighting(material: Material, sun_dir: vec3f, view_dir: vec3f) -> vec3f {
-    let amb_strength = clamp(sun_dir.y * 0.5 + 0.5, 0.05, 1.0);
-    let ambient = env.sky_zenith.xyz * amb_strength + 0.1;
+struct RayMarchConfig {
+    max_iter: u32,
+    max_t: f32,
+}
 
-    let diff_strength = max(dot(material.normal, sun_dir), 0.0);
-    let diffuse = env.sun_color.xyz * diff_strength;
+fn calc_face(hit_pos: vec3f, normal: vec3f) -> VoxelFace {
+    var face: VoxelFace;
+    face.normal = normal;
+
+    let local_pos = fract(hit_pos);
+    if (abs(normal.y) > 0.5) {
+        face.uv = local_pos.xz;
+        face.tan1 = vec3f(1.0, 0.0, 0.0);
+        face.tan2 = vec3f(0.0, 0.0, 1.0);
+    } else if (abs(normal.x) > 0.5) { 
+        face.uv = local_pos.yz;
+        face.tan1 = vec3f(0.0, 1.0, 0.0);
+        face.tan2 = vec3f(0.0, 0.0, 1.0);
+    } else { 
+        face.uv = local_pos.xy;
+        face.tan1 = vec3f(1.0, 0.0, 0.0);
+        face.tan2 = vec3f(0.0, 1.0, 0.0);
+    }
+
+    return face;
+}
+
+fn calc_lighting(hit_info: HitInfo, sun_dir: vec3f, view_dir: vec3f) -> vec3f {
+    let ao = calc_ao_volumetric(hit_info.face, hit_info.world_pos);
+    let normal = hit_info.face.normal;
+    
+    let amb_strength = clamp(sun_dir.y * 0.5 + 0.5, 0.05, 1.0);
+    let ambient = (env.sky_zenith.xyz * amb_strength + 0.1) * ao;
+
+    let shadow = calc_shadow(hit_info.hit_pos, normal, sun_dir);
+
+    let diff_strength = max(dot(normal, sun_dir), 0.0);
+    let diffuse = env.sun_color.xyz * diff_strength * shadow;
 
     let half = normalize(sun_dir + view_dir);
-    let spec_strength = pow(max(dot(material.normal, half), 0.0), 256.0);
-    let specular = env.sun_color.xyz * spec_strength;
+    let spec_strength = pow(max(dot(normal, half), 0.0), 256.0);
+    let specular = env.sun_color.xyz * spec_strength * shadow;
 
-    return (ambient + diffuse + specular) * material.color;
+    return (ambient + diffuse + specular) * hit_info.material.color;
+}
+
+fn calc_shadow(start_pos: vec3f, normal: vec3f, light_dir: vec3f) -> f32 {
+    var shadow_ray: Ray;
+    shadow_ray.org = start_pos + normal * 0.001;
+    shadow_ray.dir = light_dir;
+
+    var config: RayMarchConfig;
+    config.max_iter = 50;
+    config.max_t = 50.0;
+
+    let shadow_hit = march(shadow_ray, config);
+
+    if (shadow_hit.did_hit) { return 0.0; } else { return 1.0; }
+}
+
+fn calc_ao_volumetric(face: VoxelFace, world_pos: vec3i) -> f32 {
+    let face_neighbor = world_pos + vec3i(face.normal);
+    var total_occlusion = 0.0;
+    var total_weight = 0.0;
+
+    for (var z = 0; z < 2; z++) {
+        for (var x = -1; x <= 1; x++) {
+            for (var y = -1; y <= 1; y++) {
+                let tan_offset = face.tan1 * f32(x) + face.tan2 * f32(y);
+                let depth_offset = face.normal * f32(z);
+                let neighbor = face_neighbor + vec3i(depth_offset) + vec3i(round(tan_offset));
+
+                let block_id = block_id_at(neighbor);
+                let is_solid = f32(block_id > 0u);
+
+                let wx = max(0.0, 1.0 - abs(face.uv.x - (f32(x) * 0.5 + 0.5)));
+                let wy = max(0.0, 1.0 - abs(face.uv.y - (f32(y) * 0.5 + 0.5)));
+                var weight = wx * wy * select(1.0, 0.0, z == 1);
+
+                total_occlusion += is_solid * weight;
+                total_weight += weight;
+            }
+        }
+    }
+
+    let occlusion_ratio = total_occlusion / max(total_weight, 0.001);
+    let ao = 1.0 - pow(occlusion_ratio, 0.9);// * 0.6;
+    return clamp(ao, 0.1, 1.0);
 }
 
 fn get_background_color(ray_dir: vec3f, sun_dir: vec3f) -> vec3<f32> {
@@ -89,65 +177,73 @@ fn get_background_color(ray_dir: vec3f, sun_dir: vec3f) -> vec3<f32> {
     return saturate(color);
 }
 
-fn march(ray: Ray) -> HitInfo {
+fn block_id_at(world_pos: vec3i) -> u32 {
+    let region_x = world_pos.x >> 5u;
+    let region_y = world_pos.y >> 5u;
+    let region_z = world_pos.z >> 5u;
+
+    if (region_x < -2 || region_x > 2 || 
+        region_y != 0 ||
+        region_z < -2 || region_z > 2) 
+    { 
+        return 0u; // air block
+    }
+
+    let r_x = region_x + 2;
+    let r_z = region_z + 2;
+
+    let region_idx = (r_x * 5) + r_z;
+    let region_start = u32(region_idx) * REGION_VOL;
+
+    let block_pos = vec3i(
+        world_pos.x & 31,
+        world_pos.y & 31,
+        world_pos.z & 31,
+    );
+
+    let voxel_index = u32(block_pos.x + (block_pos.y * REGION_SIZE) + (block_pos.z * REGION_SIZE * REGION_SIZE));
+    return voxels[region_start + voxel_index] & 0xFFu;
+}
+
+fn march(ray: Ray, config: RayMarchConfig) -> HitInfo {
     var dda = init_dda(ray);
 
     var hit_info: HitInfo;
     hit_info.did_hit = false;
-    hit_info.material.normal = vec3f(0.0);
-    hit_info.material.color = vec3f(0.0);
+    hit_info.t = 0.0;
 
-    var last_side_hit = 0; 
-    let CHUNK_SIZE = 32;
-    let CHUNK_VOL = u32(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE);
+    var last_side_hit = 0;
     var enter_t: f32 = 0.0;
 
     let cam_int = vec3i(floor(camera.position)); // integer part of camera position
 
-    for (var i = 0; i < 300; i++) {
+    for (var i = 0u; i < config.max_iter; i++) {
         let exit_t = min(dda.side_dist.x, min(dda.side_dist.y, dda.side_dist.z));
 
-        // map step pos to region space, then add 1 to get between 0 and 2, use to find index
-        // if region is step pos is (16, 20, -2), region is (0, 0, -1), which maps to index 3
+        if (enter_t > config.max_t) { break; }
+
         let world_pos = dda.step_pos + cam_int;
-        let region_x = world_pos.x >> 5u;
-        let region_y = world_pos.y >> 5u;
-        let region_z = world_pos.z >> 5u;
+        let block_id = block_id_at(world_pos);
 
-        if (region_x >= -2 && region_x <= 2 && 
-            region_y == 0 && 
-            // region_y >= -1 && region_y <= 1 &&
-            region_z >= -2 && region_z <= 2) 
-        {
-            let r_x = region_x + 2;
-            let r_z = region_z + 2;
+        if (block_id > 0u) {
+            hit_info.did_hit = true;
+            hit_info.hit_pos = ray.org + ray.dir * enter_t;
+            hit_info.world_pos = world_pos;
 
-            let region_idx = (r_x * 3) + r_z;
-            let region_start = u32(region_idx) * CHUNK_VOL;
+            hit_info.material.color = palette.colors[block_id].xyz;
 
-            let block_pos = vec3i(
-                world_pos.x & 31,
-                world_pos.y & 31,
-                world_pos.z & 31,
-            );
-
-            let voxel_index = u32(block_pos.x + (block_pos.y * CHUNK_SIZE) + (block_pos.z * CHUNK_SIZE * CHUNK_SIZE));
-            let block_id = voxels[region_start + voxel_index] & 0xFFu;
-
-            if (block_id > 0u) {
-                hit_info.did_hit = true;
-                hit_info.material.color = palette.colors[block_id].xyz;
-
-                if (last_side_hit == 0) { 
-                    hit_info.material.normal.x = -f32(dda.step_dir.x);
-                } else if (last_side_hit == 1) { 
-                    hit_info.material.normal.y = -f32(dda.step_dir.y); 
-                } else { 
-                    hit_info.material.normal.z = -f32(dda.step_dir.z); 
-                }
-
-                break;
+            var normal = vec3f(0.0);
+            if (last_side_hit == 0) { 
+                normal.x = -f32(dda.step_dir.x);
+            } else if (last_side_hit == 1) { 
+                normal.y = -f32(dda.step_dir.y); 
+            } else { 
+                normal.z = -f32(dda.step_dir.z); 
             }
+
+            hit_info.face = calc_face(hit_info.hit_pos, normal);
+
+            break;
         }
 
         // DDA Step
@@ -213,14 +309,17 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
         return;
     }
 
+    var config = RayMarchConfig(300, 150.0);
+
     let ray = init_ray(id, tex_size);
-    let hit_info = march(ray);
+    let hit_info = march(ray, config);
 
     let sun_dir = normalize(env.sun_dir.xyz);
 
     var color = vec3f(0.0);
     if (hit_info.did_hit)  {
-        color = calc_lighting(hit_info.material, sun_dir, -ray.dir);
+        // color = vec3f(hit_info.face.uv, 0.0);
+        color = calc_lighting(hit_info, sun_dir, -ray.dir);
     } else {
         color = get_background_color(ray.dir, sun_dir);
     }
