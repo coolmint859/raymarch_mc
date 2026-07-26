@@ -8,7 +8,7 @@ pub struct RegionLocUniform {
 
 pub struct VoxelWorld {
     env: Environment,
-    world_gen: WorldGenerator,
+    // world_gen: WorldGenerator,
     is_paused: bool,
     regions: Vec<Region>,
 }
@@ -31,7 +31,7 @@ impl VoxelWorld {
 
         Self {
             env: Environment::new(),
-            world_gen,
+            // world_gen,
             is_paused: false,
             regions
         }
