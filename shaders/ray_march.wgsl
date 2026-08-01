@@ -33,16 +33,11 @@ struct PaletteUniform {
     colors: array<vec4<f32>, 5>,
 }
 
-struct Region {
-    coord: vec4<i32>,
-}
-
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
 @group(0) @binding(1) var<uniform> env: EnvironmentUniform;
 @group(0) @binding(2) var<uniform> palette: PaletteUniform;
 @group(0) @binding(3) var<storage, read> voxels: array<u32>;
-@group(0) @binding(4) var<storage, read> regions: array<Region, 9>;
-@group(0) @binding(5) var output: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(4) var output: texture_storage_2d<rgba16float, write>;
 
 struct Material {
     color: vec3f,

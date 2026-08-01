@@ -1,11 +1,5 @@
 use crate::game::{Environment, EnvironmentUniform, REGION_VOLUME, Region, RegionLocation, WorldGenerator};
 
-#[repr(C)]
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct RegionLocUniform {
-    coords: [[i32; 3]; 9]
-}
-
 pub struct VoxelWorld {
     env: Environment,
     // world_gen: WorldGenerator,

@@ -1,5 +1,3 @@
-
-
 @group(0) @binding(0) var current: texture_2d<f32>;
 @group(0) @binding(1) var history: texture_2d<f32>;
 @group(0) @binding(2) var output: texture_storage_2d<rgba16float, write>;
