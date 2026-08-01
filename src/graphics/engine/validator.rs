@@ -1,9 +1,10 @@
 use std::{cell::RefCell, collections::HashSet};
 
-use crate::graphics::{BindGroupHandle, BindGroupId, BindingTarget, BufferId, GpuContext, PipelineId, TextureId};
+use crate::graphics::{BindGroupHandle, BindGroupId, BindingTarget, BufferId, GpuContext, LayoutId, PipelineId, TextureId};
 
 /// Validates the readiness of gpu resources. Stores resources it knows to be ready for fast retrieval
 pub struct PassValidator {
+    known_bg_layouts: RefCell<HashSet<LayoutId>>,
     known_bind_groups: RefCell<HashSet<BindGroupId>>,
     known_pipelines: RefCell<HashSet<PipelineId>>
 }
@@ -11,6 +12,7 @@ pub struct PassValidator {
 impl PassValidator {
     pub fn new() -> Self {
         Self {
+            known_bg_layouts: RefCell::new(HashSet::new()),
             known_bind_groups: RefCell::new(HashSet::new()),
             known_pipelines: RefCell::new(HashSet::new()),
         }
@@ -32,7 +34,7 @@ impl PassValidator {
         }
 
         for bg_id in invalid_bgs {
-            self.invalidate_bind_group(&bg_id, context);
+            self.invalidate_bind_group(&bg_id);
         }
     }
 
@@ -52,19 +54,18 @@ impl PassValidator {
         }
 
         for bg_id in &invalid_bgs {
-            self.invalidate_bind_group(bg_id, context);
+            self.invalidate_bind_group(bg_id);
         }
     }
 
-    /// Invalidate a bind group, indicating it was destroyed/removed. This also invalidates any pipelines that reference it.
-    pub fn invalidate_bind_group(&self, bg_id: &BindGroupId, context: &GpuContext) {
-        self.known_bind_groups.borrow_mut().remove(bg_id);
-
+    pub fn invalidate_layout(&self, bgl_id: &LayoutId, context: &GpuContext) {
+        self.known_bg_layouts.borrow_mut().remove(bgl_id);
+        
         let mut invalid_pipelines = HashSet::new();
         
         for (pip_id, pip_blueprint) in context.pip_registry.get_blueprints() {
             for other_bg_id in &pip_blueprint.bg_layouts {
-                if other_bg_id == bg_id {
+                if other_bg_id == bgl_id {
                     invalid_pipelines.insert(*pip_id);
                     continue;
                 }
@@ -74,6 +75,11 @@ impl PassValidator {
         for pip_id in invalid_pipelines {
             self.known_pipelines.borrow_mut().remove(&pip_id);
         }
+    }
+
+    /// Invalidate a bind group, indicating it was destroyed/removed.
+    pub fn invalidate_bind_group(&self, bg_id: &BindGroupId) {
+        self.known_bind_groups.borrow_mut().remove(bg_id);
     }
 
     /// Invalidate a pipeline, indicating it was destroyed/removed.
@@ -90,7 +96,7 @@ impl PassValidator {
         context: &'a GpuContext
     ) -> Option<BindGroupHandle> {
         if self.known_bind_groups.borrow_mut().contains(bg_id) {
-            return context.bg_registry.get_cloned(bg_id);
+            return context.bg_registry.get_cloned_bg(bg_id);
         }
 
         let bg_blueprint = context.bg_registry.get_blueprint(bg_id)?;
@@ -113,10 +119,10 @@ impl PassValidator {
         }
 
         self.known_bind_groups.borrow_mut().insert(*bg_id);
-        context.bg_registry.get_cloned(bg_id)
+        context.bg_registry.get_cloned_bg(bg_id)
     }
 
-    /// Validates a render pipeline given it's id by validating it's bind groups are ready.
+    /// Validates a render pipeline given it's id
     /// 
     /// Returns an option containing the handle to the render pipeline if ready, else None
     pub fn validate_render_pipeline<'a>(
@@ -128,20 +134,11 @@ impl PassValidator {
             return context.pip_registry.get_render_handle(pip_id);
         }
 
-        let pip_blueprint = context.pip_registry.get_blueprint(&pip_id)?;
-
-        for bg_id in &pip_blueprint.bg_layouts {
-            if self.validate_bind_group(bg_id, context).is_none() {
-                // println!("[GpuValidator] Validation failed for render pipeline @{:?}: Missing Bind Group @{:?}", pip_id, bg_id);
-                return None;
-            }
-        }
-
         self.known_pipelines.borrow_mut().insert(*pip_id);
         context.pip_registry.get_render_handle(pip_id)
     }
 
-    /// Validates a compute pipeline given it's id by validating it's bind groups are ready.
+    /// Validates a compute pipeline given it's id.
     /// 
     /// Returns an option containing the handle to the compute pipeline if ready, else None
     pub fn validate_compute_pipeline<'a>(
@@ -151,15 +148,6 @@ impl PassValidator {
     ) -> Option<wgpu::ComputePipeline> {
         if self.known_pipelines.borrow_mut().contains(pip_id) {
             return context.pip_registry.get_compute_handle(pip_id);
-        }
-
-        let pip_blueprint = context.pip_registry.get_blueprint(&pip_id)?;
-
-        for bg_id in &pip_blueprint.bg_layouts {
-            if self.validate_bind_group(bg_id, context).is_none() {
-                // println!("[GpuValidator] Validation failed for compute pipeline @{:?}: Missing Bind Group @{:?}", pip_id, bg_id);
-                return None; 
-            }
         }
 
         self.known_pipelines.borrow_mut().insert(*pip_id);

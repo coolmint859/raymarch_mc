@@ -9,15 +9,16 @@ const AIR_VOXEL: i32 = 0; // indicates that a voxel is an air block.
 const MACRO_SCALE: f32 = f32(REGION_SIZE);
 const MICRO_SCALE: f32 = 1.0;
 
-const LOCAL_AXIS = array<vec3f, 3>(
-    vec3f(1.0, 0.0, 0.0), // x-axis
-    vec3f(0.0, 1.0, 0.0), // y-axis
-    vec3f(0.0, 0.0, 1.0), // z-axis
+const LOCAL_AXIS = array<vec3i, 3>(
+    vec3i(1, 0, 0), // x-axis
+    vec3i(0, 1, 0), // y-axis
+    vec3i(0, 0, 1), // z-axis
 );
 
 struct CameraUniform {
     inv_view_proj: mat4x4f,
     position: vec3f,
+    frame: f32
 }
 
 struct EnvironmentUniform {
@@ -49,15 +50,15 @@ struct Material {
 
 struct VoxelFace {
     uv: vec2f,
-    normal: vec3f,
-    tan1: vec3f,
-    tan2: vec3f,
+    normal: vec3i,
+    tan1: vec3i,
+    tan2: vec3i,
 }
 
 struct HitInfo {
     did_hit: bool,
     hit_pos: vec3f,
-    world_pos: vec3i,
+    voxel_pos: vec3i,
     face: VoxelFace,
     t: f32,
     steps: u32,
@@ -98,85 +99,122 @@ fn create_ray(org: vec3f, dir: vec3f) -> Ray {
     return ray;
 }
 
+/// Generates a pseudo-random point based on the current pixel and frame number
+fn random_point(pixel_id: vec2f) -> vec2f {
+    let phi = 1.61803398875;
+    let n = pixel_id.x * 12.9898 + pixel_id.y * 78.233 + camera.frame * 437.585;
+    let angle = fract(n * phi) * 6.2831853;
+    let radius = sqrt(fract(n * 0.754877));
+    return vec2f(angle, radius);
+}
+
+/// Perturbs the origin of a ray within a spread radius, converging the direction towards a focal plane.
+fn gen_perturbed_ray(seed: vec2f, base_pos: vec3f, base_dir: vec3f, spread: f32, focal_dist: f32) -> Ray {
+    let arb_vec = select(vec3f(0.0, 1.0, 0.0), vec3f(1.0, 0.0, 0.0), abs(base_dir.y) > 0.99);
+    let right = normalize(cross(arb_vec, base_dir));
+    let up = cross(base_dir, right);
+
+    let jitter = random_point(seed);
+    let angle = jitter.x * 6.2831853;
+    let radius = sqrt(jitter.y) * spread;
+    let offset = (right * cos(angle) + up * sin(angle)) * radius;
+
+    let focal_point = base_pos + base_dir * focal_dist;
+    let ray_org = base_pos + offset;
+    let ray_dir = normalize(focal_point - ray_org);
+
+    return create_ray(ray_org, ray_dir);
+}
+
 struct RayMarchConfig {
     max_iter: u32,
     max_t: f32,
+    is_shadow: bool,
 }
 
 /// calculates voxel face properties based on the face normal and ray hit position
-fn calc_face(hit_pos: vec3f, normal: vec3f) -> VoxelFace {
+fn calc_face(hit_pos: vec3f, normal: vec3i) -> VoxelFace {
     var face: VoxelFace;
     face.normal = normal;
 
     let local_pos = fract(hit_pos);
-    if (abs(normal.y) > 0.5) {
+    if (abs(f32(normal.y)) > 0.5) {
         face.uv = local_pos.xz;
-        face.tan1 = vec3f(1.0, 0.0, 0.0);
-        face.tan2 = vec3f(0.0, 0.0, 1.0);
-    } else if (abs(normal.x) > 0.5) { 
+        face.tan1 = LOCAL_AXIS[0];
+        face.tan2 = LOCAL_AXIS[2];
+    } else if (abs(f32(normal.x)) > 0.5) { 
         face.uv = local_pos.yz;
-        face.tan1 = vec3f(0.0, 1.0, 0.0);
-        face.tan2 = vec3f(0.0, 0.0, 1.0);
+        face.tan1 = LOCAL_AXIS[1];
+        face.tan2 = LOCAL_AXIS[2];
     } else { 
         face.uv = local_pos.xy;
-        face.tan1 = vec3f(1.0, 0.0, 0.0);
-        face.tan2 = vec3f(0.0, 1.0, 0.0);
+        face.tan1 = LOCAL_AXIS[0];
+        face.tan2 = LOCAL_AXIS[1];
     }
 
     return face;
 }
 
-/// calculates lighting via the blinn-phong lighting model
+/// calculates lighting with the blinn-phong lighting model as the base
 fn calc_lighting(hit_info: HitInfo, sun_dir: vec3f, view_dir: vec3f) -> vec3f {
-    let ao = calc_ao_volumetric(hit_info.face, hit_info.world_pos);
-    let normal = hit_info.face.normal;
-    
+    // shadow
+    let normal = vec3f(hit_info.face.normal);
+    let shadow = calc_shadow(hit_info.hit_pos, normal, sun_dir);
+
+    // ambient term
+    let ao = calc_ao(hit_info.face, hit_info.voxel_pos);
     let amb_strength = clamp(sun_dir.y * 0.5 + 0.5, 0.05, 1.0);
     let ambient = (env.sky_zenith.xyz * amb_strength + 0.1) * ao;
 
-    let shadow = calc_shadow(hit_info.hit_pos, normal, sun_dir);
-
+    // diffuse term
     let diff_strength = max(dot(normal, sun_dir), 0.0);
-    let diffuse = env.sun_color.xyz * diff_strength * shadow;
+    let diffuse = env.sun_color.xyz * diff_strength * shadow * ao;
 
+    // specular term
     let half = normalize(sun_dir + view_dir);
-    let spec_strength = pow(max(dot(normal, half), 0.0), 256.0);
+    let spec_strength = pow(max(dot(normal, half), 0.0), 1024.0);
     let specular = env.sun_color.xyz * spec_strength * shadow;
 
     return (ambient + diffuse + specular) * hit_info.material.color;
 }
 
-/// calculates a sharp shadow by tracing a secondary ray from the primary ray to a light direction
+/// calculates a semi-soft shadow by tracing a set of shadow rays by perturbing their origin
 fn calc_shadow(start_pos: vec3f, normal: vec3f, light_dir: vec3f) -> f32 {
-    let ray_org = start_pos + normal * 0.001;
-    let shadow_ray = create_ray(ray_org, light_dir);
+    let config = RayMarchConfig(30, 20.0, true);
 
-    var config = RayMarchConfig(50, 50.0);
-    let shadow_hit = dda_march(shadow_ray, config);
+    let shadow_radius = 0.0001;
+    let light_dist = 0.01;
+    let samples = 3.0;
 
-    return select(1.0, 0.0, shadow_hit.did_hit);
+    var in_shadow = 0.0;
+    let ray_org = start_pos + normal * shadow_radius;
+    for (var i = 0u; i < u32(samples); i++) {
+        let jitter = vec2f(f32(i) * 45.12, f32(i) * 89.43);
+        let seed = ray_org.xy + ray_org.zz + jitter;
+
+        let sample_ray = gen_perturbed_ray(seed, ray_org, light_dir, shadow_radius, light_dist);
+        let shadow_hit = dda_march(sample_ray, config);
+
+        in_shadow += select(1.0, 0.0, shadow_hit.did_hit);
+    }
+
+    return in_shadow / samples;
 }
 
 /// calculates ambient occlusion by sampling the 3x3x2 grid of voxels around the occluded voxel.
-fn calc_ao_volumetric(face: VoxelFace, world_pos: vec3i) -> f32 {
-    let face_neighbor = world_pos + vec3i(face.normal);
+fn calc_ao(face: VoxelFace, voxel_pos: vec3i) -> f32 {
+    let face_neighbor = voxel_pos + vec3i(face.normal);
     var total_occlusion = 0.0;
     var total_weight = 0.0;
-
-    let i_tan1 = vec3i(round(face.tan1));
-    let i_tan2 = vec3i(round(face.tan2));
-    let i_norm = vec3i(round(face.normal));
-
-    const MAX_Z = 2;
 
     for (var z = 0; z < 2; z++) {
         for (var x = -1; x <= 1; x++) {
             let depth_weight = select(1.0, 0.35, z == 1);
-            let depth_offset = i_norm * z;
+            let depth_offset = face.normal * z;
 
             for (var y = -1; y <= 1; y++) {
-                let neighbor = face_neighbor + depth_offset + (i_tan1 * x) + (i_tan2 * y);
-                let block_id = query_grid(neighbor);
+                let neighbor = face_neighbor + depth_offset + (face.tan1 * x) + (face.tan2 * y);
+                let block_id = get_block_at(neighbor);
                 let is_solid = f32(block_id > AIR_VOXEL);
                 
                 let neighbor_uv = vec2f(f32(x) + 0.5, f32(y) + 0.5);
@@ -198,18 +236,23 @@ fn calc_ao_volumetric(face: VoxelFace, world_pos: vec3i) -> f32 {
 /// calculates a background color given environmental variables
 fn get_background_color(ray_dir: vec3f, sun_dir: vec3f) -> vec3<f32> {
     let y = ray_dir.y;
-    var color: vec3f;
+    // var color: vec3f;
 
-    if (y >= 0.0) {
-        let sky_blend = pow(y, 0.5); 
-        color = mix(env.sky_horizon.xyz, env.sky_zenith.xyz, sqrt(y));
+    let horizon_blend = smoothstep(-0.1, 0.00, y);
+
+    var base_color: vec3f;
+    if (y < -0.05) {
+        let ground_blend = smoothstep(-0.5, 0.0, y);
+        base_color = mix(env.ground_color.xyz, env.sky_horizon.xyz, ground_blend);
     } else {
-        let horizon_glow = smoothstep(-0.05, 0.0, y);
-        color = mix(env.ground_color.xyz, env.sky_horizon.xyz, horizon_glow * 0.4);
+        let sky_blend = smoothstep(0.0, 0.2, y);
+        base_color = mix(env.sky_horizon.xyz, env.sky_zenith.xyz, sky_blend);
     }
 
+    var color = mix(env.ground_color.xyz * 0.5, base_color, horizon_blend);
+
     let align = max(dot(ray_dir, sun_dir), 0.0);
-    let mask = smoothstep(-0.2, 0.0, y);
+    let mask = smoothstep(-0.1, 0.1, y);
     let corona = pow(align, 16.0) * 0.2;
     let disk = pow(align, 2000.0) * 2.0;
 
@@ -219,12 +262,12 @@ fn get_background_color(ray_dir: vec3f, sun_dir: vec3f) -> vec3<f32> {
     return saturate(color);
 }
 
-/// Determines the block id of a voxel at the given world position
-fn query_grid(world_pos: vec3i) -> i32 {
+/// Determines the block of a voxel at the given world position
+fn get_block_at(voxel_pos: vec3i) -> i32 {
     let region = vec3i(
-        world_pos.x >> 5u,
-        world_pos.y >> 5u,
-        world_pos.z >> 5u,
+        voxel_pos.x >> 5u,
+        voxel_pos.y >> 5u,
+        voxel_pos.z >> 5u,
     );
 
     /// voxels live in a 5x5 band of regions for now
@@ -242,9 +285,9 @@ fn query_grid(world_pos: vec3i) -> i32 {
     let region_start = u32(region_idx) * REGION_VOL;
 
     let block_pos = vec3i(
-        world_pos.x & 31,
-        world_pos.y & 31,
-        world_pos.z & 31,
+        voxel_pos.x & 31,
+        voxel_pos.y & 31,
+        voxel_pos.z & 31,
     );
 
     let voxel_index = u32(block_pos.x + (block_pos.y * REGION_SIZE) + (block_pos.z * REGION_SIZE * REGION_SIZE));
@@ -255,6 +298,10 @@ fn query_grid(world_pos: vec3i) -> i32 {
 fn dda_march(ray: Ray, config: RayMarchConfig) -> HitInfo {
     let cam_int = vec3i(floor(camera.position)); // integer part of camera position
     var dda = init_dda(ray);
+    
+    let pos_ray_sign = max(ray.sign, vec3i(0));
+    let rgn_size_f = f32(REGION_SIZE);
+    let rgn_offset = vec3f(pos_ray_sign) * rgn_size_f;
 
     var hit_info: HitInfo;
     hit_info.did_hit = false;
@@ -263,54 +310,31 @@ fn dda_march(ray: Ray, config: RayMarchConfig) -> HitInfo {
     var t = 0.0;
 
     for (var step = 0u; step < config.max_iter; step++) {
-        let world_pos = dda.step_pos + cam_int;
-        let block_id = query_grid(world_pos);
-
-        /// break out of loop if max t is reached
-        if ( t > config.max_t) { break; }
-
-        /// skip whole region if entirely empty
-        if (block_id == AIR_REGION) {
-            let region_base = floor(vec3f(world_pos) / f32(REGION_SIZE)) * f32(REGION_SIZE);
-            let boundary = region_base + vec3f(max(ray.sign, vec3i(0))) * f32(REGION_SIZE);
-            
-            let local_exit = boundary - vec3f(cam_int);
-            let t_boundary = (local_exit - ray.org) * ray.inv_dir;
-            
-            let t_next = min(t_boundary.x, min(t_boundary.y, t_boundary.z));
-
-            let diff = abs(vec3f(t_next) - t_boundary);
-            let match_x = diff.x < 0.0001;
-            let match_y = diff.y < 0.0001;
-            last_side_hit = select(select(2u, 1u, match_y), 0u, match_x);
-            
-            t = t_next + 0.001;
-            
-            let current_pos = ray.org + ray.dir * t;
-            dda.step_pos = vec3i(floor(current_pos));
-            
-            let voxel_boundary = vec3f(dda.step_pos + max(ray.sign, vec3i(0)));
-            dda.side_dist = (voxel_boundary - ray.org) * ray.inv_dir;
-
-            hit_info.t = t;
-            hit_info.steps = step;
-            
-            continue;
+        if ( t > config.max_t) {
+            hit_info.t = config.max_t;
+            break; 
         }
 
-        /// voxel is solid, register a hit detection
+        let voxel_pos = dda.step_pos + cam_int;
+        let block_id = get_block_at(voxel_pos);
+
+        // voxel is solid, register a hit detection
         if (block_id > AIR_VOXEL) {
             hit_info.did_hit = true;
+            
+            if (config.is_shadow) { break; }
+
             hit_info.hit_pos = ray.org + ray.dir * t;
-            hit_info.world_pos = world_pos;
+            hit_info.voxel_pos = voxel_pos;
 
             hit_info.material.color = palette.colors[u32(block_id)].xyz;
-            let normal = -LOCAL_AXIS[last_side_hit] * vec3f(ray.sign);
+            let normal = -LOCAL_AXIS[last_side_hit] * ray.sign;
             hit_info.face = calc_face(hit_info.hit_pos, normal);
 
             break;
         }
 
+        // calculate standard dda step
         let mask = step(dda.side_dist, dda.side_dist.yzx) * step(dda.side_dist, dda.side_dist.zxy);
 
         t = dot(mask, dda.side_dist);
@@ -318,6 +342,26 @@ fn dda_march(ray: Ray, config: RayMarchConfig) -> HitInfo {
         dda.step_pos += vec3i(mask) * ray.sign;
 
         last_side_hit = u32(mask.y) | (u32(mask.z) << 1u);
+
+        // skip whole region if entirely empty (calculates region step)
+        if (block_id == AIR_REGION) {
+            let region_base = floor(vec3f(voxel_pos) / rgn_size_f) * rgn_size_f;
+            let boundary = region_base + rgn_offset;
+            
+            let t_boundary = (boundary - vec3f(cam_int) - ray.org) * ray.inv_dir;
+            let t_next = min(t_boundary.x, min(t_boundary.y, t_boundary.z));
+
+            let side_match = abs(vec3f(t_next) - t_boundary) < vec3f(0.0001);
+            last_side_hit = select(select(2u, 1u, side_match.y), 0u, side_match.x);
+            
+            t = t_next + 0.001;
+            
+            let current_pos = ray.org + ray.dir * t;
+            dda.step_pos = vec3i(floor(current_pos));
+            
+            let voxel_boundary = vec3f(dda.step_pos + pos_ray_sign);
+            dda.side_dist = (voxel_boundary - ray.org) * ray.inv_dir;
+        }
 
         hit_info.steps = step;
         hit_info.t = t;
@@ -331,16 +375,20 @@ fn init_ray(id: vec3<u32>, size: vec2<u32>) -> Ray {
     let pix_center = vec2f(id.xy) + vec2f(0.5);
     let uv = ((pix_center / vec2f(size) * 2.0) - 1.0) * vec2f(1.0, -1.0);
 
-    let near = camera.inv_view_proj * vec4f(uv.x, uv.y, 0.0, 1.0);
-    let near_pos = near.xyz / near.w;
+    let clip = vec4f(uv.x, uv.y, 1.0, 1.0);
+    let unproj = camera.inv_view_proj * clip;
+    let world_target = unproj.xyz / unproj.w;
 
-    let far = camera.inv_view_proj * vec4f(uv.x, uv.y, 1.0, 1.0);
-    let far_pos = far.xyz / far.w;
+    let base_org = fract(camera.position);
+    let base_dir = normalize(world_target - camera.position);
 
-    return create_ray(
-        fract(camera.position),         // ray origin
-        normalize(far_pos - near_pos)   // ray direction
-    );
+    let focal_dist = 20.0;
+    let aperture =  0.03;
+    return gen_perturbed_ray(pix_center, base_org, base_dir, aperture, focal_dist);
+}
+
+fn get_density() -> f32 {
+    return 0.003;
 }
 
 @compute @workgroup_size(16, 16, 1)
@@ -351,23 +399,22 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
         return;
     }
 
-    let max_dist = 150.0;
-    var config = RayMarchConfig(300, max_dist);
+    let max_dist = 300.0;
+    let max_steps = 300u;
+    var config = RayMarchConfig(max_steps, max_dist, false);
 
     let ray = init_ray(id, tex_size);
     let hit_info = dda_march(ray, config);
+    
+    let depth = clamp(hit_info.t / max_dist, 0.0, 1.0);
+    // let color = vec3f(depth);
 
-    // /// Step heatmap
-    // let ratio = clamp(f32(hit_info.steps) / 300.0, 0.0, 1.0);
+    // // Step heatmap
+    // let ratio = f32(hit_info.steps) / f32(max_steps);
     // let color = mix(vec3f(0.0, 0.2, 1.0), vec3f(1.0, 0.1, 0.0), ratio);
-
-    // /// depth map
-    // let depth = clamp(hit_info.t / max_dist, 0.0, 1.0);
-    // let color = vec3f(depth, depth, depth);
 
     /// regular rendering
     let sun_dir = normalize(env.sun_dir.xyz);
-
     var color = vec3f(0.0);
     if (hit_info.did_hit)  {
         // color = vec3f(hit_info.face.uv, 0.0);
@@ -376,6 +423,13 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
         color = get_background_color(ray.dir, sun_dir);
     }
 
-    let out_color = vec4f(color, 1.0);
+    var fog_factor = 1.0 - exp(-hit_info.t * get_density());
+    let hit_height = (camera.position + ray.dir * hit_info.t).y;
+    let height_falloff = saturate(1.0 - abs(ray.dir.y) * 4.0);
+
+    fog_factor = saturate(fog_factor * height_falloff);
+    color = mix(color, env.sky_horizon.xyz, fog_factor);
+
+    let out_color = vec4(color, depth);
     textureStore(output, id.xy, out_color);
 }

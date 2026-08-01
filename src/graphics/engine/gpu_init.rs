@@ -40,6 +40,7 @@ impl From<wgpu::RequestDeviceError> for GraphicsInitError {
 pub struct Graphics {
     pub gpu: GpuContext,
     pub canvas: Canvas,
+    pub frame: u32,
 }
 
 impl Graphics {
@@ -155,6 +156,6 @@ impl GraphicsInit {
 
         let gpu = GpuContext::new(gpu);
 
-        Ok(Graphics { gpu, canvas })
+        Ok(Graphics { gpu, canvas, frame: 0u32 })
     }
 }

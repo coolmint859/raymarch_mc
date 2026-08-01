@@ -7,6 +7,7 @@ use crate::{utils::Transform};
 pub struct CameraUniform {
     inv_view_proj: [[f32; 4]; 4],
     camera_postion: [f32; 3],
+    frame: f32,
 }
 
 /// A camera that embodies perspective projection
@@ -41,10 +42,11 @@ impl PerspectiveCamera {
     }
 
     /// get this camera in it's uniform representation
-    pub fn to_uniform(&self) -> CameraUniform {
+    pub fn to_uniform(&self, frame: u32) -> CameraUniform {
         CameraUniform {
             inv_view_proj: self.view_proj.inverse().to_cols_array_2d(),
-            camera_postion: self.transform.get_position().to_array()
+            camera_postion: self.transform.get_position().to_array(),
+            frame: frame as f32,
         }
     }
 

@@ -1,18 +1,52 @@
 use std::ops::Deref;
 
-use crate::graphics::{BindGroupId, BufferId, ComputePassInfo, GpuContext, GpuHandle, PassInfo, PassValidator, PipelineId, RenderPassInfo, TextureId};
+use wgpu::{CommandEncoder, Origin3d, TexelCopyTextureInfo};
+
+use crate::graphics::{BindGroupId, BufferId, ComputePassInfo, GpuCommand, GpuContext, LayoutId, PassValidator, PipelineId, RenderPassInfo, TextureId};
 
 /// Executes render and compute pipelines
-pub(crate) struct PassExecutor {
-    gpu: GpuHandle,
+pub(crate) struct GpuExecutor {
     validator: PassValidator,
 }
 
-impl PassExecutor {
-    pub fn new(gpu: GpuHandle) -> Self {
+impl GpuExecutor {
+    pub fn new() -> Self {
         Self {
-            gpu,
             validator: PassValidator::new()
+        }
+    }
+
+    /// Copy a texture into another
+    pub fn copy_textures<'a>(context: &'a GpuContext, src_id: &TextureId, dst_id: &TextureId) {
+        let mut encoder = context.gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        GpuExecutor::copy_textures_from_encoder(context, &mut encoder, src_id, dst_id);
+        context.gpu.queue.submit(std::iter::once(encoder.finish()));
+    }
+
+    /// Copy a texture into another with the provided encoder
+    pub fn copy_textures_from_encoder<'a>(context: &'a GpuContext, encoder: &mut CommandEncoder, src_id: &TextureId, dst_id: &TextureId) {
+        let src_tex_opt = context.textures.get(src_id);
+        let dst_tex_opt = context.textures.get(dst_id);
+
+        if let (Some(src_tex), Some(dst_tex)) = (src_tex_opt, dst_tex_opt) {
+            println!("src format: {:?}, dst format: {:?}", src_tex.texture.format(), dst_tex.texture.format());
+            println!("src extent: {:?}, dst extent: {:?}", src_tex.extent, dst_tex.extent);
+
+            encoder.copy_texture_to_texture(
+                TexelCopyTextureInfo {
+                    texture: &src_tex.texture,
+                    mip_level: 0,
+                    origin: Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                }, 
+                TexelCopyTextureInfo {
+                    texture: &dst_tex.texture,
+                    mip_level: 0,
+                    origin: Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                }, 
+                src_tex.extent
+            );
         }
     }
 
@@ -25,10 +59,15 @@ impl PassExecutor {
     pub fn invalidate_texture<'a>(&self, tex_id: &TextureId, context: &'a GpuContext) {
         self.validator.invalidate_texture(tex_id, context);
     }
+    
+    /// invalidate a bind group layout, indicating that it was lost/destroyed.
+    pub fn invalidate_layout<'a>(&self, bgl_id: &LayoutId, context: &'a GpuContext) {
+        self.validator.invalidate_layout(bgl_id, context);
+    }
 
     /// invalidate a bind group, indicating that it was lost/destroyed.
-    pub fn invalidate_bind_group<'a>(&self, bg_id: &BindGroupId, context: &'a GpuContext) {
-        self.validator.invalidate_bind_group(bg_id, context);
+    pub fn invalidate_bind_group(&self, bg_id: &BindGroupId) {
+        self.validator.invalidate_bind_group(bg_id);
     }
 
     /// invalidate a pipeline, indicating that it was lost/destroyed.
@@ -37,17 +76,18 @@ impl PassExecutor {
     }
 
     /// Execute the render/compute passes on the provided output view
-    pub fn execute<'a>(&self, context: &'a GpuContext, passes: Vec<PassInfo>, output_view: wgpu::TextureView) {
-        let mut encoder = self.gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    pub fn execute<'a>(&self, context: &'a GpuContext, commands: Vec<GpuCommand>, output_view: wgpu::TextureView) {
+        let mut encoder = context.gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         
-        for pass in passes {
-            match pass {
-                PassInfo::Render(pass) => self.execute_render_pass(context, &mut encoder, pass, &output_view),
-                PassInfo::Compute(pass) => self.execute_compute_pass(context, &mut encoder, pass),
+        for cmd in commands {
+            match cmd {
+                GpuCommand::RenderPass(pass) => self.execute_render_pass(context, &mut encoder, pass, &output_view),
+                GpuCommand::ComputePass(pass) => self.execute_compute_pass(context, &mut encoder, pass),
+                GpuCommand::CopyTexture { src, dst } => GpuExecutor::copy_textures_from_encoder(context, &mut encoder, &src, &dst),
             }
         }
 
-        self.gpu.queue.submit(std::iter::once(encoder.finish()));
+        context.gpu.queue.submit(std::iter::once(encoder.finish()));
     }
 
     /// Execute a render pass on the provided encoder

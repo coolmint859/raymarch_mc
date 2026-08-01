@@ -34,6 +34,7 @@ struct App {
 
     previous_time: Instant,
     elapsed_time: f32,
+    frame_mod: u32, // used to prevent precision loss
 }
 
 impl App {
@@ -43,6 +44,7 @@ impl App {
             active_screen: None,
             previous_time: Instant::now(),
             elapsed_time: 0.0,
+            frame_mod: 20,
         }
     }
     
@@ -73,6 +75,7 @@ impl App {
             }
         }
 
+        graphics.frame = (graphics.frame + 1) % self.frame_mod;
         graphics.request_redraw();
     }
 }

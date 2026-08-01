@@ -19,12 +19,14 @@ fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     let pixel_coords = vec2<i32>(in.clip_position.xy);
-    let raw_color = textureLoad(input, pixel_coords, 0).rgb;
+    let raw_texture = textureLoad(input, pixel_coords, 0);
+    
+    // return vec4f(raw_texture.rgb, 1.0);
 
-    // // dithering to reduce color banding
-    // let noise = fract(sin(dot(in.clip_position.xy, vec2f(12.9898, 78.233))) * 43758.5453);
-    // let dither = (noise - 0.5) / 255.0;
-    // let out_color = vec3f(dither) + raw_color;
+    // dithering to reduce center_color banding
+    let noise = fract(sin(dot(in.clip_position.xy, vec2f(12.9898, 78.233))) * 43758.5453);
+    let dither = (noise - 0.5) / 255.0;
+    let out_color = vec3f(dither) + raw_texture.rgb;
 
-    return vec4f(raw_color, 1.0);
+    return vec4f(out_color, 1.0);
 }

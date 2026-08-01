@@ -6,35 +6,66 @@ use crate::graphics::*;
 pub struct BindGroupRegistry {
     gpu: GpuHandle,
     /// The handles to bind groups
-    handles: ResourceHandler<BindGroupId, BindGroupHandle>,
+    bg_handles: ResourceHandler<BindGroupId, BindGroupHandle>,
+    /// The handles to bind group layouts
+    layout_handles: ResourceHandler<LayoutId, BindGroupLayoutHandle>,
     /// maps bind groups to their blueprints
     blueprints: HashMap<BindGroupId, BindGroup>,
     /// map of ids of bind group that have yet to pass request validation
-    deffered: HashMap<BindGroupId, BindGroup>,
+    deffered: HashMap<BindGroupId, (LayoutId, BindGroup)>,
 }
 
 impl BindGroupRegistry {
     pub fn new(gpu: GpuHandle) -> Self {
         Self {
             gpu,
-            handles: ResourceHandler::new(),
+            bg_handles: ResourceHandler::new(),
+            layout_handles: ResourceHandler::new(),
             blueprints: HashMap::new(),
             deffered: HashMap::new(),
         }
     }
 
-    /// Request a new bind group
-    pub fn request<'a>(
+    /// Request a new bind group layout
+    pub fn request_layout(
         &mut self,
-        id: &BindGroupId,
+        id: &LayoutId,
+        builder: &BindGroup
+    ) {
+        if self.layout_handles.contains(id) { return; };
+
+        let gpu = self.gpu.clone();
+        let builder = builder.clone();
+
+        let layout_task = Task::non_blocking(async move {
+            gpu.create_bg_layout(builder)
+        });
+
+        self.layout_handles.request_new(id, layout_task);
+    }
+
+    /// Request a new bind group
+    pub fn request_bg<'a>(
+        &mut self,
+        bg_id: &BindGroupId,
+        layout_id: &LayoutId,
         builder: &BindGroup,
         buffers: &'a ResourceHandler<BufferId, BufferHandle>,
         textures: &'a ResourceHandler<TextureId, TextureHandle>,
     ) {
-        if self.handles.contains(id) { return; }
+        if self.bg_handles.contains(bg_id) { return; }
 
-        if !self.blueprints.contains_key(id) {
-            self.blueprints.insert(*id, builder.clone());
+        let layout = match self.layout_handles.get(layout_id) {
+            Some(bg_layout) => bg_layout.clone(),
+            None => {
+                self.deffered.insert(*bg_id, (*layout_id, builder.clone()));
+                self.request_layout(layout_id, builder);
+                return; 
+            }
+        };
+
+        if !self.blueprints.contains_key(bg_id) {
+            self.blueprints.insert(*bg_id, builder.clone());
         }
 
         let mut buffer_handles = Vec::new();
@@ -62,12 +93,12 @@ impl BindGroupRegistry {
         let ok_buffers = expected_buf_len == buffer_handles.len();
         let ok_textures = expected_tex_len == texture_handles.len();
 
-        if !(ok_buffers && ok_textures) { 
-            self.deffered.insert(*id, builder.clone());
+        if !(ok_buffers && ok_textures) {
+            self.deffered.insert(*bg_id, (*layout_id, builder.clone()));
             return; 
         };
 
-        self.deffered.remove(id);
+        self.deffered.remove(bg_id);
 
         let gpu = self.gpu.clone();
         let builder = builder.clone();
@@ -88,10 +119,10 @@ impl BindGroupRegistry {
                 });
             }
 
-            gpu.create_bind_group(builder, entries).await
+            gpu.create_bind_group(builder, entries, layout)
         });
 
-        self.handles.request_new(id, bind_group_task);
+        self.bg_handles.request_new(bg_id, bind_group_task);
     }
 
     /// sync the registry and process defferred groups
@@ -100,24 +131,31 @@ impl BindGroupRegistry {
         buffers: &'a ResourceHandler<BufferId, BufferHandle>,
         textures: &'a ResourceHandler<TextureId, TextureHandle>,
     ) {
-        self.handles.sync();
+        self.layout_handles.sync();
+        self.bg_handles.sync();
 
+        // println!("pending bind groups: {}", self.deffered.len());
         let pending_bgs = std::mem::take(&mut self.deffered);
-        for (id, builder) in &pending_bgs {
-            self.request(id, builder, buffers, textures);
+        for (bg_id, (bgl_id, builder)) in &pending_bgs {
+            self.request_bg(bg_id, &bgl_id, builder, buffers, textures);
         }
     }
 
     /// remove a bind group from the registry
     pub fn remove(&mut self, id: &BindGroupId) {
-        self.handles.remove(id);
+        self.bg_handles.remove(id);
         self.blueprints.remove(id);
         self.deffered.remove(id);
     }
 
     /// returns a clone of the handle to a stored bind group
-    pub fn get_cloned(&self, id: &BindGroupId) -> Option<BindGroupHandle> {
-        return self.handles.get(id).cloned()
+    pub fn get_cloned_bg(&self, id: &BindGroupId) -> Option<BindGroupHandle> {
+        return self.bg_handles.get(id).cloned()
+    }
+
+    /// returns a clone of the handle to a stored bind group layout
+    pub fn get_cloned_layout(&self, id: &LayoutId) -> Option<BindGroupLayoutHandle> {
+        return self.layout_handles.get(id).cloned()
     }
 
     pub fn get_blueprints(&self) -> &HashMap<BindGroupId, BindGroup> {
@@ -162,10 +200,13 @@ impl PipelineRegistry {
 
         let mut bg_layouts = Vec::new();
         for bg_id in &builder.bg_layouts {
-            if let Some(bind_group) = bind_groups.get_cloned(bg_id) {
-                bg_layouts.push(bind_group.layout.clone())
+            if let Some(mut layout) = bind_groups.get_cloned_layout(bg_id) {
+                layout.ref_count += 1;
+                bg_layouts.push((*layout).clone())
             }
         }
+        
+        // println!("expected layouts: {}, ready layouts: {}", builder.bg_layouts.len(), bg_layouts.len());
 
         if builder.bg_layouts.len() != bg_layouts.len() {
             self.deferred.insert(*id, builder.clone());
@@ -179,14 +220,14 @@ impl PipelineRegistry {
         match builder.pip_type {
             PipelineType::Render(ty) => {
                 let r_pip_task = Task::non_blocking(async move {
-                    gpu.create_render_pipeline(pip_builder, ty, bg_layouts).await
+                    gpu.create_render_pipeline(pip_builder, ty, bg_layouts)
                 });
 
                 self.handles.request_new(id, r_pip_task);
             },
             PipelineType::Compute(ty) => {
                 let c_pip_task = Task::non_blocking(async move {
-                    gpu.create_compute_pipeline(pip_builder, ty, bg_layouts).await
+                    gpu.create_compute_pipeline(pip_builder, ty, bg_layouts)
                 });
 
                 self.handles.request_new(id, c_pip_task);

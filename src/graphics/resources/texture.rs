@@ -1,6 +1,7 @@
 use std::ops::Deref;
 
 use image::GenericImageView;
+use wgpu::Extent3d;
 
 use crate::graphics::{Bindable, BindingTarget, TextureId};
 
@@ -103,6 +104,7 @@ impl Bindable for TextureBinding {
 pub struct TextureHandle {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
+    pub extent: Extent3d,
 }
 
 impl Deref for TextureHandle {
@@ -138,7 +140,7 @@ pub struct Texture {
     pub format: wgpu::TextureFormat,
     pub usage: wgpu::TextureUsages,
 
-    dimensions: Option<TextureInfo>
+    info: Option<TextureInfo>
 }
 
 impl Texture {
@@ -147,7 +149,7 @@ impl Texture {
             label: "texture".to_string(),
             texture_type: ty,
             format: wgpu::TextureFormat::Rgba8Unorm,
-            dimensions: None,
+            info: None,
             usage: wgpu::TextureUsages::TEXTURE_BINDING
         }
     }
@@ -165,7 +167,7 @@ impl Texture {
     }
 
     pub fn with_size_2d(mut self, width: u32, height: u32) -> Self {
-        self.dimensions = Some(TextureInfo {
+        self.info = Some(TextureInfo {
             width, 
             height, 
             depth: 1, 
@@ -176,7 +178,7 @@ impl Texture {
     }
 
     pub fn with_size_3d(mut self, width: u32, height: u32, depth: u32) -> Self {
-        self.dimensions = Some(TextureInfo {
+        self.info = Some(TextureInfo {
             width, 
             height, 
             depth, 
@@ -206,13 +208,13 @@ impl Texture {
     }
 
     /// Get the format and data info associated with this texture
-    pub(crate) async fn get_info(&self) -> Result<TextureInfo, String> {
+    pub(crate) fn get_info(&self) -> Result<TextureInfo, String> {
         match &self.texture_type {
             TextureType::Computed => {
-                self.dimensions.clone().ok_or(format!("[Texture] Computed Textures need to specified with a size via .with_size_2d() or .with_size_3d()"))
+                self.info.clone().ok_or(format!("[Texture] Computed Textures need to specified with a size via .with_size_2d() or .with_size_3d()"))
             },
             TextureType::Procedural { data } => {
-                self.dimensions.clone()
+                self.info.clone()
                     .map(|mut dim| {
                         dim.data = Some(data.to_vec());
                         dim

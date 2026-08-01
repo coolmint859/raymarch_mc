@@ -1,4 +1,4 @@
-use crate::graphics::BindGroupId;
+use crate::graphics::LayoutId;
 
 /// Represents a handle to a render/compute pipeline
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -67,7 +67,7 @@ pub enum PipelineType {
 pub struct Pipeline {
     pub label: String,
     pub pip_type: PipelineType,
-    pub bg_layouts: Vec<BindGroupId>,
+    pub bg_layouts: Vec<LayoutId>,
     pub shader_path: Option<&'static str>,
 }
 
@@ -88,7 +88,7 @@ impl Pipeline {
     }
 
     /// Add bind group layouts to the pipeline
-    pub fn with_bg_layouts(mut self, layouts: &[BindGroupId]) -> Self {
+    pub fn with_bg_layouts(mut self, layouts: &[LayoutId]) -> Self {
         self.bg_layouts.extend_from_slice(layouts);
         self
     }

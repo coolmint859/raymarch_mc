@@ -31,13 +31,24 @@ struct GameIds {
     pub vox_id: BufferId,
     pub reg_id: BufferId,
     pub pal_id: BufferId,
-    pub rtex_id: TextureId,
 
-    pub voxel_bg_id: BindGroupId,
-    pub blit_bg_id: BindGroupId,
+    pub rm_tex_id: TextureId,
+    pub taa_tex_a_id: TextureId,
+    pub taa_tex_b_id: TextureId,
 
-    pub voxel_pip_id: PipelineId,
+    pub rm_bgl_id: LayoutId,
+    pub rm_bg_id: BindGroupId,
+    pub rm_pip_id: PipelineId,
+
+    pub taa_bgl_id: LayoutId,
+    pub taa_bg_a_id: BindGroupId,
+    pub taa_bg_b_id: BindGroupId,
+    pub taa_pip_id: PipelineId,
+
     pub blit_pip_id: PipelineId,
+    pub blit_bgl_id: LayoutId,
+    pub blit_bg_a_id: BindGroupId,
+    pub blit_bg_b_id: BindGroupId,
 }
 
 pub struct Game {
@@ -50,6 +61,7 @@ pub struct Game {
     world: VoxelWorld,
 
     ids: Option<GameIds>,
+    is_hist_tex_a: bool,
 }
 
 impl Game {
@@ -66,6 +78,7 @@ impl Game {
             default_cam_pos,
             world: VoxelWorld::new(),
             ids: None,
+            is_hist_tex_a: true,
         }
     }
 
@@ -94,15 +107,28 @@ impl Screen for Game {
             vox_id: BufferId("voxels"),
             reg_id: BufferId("Region"),
             pal_id: BufferId("palette"),
-            rtex_id: TextureId("render_texture"),
-            voxel_bg_id: BindGroupId("voxel_bind_group"),
-            voxel_pip_id: PipelineId("voxel_pipeline"),
-            blit_bg_id: BindGroupId("blit_bind_group"),
+
+            taa_tex_a_id: TextureId("taa_texture_a"),
+            taa_tex_b_id: TextureId("taa_texture_b"),
+            rm_tex_id: TextureId("ray_march_texture"),
+
+            rm_bgl_id: LayoutId("raymarch_layout"),
+            rm_bg_id: BindGroupId("raymarch_bind_group"),
+            rm_pip_id: PipelineId("raymarch_pipeline"),
+
+            taa_bgl_id: LayoutId("taa_layout"),
+            taa_bg_a_id: BindGroupId("taa_bind_group_a"),
+            taa_bg_b_id: BindGroupId("taa_bind_group_b"),
+            taa_pip_id: PipelineId("taa_pipeline"),
+
+            blit_bgl_id: LayoutId("blit_layout"),
+            blit_bg_a_id: BindGroupId("blit_bind_group_a"),
+            blit_bg_b_id: BindGroupId("blit_bind_group_b"),
             blit_pip_id: PipelineId("blit_pipeline")
         };
 
         self.camera.update(graphics.canvas.aspect);
-        let camera_data = self.camera.to_uniform().to_bytes().to_vec();
+        let camera_data = self.camera.to_uniform(graphics.frame).to_bytes().to_vec();
         let camera_buffer = Buffer::as_uniform(BufferContents::WithData(camera_data))
             .with_label("Camera Buffer")
             .with_additional_usage(wgpu::BufferUsages::COPY_DST);
@@ -132,37 +158,77 @@ impl Screen for Game {
             .with_additional_usage(wgpu::BufferUsages::COPY_DST);
         graphics.gpu.request_buffer(&ids.reg_id, region_buffer);
 
-        let render_texture = Texture::new(TextureType::Computed)
-            .with_label("Voxel Storage Texture")
+        let raymarch_texture = Texture::new(TextureType::Computed)
+            .with_label("Raymarch Texture")
+            .with_size_2d(graphics.canvas.config.width, graphics.canvas.config.height)
+            .with_format(wgpu::TextureFormat::Rgba16Float)
+            .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING)
+            .with_additional_usage(wgpu::TextureUsages::COPY_SRC);
+        graphics.gpu.request_texture(&ids.rm_tex_id, raymarch_texture);
+
+        let taa_texture_a = Texture::new(TextureType::Computed)
+            .with_label("TAA Texture A")
             .with_size_2d(graphics.canvas.config.width, graphics.canvas.config.height)
             .with_format(wgpu::TextureFormat::Rgba16Float)
             .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING);
-        graphics.gpu.request_texture(&ids.rtex_id, render_texture);
+        graphics.gpu.request_texture(&ids.taa_tex_a_id, taa_texture_a);
+
+        let taa_texture_b = Texture::new(TextureType::Computed)
+            .with_label("TAA Texture B")
+            .with_size_2d(graphics.canvas.config.width, graphics.canvas.config.height)
+            .with_format(wgpu::TextureFormat::Rgba16Float)
+            .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING);
+        graphics.gpu.request_texture(&ids.taa_tex_b_id, taa_texture_b);
 
         let raymarch_bind_group = BindGroup::new()
-            .with_label("Compute Bind Group")
+            .with_label("Raymarch Bind Group")
             .with_entry(BufferBinding::as_uniform(ids.cam_id).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_uniform(ids.env_id).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_uniform(ids.pal_id).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_storage(ids.reg_id, true).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_storage(ids.vox_id, true).with_visibility(wgpu::ShaderStages::COMPUTE))
-            .with_entry(TextureBinding::as_storage(ids.rtex_id, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE));
-        graphics.gpu.request_bind_group(&ids.voxel_bg_id, &raymarch_bind_group);
+            .with_entry(TextureBinding::as_storage(ids.rm_tex_id, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE));
+        graphics.gpu.request_bind_group(&ids.rm_bg_id, &ids.rm_bgl_id, &raymarch_bind_group);
 
         let raymarch_pipeline = Pipeline::new(PipelineType::Compute(ComputePipelineType::default()))
             .with_label("Voxel Ray Marching Pipeline")
-            .with_bg_layouts(&[ids.voxel_bg_id])
+            .with_bg_layouts(&[ids.rm_bgl_id])
             .with_shader("./shaders/ray_march.wgsl");
-        graphics.gpu.request_pipeline(&ids.voxel_pip_id, &raymarch_pipeline);
- 
-        let blit_bind_group = BindGroup::new()
-            .with_label("Blit Bind Group")
-            .with_entry(TextureBinding::as_sampled(ids.rtex_id, TextureTypeSampled::default()));
-        graphics.gpu.request_bind_group(&ids.blit_bg_id, &blit_bind_group);
+        graphics.gpu.request_pipeline(&ids.rm_pip_id, &raymarch_pipeline);
+
+        let taa_bind_group_a = BindGroup::new()
+            .with_label("TAA Bind Group A")
+            .with_entry(TextureBinding::as_sampled(ids.rm_tex_id, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
+            .with_entry(TextureBinding::as_sampled(ids.taa_tex_a_id, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
+            .with_entry(TextureBinding::as_storage(ids.taa_tex_b_id, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE));
+        graphics.gpu.request_bind_group(&ids.taa_bg_a_id, &ids.taa_bgl_id, &taa_bind_group_a);
+
+        let taa_bind_group_b = BindGroup::new()
+            .with_label("TAA Bind Group B")
+            .with_entry(TextureBinding::as_sampled(ids.rm_tex_id, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
+            .with_entry(TextureBinding::as_sampled(ids.taa_tex_b_id, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
+            .with_entry(TextureBinding::as_storage(ids.taa_tex_a_id, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE));
+        graphics.gpu.request_bind_group(&ids.taa_bg_b_id, &ids.taa_bgl_id, &taa_bind_group_b);
+
+        let taa_pipeline = Pipeline::new(PipelineType::Compute(ComputePipelineType::default()))
+            .with_label("TAA Pipeline")
+            .with_bg_layouts(&[ids.taa_bgl_id])
+            .with_shader("./shaders/taa.wgsl");
+        graphics.gpu.request_pipeline(&ids.taa_pip_id, &taa_pipeline);
+
+        let blit_bind_group_a = BindGroup::new()
+            .with_label("Blit Bind Group A")
+            .with_entry(TextureBinding::as_sampled(ids.taa_tex_a_id, TextureTypeSampled::default()));
+        graphics.gpu.request_bind_group(&ids.blit_bg_a_id, &ids.blit_bgl_id, &blit_bind_group_a);
+
+        let blit_bind_group_b = BindGroup::new()
+            .with_label("Blit Bind Group B")
+            .with_entry(TextureBinding::as_sampled(ids.taa_tex_b_id, TextureTypeSampled::default()));
+        graphics.gpu.request_bind_group(&ids.blit_bg_b_id, &ids.blit_bgl_id, &blit_bind_group_b);
 
         let blit_pipeline = Pipeline::new(PipelineType::Render(RenderPipelineType::default()))
             .with_label("Voxel Render Pipeline")
-            .with_bg_layouts(&[ids.blit_bg_id])
+            .with_bg_layouts(&[ids.blit_bgl_id])
             .with_shader("./shaders/blit.wgsl");
         graphics.gpu.request_pipeline(&ids.blit_pip_id, &blit_pipeline);
 
@@ -174,30 +240,68 @@ impl Screen for Game {
     fn on_resize(&mut self, graphics: &mut Graphics) {
         let Some(ref ids) = self.ids else { return; };
 
-        graphics.gpu.remove_texture(&ids.rtex_id);
-        let render_texture = Texture::new(TextureType::Computed)
-            .with_label("Voxel Storage Texture")
+        graphics.gpu.remove_texture(&ids.rm_tex_id);
+        let raymarch_texture = Texture::new(TextureType::Computed)
+            .with_label("Raymarch Texture")
             .with_size_2d(graphics.canvas.config.width, graphics.canvas.config.height)
             .with_format(wgpu::TextureFormat::Rgba16Float)
             .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING);
-        graphics.gpu.request_texture(&ids.rtex_id, render_texture);
+        graphics.gpu.request_texture(&ids.rm_tex_id, raymarch_texture);
 
-        graphics.gpu.remove_bind_group(&ids.voxel_bg_id);
+        graphics.gpu.remove_texture(&ids.taa_tex_a_id);
+        let taa_texture_a = Texture::new(TextureType::Computed)
+            .with_label("TAA Texture A")
+            .with_size_2d(graphics.canvas.config.width, graphics.canvas.config.height)
+            .with_format(wgpu::TextureFormat::Rgba16Float)
+            .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING);
+        graphics.gpu.request_texture(&ids.taa_tex_a_id, taa_texture_a);
+
+        graphics.gpu.remove_texture(&ids.taa_tex_b_id);
+        let taa_texture_b = Texture::new(TextureType::Computed)
+            .with_label("TAA Texture B")
+            .with_size_2d(graphics.canvas.config.width, graphics.canvas.config.height)
+            .with_format(wgpu::TextureFormat::Rgba16Float)
+            .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING);
+        graphics.gpu.request_texture(&ids.taa_tex_b_id, taa_texture_b);
+
+        graphics.gpu.remove_bind_group(&ids.rm_bg_id);
         let raymarch_bind_group = BindGroup::new()
-            .with_label("Compute Bind Group")
+            .with_label("Raymarch Bind Group")
             .with_entry(BufferBinding::as_uniform(ids.cam_id).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_uniform(ids.env_id).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_uniform(ids.pal_id).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_storage(ids.vox_id, true).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_storage(ids.reg_id, true).with_visibility(wgpu::ShaderStages::COMPUTE))
-            .with_entry(TextureBinding::as_storage(ids.rtex_id, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE));
-        graphics.gpu.request_bind_group(&ids.voxel_bg_id, &raymarch_bind_group);
+            .with_entry(TextureBinding::as_storage(ids.rm_tex_id, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE));
+        graphics.gpu.request_bind_group(&ids.rm_bg_id, &ids.rm_bgl_id, &raymarch_bind_group);
+        
+        graphics.gpu.remove_bind_group(&ids.taa_bg_a_id);
+        let taa_bind_group_a = BindGroup::new()
+            .with_label("TAA Bind Group A")
+            .with_entry(TextureBinding::as_sampled(ids.rm_tex_id, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
+            .with_entry(TextureBinding::as_sampled(ids.taa_tex_a_id, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
+            .with_entry(TextureBinding::as_storage(ids.taa_tex_b_id, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE));
+        graphics.gpu.request_bind_group(&ids.taa_bg_a_id, &ids.taa_bgl_id, &taa_bind_group_a);
 
-        graphics.gpu.remove_bind_group(&ids.blit_bg_id);
-        let blit_bind_group = BindGroup::new()
-            .with_label("Blit Bind Group")
-            .with_entry(TextureBinding::as_sampled(ids.rtex_id, TextureTypeSampled::default()));
-        graphics.gpu.request_bind_group(&ids.blit_bg_id, &blit_bind_group);
+        graphics.gpu.remove_bind_group(&ids.taa_bg_b_id);
+        let taa_bind_group_b = BindGroup::new()
+            .with_label("TAA Bind Group B")
+            .with_entry(TextureBinding::as_sampled(ids.rm_tex_id, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
+            .with_entry(TextureBinding::as_sampled(ids.taa_tex_b_id, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
+            .with_entry(TextureBinding::as_storage(ids.taa_tex_a_id, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE));
+        graphics.gpu.request_bind_group(&ids.taa_bg_b_id, &ids.taa_bgl_id, &taa_bind_group_b);
+
+        graphics.gpu.remove_bind_group(&ids.blit_bg_a_id);
+        let blit_bind_group_a = BindGroup::new()
+            .with_label("Blit Bind Group A")
+            .with_entry(TextureBinding::as_sampled(ids.taa_tex_a_id, TextureTypeSampled::default()));
+        graphics.gpu.request_bind_group(&ids.blit_bg_a_id, &ids.blit_bgl_id, &blit_bind_group_a);
+
+        graphics.gpu.remove_bind_group(&ids.blit_bg_b_id);
+        let blit_bind_group_b = BindGroup::new()
+            .with_label("Blit Bind Group B")
+            .with_entry(TextureBinding::as_sampled(ids.taa_tex_b_id, TextureTypeSampled::default()));
+        graphics.gpu.request_bind_group(&ids.blit_bg_b_id, &ids.blit_bgl_id, &blit_bind_group_b);
     }
 
     fn input_event(&mut self, event: crate::InputEvent) {
@@ -275,7 +379,7 @@ impl Screen for Game {
         self.camera.update(graphics.canvas.aspect);
 
         graphics.gpu.update_buffer(&ids.cam_id, StructuredUpdate {
-            data: &self.camera.to_uniform(),
+            data: &self.camera.to_uniform(graphics.frame),
         });
 
         graphics.gpu.update_buffer(&ids.env_id, StructuredUpdate { 
@@ -289,21 +393,40 @@ impl Screen for Game {
         let wx = (graphics.canvas.config.width + 15) / 16;
         let wy = (graphics.canvas.config.height + 15) / 16;
 
-        graphics.gpu.add_pass(PassInfo::Compute(
+        let taa_bg: BindGroupId;
+        let blit_bg: BindGroupId;
+        if self.is_hist_tex_a {
+            taa_bg = ids.taa_bg_a_id;
+            blit_bg = ids.blit_bg_b_id;
+        } else {
+            taa_bg = ids.taa_bg_b_id;
+            blit_bg = ids.blit_bg_a_id;
+        }
+
+        graphics.gpu.add_command(GpuCommand::ComputePass(
             ComputePassInfo {
-                pipeline_id: ids.voxel_pip_id,
-                bind_groups: vec![ids.voxel_bg_id],
+                pipeline_id: ids.rm_pip_id,
+                bind_groups: vec![ids.rm_bg_id],
                 work_groups: (wx, wy, 1)
             })
         );
-        graphics.gpu.add_pass(PassInfo::Render(
+        graphics.gpu.add_command(GpuCommand::ComputePass(
+            ComputePassInfo {
+                pipeline_id: ids.taa_pip_id,
+                bind_groups: vec![taa_bg],
+                work_groups: (wx, wy, 1)
+            })
+        );
+        graphics.gpu.add_command(GpuCommand::RenderPass(
             RenderPassInfo { 
                 pipeline_id: ids.blit_pip_id,
-                bind_groups: vec![ids.blit_bg_id], 
+                bind_groups: vec![blit_bg], 
                 vertex_count: 3, 
                 instance_count: 1 
             })
         );
+
+        self.is_hist_tex_a = !self.is_hist_tex_a;
 
         graphics.gpu.finish(&graphics.canvas)
     }

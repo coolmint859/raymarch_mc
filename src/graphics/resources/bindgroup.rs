@@ -1,4 +1,4 @@
-use std::{ops::Deref, sync::Arc};
+use std::ops::Deref;
 
 use crate::graphics::{BufferId, TextureId};
 
@@ -19,18 +19,32 @@ pub trait Bindable {
     fn visibility(&self) -> wgpu::ShaderStages;
 }
 
-/// A lightweight handle to a bind group and its associated layout
+/// A lightweight handle to a bind group
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BindGroupHandle {
-    pub layout: Arc<wgpu::BindGroupLayout>,
-    pub bind_group: Arc<wgpu::BindGroup>
+    pub bind_group: wgpu::BindGroup
 }
 
 impl Deref for BindGroupHandle {
     type Target = wgpu::BindGroup;
 
     fn deref(&self) -> &Self::Target {
-        &*self.bind_group
+        &self.bind_group
+    }
+}
+
+/// A lightweight handle to a bind group layout
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BindGroupLayoutHandle {
+    pub ref_count: usize,
+    pub layout: wgpu::BindGroupLayout,
+}
+
+impl Deref for BindGroupLayoutHandle {
+    type Target = wgpu::BindGroupLayout;
+
+    fn deref(&self) -> &Self::Target {
+        &self.layout
     }
 }
 
