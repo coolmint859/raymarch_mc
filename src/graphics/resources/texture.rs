@@ -1,4 +1,4 @@
-use std::ops::Deref;
+use std::{ops::Deref, println};
 
 use image::GenericImageView;
 use wgpu::Extent3d;
@@ -7,8 +7,8 @@ use crate::graphics::{Bindable, BindingTarget, TextureId};
 
 /// Options for configurating a storage texture binding
 pub struct TextureTypeStorage {
-    access: wgpu::StorageTextureAccess, 
-    fmt: wgpu::TextureFormat
+    pub access: wgpu::StorageTextureAccess, 
+    pub fmt: wgpu::TextureFormat
 }
 
 impl Default for TextureTypeStorage {
@@ -22,8 +22,8 @@ impl Default for TextureTypeStorage {
 
 /// options for configuring a sampled texture binding
 pub struct TextureTypeSampled {
-    filterable: bool, 
-    multisampled: bool,
+    pub filterable: bool, 
+    pub multisampled: bool,
 }
 
 impl Default for TextureTypeSampled {
@@ -120,7 +120,7 @@ pub enum TextureType {
     /// A texture created via an algorithm
     Procedural { data: Vec<u8>},
     // /// A texture created by loading a file from disk
-    OnDisk { path: String },
+    OnDisk { path: &'static str },
     /// A texture created via running a compute shader
     Computed
 }
@@ -154,7 +154,7 @@ impl Texture {
         }
     }
 
-    /// Set the label for gpu profiling of the resultant buffer
+    /// Set the label for gpu profiling of the resultant texture
     pub fn with_label(mut self, label: &str) -> Self {
         self.label = label.to_string();
         self
@@ -201,6 +201,7 @@ impl Texture {
             wgpu::TextureFormat::Rg8Unorm | wgpu::TextureFormat::Rg8Snorm => 2,
             wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Rgba8UnormSrgb | wgpu::TextureFormat::Bgra8UnormSrgb => 4,
             wgpu::TextureFormat::R32Float => 4,
+            wgpu::TextureFormat::Rgba16Float => 8,
             wgpu::TextureFormat::Rgba32Float => 16,
             // Add more formats as your engine expands, or fallback safely
             _ => panic!("Unsupported texture format for automatic layout calculation: {:?}", self.format),
@@ -224,11 +225,12 @@ impl Texture {
             TextureType::OnDisk { path } => {
                 image::open(path)
                     .map(|img| {
+                        println!("width: {} height: {}", img.width(), img.height());
                         TextureInfo {
                             width: img.width(),
                             height: img.height(),
                             depth: 1,
-                            data: Some(img.to_rgb8().into_raw()),
+                            data: Some(img.to_rgba8().into_raw()),
                             dim: wgpu::TextureDimension::D2,
                         }
                     })

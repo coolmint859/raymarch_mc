@@ -115,6 +115,12 @@ impl PassValidator {
                         return None; 
                     }
                 }
+                BindingTarget::Sampler(samp_id) => {
+                    if !context.samplers.contains(samp_id) { 
+                        // println!("[GpuValidator] Validation failed for bind group @{:?}: Missing Sampler @{:?}", bg_id, samp_id);
+                        return None; 
+                    }
+                }
             }
         }
 

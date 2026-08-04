@@ -18,16 +18,25 @@ pub struct VoxelPalette {
 
 impl VoxelPalette {
     pub fn create() -> Self {
+        let pad = 4.0;
+        let len = 32.0;
+        let pdl = pad + len;
+        let size = 1024.0;
+
+        // let x_min = (pdl * row) / size;
+        // let y_min = (pdl * col) / size;
+        // let x_max = (len + pdl * row) / size;
+        // let y_max = (len + pdl * col) / size;
+
         let colors = vec![
-            Vec4::new(0.0, 0.0, 0.0, 0.0),      // 0: Air
-            Vec4::new(0.5, 0.5, 0.5, 1.0),      // 1: Stone
-            Vec4::new(0.0, 0.5, 0.0, 1.0),      // 2: Grass
-            Vec4::new(0.0, 0.0, 0.5, 1.0),      // 3: Water
-            Vec4::new(0.39, 0.254, 0.09, 1.0),   // 4: Tree Trunk
+            Vec4::new(0.0, 0.0, 0.0, 0.0),                                                  // 0: Air
+            Vec4::new(0.0, (pdl * 0.0) / size, len / size, (len + pdl * 0.0) / size),       // 1: Stone
+            Vec4::new(0.0, (pdl * 1.0) / size, len / size, (len + pdl * 1.0) / size),       // 2: Grass
+            Vec4::new(0.0, (pdl * 2.0) / size, len / size, (len + pdl * 2.0) / size),       // 3: Tree Trunk
+            Vec4::new(0.0, (pdl * 3.0) / size, len / size, (len + pdl * 3.0) / size),       // 4: Water
         ];
 
         let mut bytes: Vec<u8> = Vec::new();
-
         for color in &colors {
             bytes.extend_from_slice(bytemuck::bytes_of(color));
         }

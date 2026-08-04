@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{println, sync::Arc};
 use std::time::Instant;
 
 use winit::{
@@ -85,7 +85,7 @@ impl ApplicationHandler for App {
         if self.graphics.is_none() {
             let window_attrs = WindowAttributes::default()
                 .with_inner_size(Size::Physical (
-                    PhysicalSize { width: 2560, height: 1440 }
+                    PhysicalSize { width: 1920, height: 1080 }
                 ))
                 .with_title("Ray Marching!");
             let window = Arc::new(event_loop.create_window(window_attrs).unwrap());
@@ -116,11 +116,19 @@ impl ApplicationHandler for App {
 
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
-            WindowEvent::Resized(physical_size) => {        
+            WindowEvent::Resized(physical_size) => {   
+                println!("---WINDOW RESIZED---");     
                 graphics.on_resize(physical_size.width, physical_size.height);
                 screen.on_resize(graphics);
 
                 screen.update(graphics, dt);
+                let result = screen.render(graphics);
+
+                match result {
+                    Err(wgpu::SurfaceError::OutOfMemory) => event_loop.exit(),
+                    Err(wgpu::SurfaceError::Lost) => graphics.reset(),
+                    _ => {}
+                }
             }
             WindowEvent::RedrawRequested => {
                 let result = screen.render(graphics);

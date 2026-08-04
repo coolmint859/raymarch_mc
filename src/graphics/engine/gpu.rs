@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use wgpu::util::DeviceExt;
 
-use crate::graphics::{BindGroup, BindGroupHandle, BindGroupLayoutHandle, Buffer, BufferContents, BufferHandle, ComputePipelineType, Pipeline, PipelineHandle, RenderPipelineType, Texture, TextureHandle};
+use crate::graphics::{BindGroup, BindGroupHandle, BindGroupLayoutHandle, Buffer, BufferContents, BufferHandle, ComputePipelineType, Pipeline, PipelineHandle, RenderPipelineType, Sampler, SamplerHandle, Texture, TextureHandle};
 
 /// Handle to the gpu device and queue
 #[derive(Clone, Debug)]
@@ -80,6 +80,13 @@ impl GpuHandle {
         println!("[GpuContext] Created new texture with label '{}'", builder.label);
 
         Ok(TextureHandle { texture, view, extent })
+    }
+
+    /// Create a new sampler from the given configuration builder
+    pub fn create_sampler(&self, builder: Sampler) -> Result<SamplerHandle, String> {
+        let sampler = self.device.create_sampler(&builder.desc);
+
+        Ok(SamplerHandle { sampler })
     }
 
     pub fn create_bg_layout(

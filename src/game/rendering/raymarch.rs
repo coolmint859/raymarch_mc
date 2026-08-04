@@ -3,6 +3,11 @@ use crate::{game::{GlobalIds, VoxelPalette, VoxelWorld}, graphics::*};
 /// Ray March resource ids
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct RayMarchIds {
+    pub gsol_id: TextureId,
+    /// block texture atlas sampler
+    pub samp_id: SamplerId,
+    /// block texture atlas
+    pub atlas_id: TextureId,
     /// voxel buffer
     pub vox_id: BufferId,
     /// palette buffer
@@ -23,6 +28,9 @@ pub struct RayMarchPass {
 impl RayMarchPass {
     pub fn new(gb_ids: GlobalIds) -> Self {
         let rm_ids = RayMarchIds {
+            gsol_id: TextureId("grass side alpha mask"),
+            atlas_id: TextureId("block atlas"),
+            samp_id: SamplerId("texture sampler"),
             vox_id: BufferId("voxels"),
             pal_id: BufferId("palette"),
             bgl_id: LayoutId("raymarch_layout"),
@@ -34,6 +42,21 @@ impl RayMarchPass {
     }
 
     pub fn init(&mut self, world: &VoxelWorld, graphics: &mut Graphics) {
+        let grass_alpha_mask = Texture::new(TextureType::OnDisk { path: "./assets/grass_block_side_overlay.png" })
+            .with_label("Grass Side Overlay")
+            .with_format(wgpu::TextureFormat::Rgba8Unorm)
+            .with_additional_usage(wgpu::TextureUsages::COPY_DST);
+        graphics.gpu.request_texture(&self.rm_ids.gsol_id, grass_alpha_mask);
+
+        let atlas_texture = Texture::new(TextureType::OnDisk { path: "./assets/textures.png" })
+            .with_label("Block Atlas Texture")
+            .with_format(wgpu::TextureFormat::Rgba8Unorm)
+            .with_additional_usage(wgpu::TextureUsages::COPY_DST);
+        graphics.gpu.request_texture(&self.rm_ids.atlas_id, atlas_texture);
+
+        let atlas_sampler = Sampler::new().with_label("Atlas Sampler");
+        graphics.gpu.request_sampler(&self.rm_ids.samp_id, atlas_sampler);
+
         let env_data = world.env_uniform().to_bytes().to_vec();
         let env_buffer = Buffer::as_uniform(BufferContents::WithData(env_data))
             .with_label("Environment Buffer")
@@ -56,6 +79,9 @@ impl RayMarchPass {
             .with_label("Raymarch Bind Group")
             .with_entry(BufferBinding::as_uniform(self.gb_ids.cam_id).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_uniform(self.gb_ids.env_id).with_visibility(wgpu::ShaderStages::COMPUTE))
+            .with_entry(TextureBinding::as_sampled(self.rm_ids.gsol_id, TextureTypeSampled { filterable: true, multisampled: false }).with_visibility(wgpu::ShaderStages::COMPUTE))
+            .with_entry(TextureBinding::as_sampled(self.rm_ids.atlas_id, TextureTypeSampled { filterable: true, multisampled: false }).with_visibility(wgpu::ShaderStages::COMPUTE))
+            .with_entry(SamplerBinding::new(self.rm_ids.samp_id).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_uniform(self.rm_ids.pal_id).with_visibility(wgpu::ShaderStages::COMPUTE))// .with_entry(BufferBinding::as_storage(ids.reg_id, true).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_storage(self.rm_ids.vox_id, true).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_storage(self.gb_ids.rm_tex_id, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE));
@@ -74,7 +100,10 @@ impl RayMarchPass {
             .with_label("Raymarch Bind Group")
             .with_entry(BufferBinding::as_uniform(self.gb_ids.cam_id).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_uniform(self.gb_ids.env_id).with_visibility(wgpu::ShaderStages::COMPUTE))
-            .with_entry(BufferBinding::as_uniform(self.rm_ids.pal_id).with_visibility(wgpu::ShaderStages::COMPUTE))
+            .with_entry(TextureBinding::as_sampled(self.rm_ids.gsol_id, TextureTypeSampled { filterable: true, multisampled: false }).with_visibility(wgpu::ShaderStages::COMPUTE))
+            .with_entry(TextureBinding::as_sampled(self.rm_ids.atlas_id, TextureTypeSampled { filterable: true, multisampled: false }).with_visibility(wgpu::ShaderStages::COMPUTE))
+            .with_entry(SamplerBinding::new(self.rm_ids.samp_id).with_visibility(wgpu::ShaderStages::COMPUTE))
+            .with_entry(BufferBinding::as_uniform(self.rm_ids.pal_id).with_visibility(wgpu::ShaderStages::COMPUTE))// .with_entry(BufferBinding::as_storage(ids.reg_id, true).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_storage(self.rm_ids.vox_id, true).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_storage(self.gb_ids.rm_tex_id, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE));
         graphics.gpu.request_bind_group(&self.rm_ids.bg_id, &self.rm_ids.bgl_id, &raymarch_bind_group);

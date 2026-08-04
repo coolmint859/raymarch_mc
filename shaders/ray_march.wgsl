@@ -5,6 +5,8 @@ const REGION_SIZE: i32 = 32;
 const REGION_VOL: u32 = u32(REGION_SIZE * REGION_SIZE * REGION_SIZE);
 const AIR_REGION: i32 = -1; // indicates that a region is completely air
 const AIR_VOXEL: i32 = 0; // indicates that a voxel is an air block.
+const GRASS_VOXEL: i32 = 2;
+const WATER_VOXEL: i32 = 4;
 
 const MACRO_SCALE: f32 = f32(REGION_SIZE);
 const MICRO_SCALE: f32 = 1.0;
@@ -29,15 +31,14 @@ struct EnvironmentUniform {
     ground_color: vec4f,
 }
 
-struct PaletteUniform {
-    colors: array<vec4<f32>, 5>,
-}
-
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
 @group(0) @binding(1) var<uniform> env: EnvironmentUniform;
-@group(0) @binding(2) var<uniform> palette: PaletteUniform;
-@group(0) @binding(3) var<storage, read> voxels: array<u32>;
-@group(0) @binding(4) var output: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(2) var grass_alpha_mask: texture_2d<f32>;
+@group(0) @binding(3) var block_atlas: texture_2d<f32>;
+@group(0) @binding(4) var block_sampler: sampler;
+@group(0) @binding(5) var<uniform> atlas_uvs: array<vec4f, 5>;
+@group(0) @binding(6) var<storage, read> voxels: array<u32>;
+@group(0) @binding(7) var output: texture_storage_2d<rgba16float, write>;
 
 struct Material {
     color: vec3f,
@@ -133,20 +134,26 @@ fn calc_face(hit_pos: vec3f, normal: vec3i) -> VoxelFace {
     face.normal = normal;
 
     let local_pos = fract(hit_pos);
-    if (abs(f32(normal.y)) > 0.5) {
-        face.uv = local_pos.xz;
+    var uv = vec2f(0.0);
+
+    if (abs(normal.y) == 1) {
         face.tan1 = LOCAL_AXIS[0];
         face.tan2 = LOCAL_AXIS[2];
-    } else if (abs(f32(normal.x)) > 0.5) { 
-        face.uv = local_pos.yz;
-        face.tan1 = LOCAL_AXIS[1];
-        face.tan2 = LOCAL_AXIS[2];
-    } else { 
-        face.uv = local_pos.xy;
+        // uv = local_pos.xz;
+        uv = select(vec2f(local_pos.x, 1.0 - local_pos.z), local_pos.xz, normal.y > 0);
+    } else if (abs(normal.x) == 1) {
+        face.tan1 = LOCAL_AXIS[2];
+        face.tan2 = LOCAL_AXIS[1];
+        // uv = local_pos.zy;
+        uv = select(vec2f(1.0 - local_pos.z, local_pos.y), local_pos.zy, normal.x > 0);
+    } else {
         face.tan1 = LOCAL_AXIS[0];
         face.tan2 = LOCAL_AXIS[1];
+        // uv = local_pos.xy;
+        uv = select(local_pos.xy, vec2f(1.0 - local_pos.x, local_pos.y), normal.z > 0);
     }
-
+    
+    face.uv = uv;
     return face;
 }
 
@@ -157,9 +164,9 @@ fn calc_lighting(hit_info: HitInfo, sun_dir: vec3f, view_dir: vec3f) -> vec3f {
     let shadow = calc_shadow(hit_info.hit_pos, normal, sun_dir);
 
     // ambient term
-    let ao = calc_ao(hit_info.face, hit_info.voxel_pos);
+    let ao = calc_ao(hit_info.face, hit_info.voxel_pos, hit_info.hit_pos);
     let amb_strength = clamp(sun_dir.y * 0.5 + 0.5, 0.05, 1.0);
-    let ambient = (env.sky_zenith.xyz * amb_strength + 0.1) * ao;
+    let ambient = (env.sky_zenith.xyz * amb_strength + 0.04) * ao;
 
     // diffuse term
     let diff_strength = max(dot(normal, sun_dir), 0.0);
@@ -197,10 +204,17 @@ fn calc_shadow(start_pos: vec3f, normal: vec3f, light_dir: vec3f) -> f32 {
 }
 
 /// calculates ambient occlusion by sampling the 3x3x2 grid of voxels around the occluded voxel.
-fn calc_ao(face: VoxelFace, voxel_pos: vec3i) -> f32 {
-    let face_neighbor = voxel_pos + vec3i(face.normal);
+fn calc_ao(face: VoxelFace, voxel_pos: vec3i, hit_pos: vec3f) -> f32 {
+    let local_pos = fract(hit_pos);
+    let face_neighbor = voxel_pos + face.normal;
     var total_occlusion = 0.0;
     var total_weight = 0.0;
+
+    let face_uv = select(
+        select(local_pos.xy, local_pos.zy, abs(face.normal.x) == 1),
+        local_pos.xz,
+        abs(face.normal.y) == 1
+    );
 
     for (var z = 0; z < 2; z++) {
         for (var x = -1; x <= 1; x++) {
@@ -213,7 +227,7 @@ fn calc_ao(face: VoxelFace, voxel_pos: vec3i) -> f32 {
                 let is_solid = f32(block_id > AIR_VOXEL);
                 
                 let neighbor_uv = vec2f(f32(x) + 0.5, f32(y) + 0.5);
-                let dist = distance(face.uv, neighbor_uv);
+                let dist = distance(face_uv, neighbor_uv);
                 let raw_weight = 1.0 - (dist - 0.5);
                 let weight = smoothstep(0.0, 1.0, clamp(raw_weight, 0.0, 1.0)) * depth_weight;
 
@@ -231,8 +245,6 @@ fn calc_ao(face: VoxelFace, voxel_pos: vec3i) -> f32 {
 /// calculates a background color given environmental variables
 fn get_background_color(ray_dir: vec3f, sun_dir: vec3f) -> vec3<f32> {
     let y = ray_dir.y;
-    // var color: vec3f;
-
     let horizon_blend = smoothstep(-0.1, 0.00, y);
 
     var base_color: vec3f;
@@ -255,6 +267,48 @@ fn get_background_color(ray_dir: vec3f, sun_dir: vec3f) -> vec3<f32> {
     color += env.sun_color.xyz * sun_factor;
 
     return saturate(color);
+}
+
+fn get_palette_color(face: VoxelFace, uv_idx: u32) -> vec3f {
+    let uv_bounds = atlas_uvs[uv_idx];
+
+    let pad = 4.0 / 1024.0;
+    let width = (uv_bounds.z - uv_bounds.x); // max_x - min_x
+
+    var offset = 1.0;
+    var is_side = true;
+    if (face.normal.y == -1) { 
+        offset = 2.0;
+        is_side = false;
+    } else if (face.normal.y == 1) { 
+        offset = 0.0;
+        is_side = false;
+    }
+
+    let x_offset = (width + pad) * offset;
+    let auv_bounds = vec4f(
+        uv_bounds.x + x_offset,
+        uv_bounds.y,
+        uv_bounds.z + x_offset,
+        uv_bounds.w
+    );
+
+    let inv_face_uv = vec2f(face.uv.x, 1.0-face.uv.y);
+    let uv = mix(auv_bounds.xy, auv_bounds.zw, inv_face_uv);
+    let texel = textureSampleLevel(block_atlas, block_sampler, uv, 0.0);
+
+    var color_mask = vec3f(1.0);
+    if (i32(uv_idx) == GRASS_VOXEL && is_side) {
+        let grass_overlay = textureSampleLevel(grass_alpha_mask, block_sampler, inv_face_uv, 0.0);
+        let grass_color = vec3f(0.0, 1.0, 0.0) + grass_overlay.rgb;
+        color_mask = mix(vec3f(1.0), grass_color, grass_overlay.a);
+    } else if (i32(uv_idx) == GRASS_VOXEL) {
+        color_mask = vec3f(0.0, 1.0, 0.0);
+    } else if (i32(uv_idx) == WATER_VOXEL) {
+        color_mask = vec3f(0.0, 0.3, 0.7);
+    }
+
+    return texel.rgb * color_mask;
 }
 
 /// Determines the block of a voxel at the given world position
@@ -322,9 +376,9 @@ fn dda_march(ray: Ray, config: RayMarchConfig) -> HitInfo {
             hit_info.hit_pos = ray.org + ray.dir * t;
             hit_info.voxel_pos = voxel_pos;
 
-            hit_info.material.color = palette.colors[u32(block_id)].xyz;
             let normal = -LOCAL_AXIS[last_side_hit] * ray.sign;
             hit_info.face = calc_face(hit_info.hit_pos, normal);
+            hit_info.material.color = get_palette_color(hit_info.face, u32(block_id));
 
             break;
         }
@@ -377,7 +431,9 @@ fn init_ray(id: vec3<u32>, size: vec2<u32>) -> Ray {
     let base_org = fract(camera.position);
     let base_dir = normalize(world_target - camera.position);
 
-    let focal_dist = 20.0;
+    // return create_ray(base_org, base_dir);
+
+    let focal_dist = 10.0;
     let aperture =  0.03;
     return gen_perturbed_ray(pix_center, base_org, base_dir, aperture, focal_dist);
 }
@@ -412,7 +468,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     let sun_dir = normalize(env.sun_dir.xyz);
     var color = vec3f(0.0);
     if (hit_info.did_hit)  {
-        // color = vec3f(hit_info.face.uv, 0.0);
+        // color = vec3f(abs(hit_info.face.uv), 0.0);
         color = calc_lighting(hit_info, sun_dir, -ray.dir);
     } else {
         color = get_background_color(ray.dir, sun_dir);

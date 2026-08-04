@@ -31,6 +31,9 @@ pub enum GpuCommand {
 /// unique identifier for a texture
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] pub struct TextureId(pub &'static str);
 
+/// unique identifier for a sampler
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] pub struct SamplerId(pub &'static str);
+
 /// unique identifier for a pipeline
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] pub struct PipelineId(pub &'static str);
 
@@ -48,6 +51,7 @@ pub struct GpuContext {
 
     pub(crate) buffers: ResourceHandler<BufferId, BufferHandle>,
     pub(crate) textures: ResourceHandler<TextureId, TextureHandle>,
+    pub(crate) samplers: ResourceHandler<SamplerId, SamplerHandle>,
     pub(crate) bg_registry: BindGroupRegistry,
     pub(crate) pip_registry: PipelineRegistry,
 }
@@ -60,6 +64,7 @@ impl GpuContext {
 
             buffers: ResourceHandler::new(),
             textures: ResourceHandler::new(),
+            samplers: ResourceHandler::new(),
             bg_registry: BindGroupRegistry::new(gpu.clone()),
             pip_registry: PipelineRegistry::new(gpu.clone()),
             gpu
@@ -93,9 +98,20 @@ impl GpuContext {
         self.textures.request_new(id, texture_task);
     }
 
+    /// Request a sampler to be created from the provided builder and mapped to the provided id.
+    pub fn request_sampler(&mut self, id: &SamplerId, builder: Sampler) {
+        if self.samplers.contains(id) { return; }
+
+        let gpu = self.gpu.clone();
+        let sampler_task = Task::non_blocking(async move {
+            gpu.create_sampler(builder)
+        });
+        self.samplers.request_new(id, sampler_task);
+    }
+
     /// Request a bind group to be created from the provided builder and mapped to the provided id.
     pub fn request_bind_group(&mut self, bg_id: &BindGroupId, bgl_id: &LayoutId, builder: &BindGroup) {
-        self.bg_registry.request_bg(bg_id, bgl_id, builder, &self.buffers, &self.textures);
+        self.bg_registry.request_bg(bg_id, bgl_id, builder, &self.buffers, &self.textures, &self.samplers);
     }
 
     /// Request a pipeline to be created from the provided builder and mapped to the provided id.
@@ -112,7 +128,8 @@ impl GpuContext {
     pub fn prepare_frame(&mut self) {
         self.buffers.sync();
         self.textures.sync();
-        self.bg_registry.sync(&self.buffers, &self.textures);
+        self.samplers.sync();
+        self.bg_registry.sync(&self.buffers, &self.textures, &self.samplers);
         self.pip_registry.sync(&self.bg_registry);
     }
 

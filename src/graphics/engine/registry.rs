@@ -52,6 +52,7 @@ impl BindGroupRegistry {
         builder: &BindGroup,
         buffers: &'a ResourceHandler<BufferId, BufferHandle>,
         textures: &'a ResourceHandler<TextureId, TextureHandle>,
+        samplers: &'a ResourceHandler<SamplerId, SamplerHandle>,
     ) {
         if self.bg_handles.contains(bg_id) { return; }
 
@@ -70,8 +71,11 @@ impl BindGroupRegistry {
 
         let mut buffer_handles = Vec::new();
         let mut texture_handles = Vec::new();
-        let mut expected_tex_len = 0usize;
+        let mut sampler_handles = Vec::new();
+        
         let mut expected_buf_len = 0usize;
+        let mut expected_tex_len = 0usize;
+        let mut expected_samp_len = 0usize;
 
         for binding in &builder.bindings {
             match &binding.target {
@@ -87,13 +91,20 @@ impl BindGroupRegistry {
                     }
                     expected_tex_len += 1;
                 }
+                BindingTarget::Sampler(samp_id) => {
+                    if let Some(handle) = samplers.get(samp_id) {
+                        sampler_handles.push((*samp_id, handle.clone(), binding.slot));
+                    }
+                    expected_samp_len += 1;
+                }
             }
         }
 
         let ok_buffers = expected_buf_len == buffer_handles.len();
         let ok_textures = expected_tex_len == texture_handles.len();
+        let ok_samplers = expected_samp_len == sampler_handles.len();
 
-        if !(ok_buffers && ok_textures) {
+        if !(ok_buffers && ok_textures && ok_samplers) {
             self.deffered.insert(*bg_id, (*layout_id, builder.clone()));
             return; 
         };
@@ -118,6 +129,12 @@ impl BindGroupRegistry {
                     resource: wgpu::BindingResource::TextureView(tex)
                 });
             }
+            for (_id, samp, slot) in &sampler_handles {
+                entries.push(wgpu::BindGroupEntry {
+                    binding: *slot,
+                    resource: wgpu::BindingResource::Sampler(samp)
+                });
+            }
 
             gpu.create_bind_group(builder, entries, layout)
         });
@@ -130,6 +147,7 @@ impl BindGroupRegistry {
         &mut self,
         buffers: &'a ResourceHandler<BufferId, BufferHandle>,
         textures: &'a ResourceHandler<TextureId, TextureHandle>,
+        samplers: &'a ResourceHandler<SamplerId, SamplerHandle>,
     ) {
         self.layout_handles.sync();
         self.bg_handles.sync();
@@ -137,7 +155,7 @@ impl BindGroupRegistry {
         // println!("pending bind groups: {}", self.deffered.len());
         let pending_bgs = std::mem::take(&mut self.deffered);
         for (bg_id, (bgl_id, builder)) in &pending_bgs {
-            self.request_bg(bg_id, &bgl_id, builder, buffers, textures);
+            self.request_bg(bg_id, &bgl_id, builder, buffers, textures, samplers);
         }
     }
 

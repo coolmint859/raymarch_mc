@@ -23,11 +23,11 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>)  {
     let variance = (m2 / samples) - (mean * mean);
     let std_dev = sqrt(max(variance, vec3f(0.0)));
 
-    let gamma = 0.95;
+    let gamma = 0.9;
     let b_min = mean - gamma * std_dev;
     let b_max = mean + gamma * std_dev;
 
-    let blend = 0.99;
+    let blend = 0.9;
     var clipped = clamp(hist_texel.rgb, b_min, b_max);
 
     let curr_texel = textureLoad(current, pixel, 0);

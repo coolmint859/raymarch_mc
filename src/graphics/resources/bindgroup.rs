@@ -1,12 +1,12 @@
 use std::ops::Deref;
 
-use crate::graphics::{BufferId, TextureId};
+use crate::graphics::{BufferId, SamplerId, TextureId};
 
 #[derive(Clone, Debug)]
 pub enum BindingTarget {
     Buffer(BufferId),
     Texture(TextureId),
-    // Sampler(SamplerId),
+    Sampler(SamplerId),
 }
 
 /// Represents resource bindings that can be used in a bind group

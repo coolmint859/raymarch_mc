@@ -73,6 +73,8 @@ impl TaaPass {
             .with_entry(TextureBinding::as_sampled(self.gb_ids.taa_tex_b_id, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_storage(self.gb_ids.taa_tex_a_id, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE));
         graphics.gpu.request_bind_group(&self.taa_ids.bg_b_id, &self.taa_ids.bgl_id, &taa_bind_group_b);
+
+        self.is_bg_a = false;
     }
 
     pub fn get(&mut self, wx: u32, wy: u32) -> GpuCommand {

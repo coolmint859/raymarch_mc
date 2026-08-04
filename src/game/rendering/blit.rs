@@ -65,6 +65,8 @@ impl BlitPass {
             .with_label("Blit Bind Group B")
             .with_entry(TextureBinding::as_sampled(self.gb_ids.taa_tex_b_id, TextureTypeSampled::default()));
         graphics.gpu.request_bind_group(&self.blit_ids.bg_b_id, &self.blit_ids.bgl_id, &blit_bind_group_b);
+
+        self.is_bg_a = true;
     }
 
     pub fn get(&mut self) -> GpuCommand {

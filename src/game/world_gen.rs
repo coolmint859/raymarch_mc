@@ -12,7 +12,7 @@ impl WorldGenerator {
                     let idx = x + (y * REGION_SIZE) + (z * REGION_SIZE * REGION_SIZE);
 
                     voxels[idx] = if y == 15 && x <= 12 && z <= 12 && x >= 2 && z >= 2 {
-                        Voxel(3)
+                        Voxel(4)
                     } else if y == 16 && (x > 12 || z > 12 || x < 2 || z < 2) {
                         Voxel(2)
                     } else if y < 16 {
@@ -33,7 +33,7 @@ impl WorldGenerator {
             for y in 17..my {
                 let idx = tx + (y * REGION_SIZE) + (tz * REGION_SIZE * REGION_SIZE);
 
-                voxels[idx] = Voxel(4);
+                voxels[idx] = Voxel(3);
             }
         }
 
