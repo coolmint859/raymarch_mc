@@ -10,6 +10,8 @@ pub struct RayMarchIds {
     pub atlas_id: TextureId,
     /// voxel buffer
     pub vox_id: BufferId,
+    /// 16x16 brickmap
+    pub grid16_id: BufferId,
     /// palette buffer
     pub pal_id: BufferId,
     /// ray march bind group layout
@@ -31,6 +33,7 @@ impl RayMarchPass {
             gsol_id: TextureId("grass side alpha mask"),
             atlas_id: TextureId("block atlas"),
             samp_id: SamplerId("texture sampler"),
+            grid16_id: BufferId("grid16"),
             vox_id: BufferId("voxels"),
             pal_id: BufferId("palette"),
             bgl_id: LayoutId("raymarch_layout"),
@@ -69,11 +72,16 @@ impl RayMarchPass {
             .with_additional_usage(wgpu::BufferUsages::COPY_DST);
         graphics.gpu.request_buffer(&self.rm_ids.pal_id, palette_buffer);
 
-        let voxel_data = world.voxel_data();
-        let voxel_buffer = Buffer::as_storage(BufferContents::WithData(voxel_data))
+        let region_bytes = world.region_bytes();
+        let voxel_buffer = Buffer::as_storage(BufferContents::WithData(region_bytes.voxels))
             .with_label("Voxel Buffer")
             .with_additional_usage(wgpu::BufferUsages::COPY_DST);
         graphics.gpu.request_buffer(&self.rm_ids.vox_id, voxel_buffer);
+
+        let grid16_buffer = Buffer::as_storage(BufferContents::WithData(region_bytes.grid16))
+            .with_label("Grid 16 Buffer")
+            .with_additional_usage(wgpu::BufferUsages::COPY_DST);
+        graphics.gpu.request_buffer(&self.rm_ids.grid16_id, grid16_buffer);
 
         let raymarch_bind_group = BindGroup::new()
             .with_label("Raymarch Bind Group")
@@ -84,6 +92,7 @@ impl RayMarchPass {
             .with_entry(SamplerBinding::new(self.rm_ids.samp_id).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_uniform(self.rm_ids.pal_id).with_visibility(wgpu::ShaderStages::COMPUTE))// .with_entry(BufferBinding::as_storage(ids.reg_id, true).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_storage(self.rm_ids.vox_id, true).with_visibility(wgpu::ShaderStages::COMPUTE))
+            .with_entry(BufferBinding::as_storage(self.rm_ids.grid16_id, true).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_storage(self.gb_ids.rm_tex_id, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE));
         graphics.gpu.request_bind_group(&self.rm_ids.bg_id, &self.rm_ids.bgl_id, &raymarch_bind_group);
 
@@ -105,6 +114,7 @@ impl RayMarchPass {
             .with_entry(SamplerBinding::new(self.rm_ids.samp_id).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_uniform(self.rm_ids.pal_id).with_visibility(wgpu::ShaderStages::COMPUTE))// .with_entry(BufferBinding::as_storage(ids.reg_id, true).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_storage(self.rm_ids.vox_id, true).with_visibility(wgpu::ShaderStages::COMPUTE))
+            .with_entry(BufferBinding::as_storage(self.rm_ids.grid16_id, true).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_storage(self.gb_ids.rm_tex_id, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE));
         graphics.gpu.request_bind_group(&self.rm_ids.bg_id, &self.rm_ids.bgl_id, &raymarch_bind_group);
     }

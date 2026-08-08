@@ -1,4 +1,11 @@
+use std::println;
+
 use crate::game::{Environment, EnvironmentUniform, REGION_VOLUME, Region, RegionLocation, WorldGenerator};
+
+pub struct RegionBytes {
+    pub voxels: Vec<u8>,
+    pub grid16: Vec<u8>,
+}
 
 pub struct VoxelWorld {
     env: Environment,
@@ -47,32 +54,25 @@ impl VoxelWorld {
         self.env.to_uniform()
     }
 
-    pub fn voxel_data(&self) -> Vec<u8> {
+    pub fn region_bytes(&self) -> RegionBytes {
         let bytes_per_region = REGION_VOLUME * 4;
-        let total_size = bytes_per_region * self.regions.len();
+        let vtotal_size = bytes_per_region * self.regions.len();
 
-        // println!("total voxel bytes: {total_size}, num regions: {}", self.regions.len());
+        let mut vtotal_bytes = Vec::with_capacity(vtotal_size);
+        let mut g16_total_bytes = Vec::with_capacity(self.regions.len());
 
-        let mut total_bytes = Vec::with_capacity(total_size);
-
+        let mut idx = 0;
         for region in &self.regions {
-            total_bytes.extend_from_slice(&region.voxel_bytes());
+            vtotal_bytes.extend_from_slice(&region.voxel_bytes());
+            g16_total_bytes.push(region.data.grid16);
+
+            println!("region {idx} grid16: {:?}", region.data.grid16);
+            idx += 1;
         }
 
-        total_bytes
-    }
-
-    pub fn region_data(&self) -> Vec<u8> {
-        let total_size = self.regions.len() * 16; // One i32 is 4 bytes, there are 3 i32s per location
-
-        let mut loc_bytes = Vec::with_capacity(total_size);
-
-        for region in &self.regions {
-            loc_bytes.extend_from_slice(&region.loc_bytes());
+        RegionBytes {
+            voxels: vtotal_bytes,
+            grid16: g16_total_bytes,
         }
-
-        // println!("total location bytes: {:?}, num regions: {}", loc_bytes.len(), self.regions.len());
-
-        loc_bytes
     }
 }

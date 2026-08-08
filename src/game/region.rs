@@ -1,5 +1,7 @@
 use bytemuck::NoUninit;
 
+use crate::game::RegionData;
+
 /// The number of blocks/voxels that make up a region's length
 pub const REGION_SIZE: usize = 32;
 /// The total number of voxels in a region
@@ -11,7 +13,7 @@ pub const RENDER_DISTANCE: usize = 5;
 /// A single block in the game world. Each voxel only holds an index into a global palette.
 /// 
 /// The index is 1 byte in size, allowing for the pallete to hold 256 different block types
-#[derive(Clone, Copy, Debug, PartialEq, Eq, NoUninit)]
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, NoUninit)]
 #[repr(transparent)]
 pub struct Voxel(pub u32);
 
@@ -22,14 +24,14 @@ pub struct RegionLocation {
 }
 
 pub struct Region {
-    pub voxels: Box<[Voxel; REGION_VOLUME]>,
+    pub data: RegionData,
     pub location: RegionLocation,
 }
 
 impl Region {
-    pub fn new(voxels: Box<[Voxel; REGION_VOLUME]>, location: RegionLocation) -> Self {
+    pub fn new(data: RegionData, location: RegionLocation) -> Self {
         Self { 
-            voxels,
+            data,
             location
         }
     }
@@ -38,7 +40,11 @@ impl Region {
 
     /// Serialize the region's voxel data into a vec of bytes
     pub fn voxel_bytes(&self) -> Vec<u8> {
-        bytemuck::cast_slice(self.voxels.as_ref()).to_vec()
+        bytemuck::cast_slice(self.data.voxels.as_ref()).to_vec()
+    }
+
+    pub fn grid16_bytes(&self) -> u8 {
+        self.data.grid16
     }
 
     pub fn loc_bytes(&self) -> Vec<u8> {

@@ -34,7 +34,9 @@ struct App {
 
     previous_time: Instant,
     elapsed_time: f32,
-    frame_mod: u32, // used to prevent precision loss
+    frame_mod: u32, // used to prevent precision loss,
+    fps_update: Instant,
+    prev_fps: [f32; 20],
 }
 
 impl App {
@@ -45,6 +47,8 @@ impl App {
             previous_time: Instant::now(),
             elapsed_time: 0.0,
             frame_mod: 20,
+            fps_update: Instant::now(),
+            prev_fps: [0.0; 20]
         }
     }
     
@@ -57,6 +61,14 @@ impl App {
         let dt = (current_time - self.previous_time).as_secs_f32();
         self.previous_time = current_time;
         self.elapsed_time += dt;
+
+        self.prev_fps[graphics.frame as usize] = 1.0/dt;
+        if current_time.duration_since(self.fps_update).as_secs_f32() > 0.15 {
+            self.fps_update = current_time;
+            let fps_avg = self.prev_fps.iter().sum::<f32>() / self.prev_fps.len() as f32;
+            
+            graphics.canvas.window.set_title(&format!("Voxelcraft (fps: {:.2})", fps_avg));
+        }
 
         if graphics.canvas.is_focused && let Some(ref mut screen) = self.active_screen {
             match screen.process_input(graphics, dt) {
