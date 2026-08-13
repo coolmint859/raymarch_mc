@@ -43,6 +43,24 @@ pub enum GpuCommand {
 /// unique identifier for a bind group layout
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] pub struct LayoutId(pub &'static str);
 
+/// Helper struct encapsulating the id of a bind group and it's associated layout
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct NamedBindGroup {
+    pub layout_id: LayoutId,
+    pub id: BindGroupId
+}
+
+impl NamedBindGroup {
+    pub fn new(name: &'static str) -> Self {
+        Self {
+            id: BindGroupId(name),
+            layout_id: LayoutId(
+                Box::leak(Box::new(format!("{name}_layout")))
+            )
+        }
+    }
+}
+
 /// Represents the state of the gpu, providing means to create and modify resources, and execute pipelines
 pub struct GpuContext {
     pub(crate) gpu: GpuHandle,

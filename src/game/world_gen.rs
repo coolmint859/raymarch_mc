@@ -1,12 +1,18 @@
-use core::num;
-
 use crate::game::{REGION_SIZE, REGION_VOLUME, RegionLocation, Voxel};
 
 pub struct RegionData {
     /// Raw voxel data
     pub voxels: Box<[Voxel; REGION_VOLUME]>,
     /// 16^3 grid level
-    pub grid16: u8,
+    pub grids: RegionGrids,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct RegionGrids {
+    pub grid4: [u32; 16],       // 4x4x4 voxel bricks, 512 per region
+    pub grid8: [u32; 2],        // 8x8x8 voxel bricks, 64 per region
+    pub grid16: u32             // 16x16x16 bricks, 8 per region 
 }
 
 pub struct WorldGenerator;
@@ -14,11 +20,11 @@ pub struct WorldGenerator;
 impl WorldGenerator {
     pub fn gen_region(&self, loc: RegionLocation) -> RegionData {
         let voxels = self.gen_voxels(loc);
-        let grid16 = self.gen_grid16(&voxels);
+        let grids = self.gen_grids(&voxels);
 
         return RegionData {
             voxels,
-            grid16,
+            grids,
         }
     }
 
@@ -43,7 +49,7 @@ impl WorldGenerator {
             }
         }
 
-        let num_trees = 3;
+        let num_trees = 6;
         for _ in 0..num_trees {
             let tx = (rand::random::<f32>() * REGION_SIZE as f32).floor() as usize;
             let tz = (rand::random::<f32>() * REGION_SIZE as f32).floor() as usize;
@@ -60,45 +66,44 @@ impl WorldGenerator {
         Box::new(voxels)
     }
 
-    fn gen_grid16(&self, voxels: &Box<[Voxel; REGION_VOLUME]>) -> u8 {
-        let mut region_byte: u8 = 0;
+    fn gen_grids(&self, voxels: &Box<[Voxel; REGION_VOLUME]>) -> RegionGrids {
+        let mut grids = RegionGrids {
+            grid4: [0; 16],
+            grid8: [0; 2],
+            grid16: 0,
+        };
         
-        // Each 32x32 region contains 8 sub-bricks of 16x16x16
-        let mut sub_idx = 0;
-        for sub_z in 0..2 {
-            for sub_y in 0..2 {
-                for sub_x in 0..2 {
-                    let mut has_solid = false;
-                    
-                    // Check voxels inside this specific 16x16x16 sub-brick
-                    for z in 0..16 {
-                        for y in 0..16 {
-                            for x in 0..16 {
-                                let vx = (sub_x * 16) + x;
-                                let vy = (sub_y * 16) + y;
-                                let vz = (sub_z * 16) + z;
-                                
-                                let voxel_idx = vx + (vy * 32) + (vz * 32 * 32);
-                                // Assuming region_voxels slices per region
-                                if voxels[voxel_idx].0 > 0 {
-                                    has_solid = true;
-                                    break;
-                                }
-                            }
-                            if has_solid { break; }
-                        }
-                        if has_solid { break; }
-                    }
-                    
-                    // If the sub-brick has solid data, set the corresponding bit
-                    if has_solid {
-                        region_byte |= 1 << sub_idx;
-                    }
-                    sub_idx += 1;
+        for z in 0..32 {
+            for x in 0..32 {
+                for y in 0..32 {
+                    let vox_idx = x + (y * REGION_SIZE) + (z * REGION_SIZE * REGION_SIZE);
+                    if voxels[vox_idx] == Voxel(0) { continue; }
+
+                    // Grid16
+                    let b16_x = x >> 4;
+                    let b16_y = y >> 4;
+                    let b16_z = z >> 4;
+                    let idx16 = b16_x + (b16_y * 2) + (b16_z * 4);
+                    grids.grid16 |= 1 << idx16;
+
+                    // Grid8
+                    let b8_x = x >> 3;
+                    let b8_y = y >> 3;
+                    let b8_z = z >> 3;
+                    let idx8 = b8_x + (b8_y * 4) + (b8_z * 16);
+                    grids.grid8[idx8 / 32] |= 1 << (idx8 % 32);
+
+                    // Grid4
+                    let b4_x = x >> 2;
+                    let b4_y = y >> 2;
+                    let b4_z = z >> 2;
+                    let idx4 = b4_x + (b4_y * 8) + (b4_z * 64);
+                    grids.grid4[idx4 / 32] |= 1 << (idx4 % 32);
                 }
             }
         }
 
-        region_byte
+        grids
     }
 }
+

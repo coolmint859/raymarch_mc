@@ -4,14 +4,16 @@
 const REGION_SIZE: i32 = 32;
 const REGION_VOL: u32 = u32(REGION_SIZE * REGION_SIZE * REGION_SIZE);
 
-const AIR_REGION: i32 = -1; // indicates that a region is completely air
-const AIR_BRICK: i32 = -2; // indicates that a mid-region (brick) is completely air
+const AIR_BRICK4: i32 = -1;     // indicates that a grid4 brick is completely air
+const AIR_BRICK8: i32 = -2;     // indicates that a grid8 brick is completely air
+const AIR_BRICK16: i32 = -3;    // indicates that a grid16 brick is completely air
+const AIR_REGION: i32 = -4;     // indicates that a full region is completely air
 
 const AIR_VOXEL: i32 = 0; // indicates that a voxel is an air block.
 const GRASS_VOXEL: i32 = 2;
 const WATER_VOXEL: i32 = 4;
 
-const SCALES = array<f32, 3>(1.0, 16.0, 32.0);
+const SCALES = array<f32, 5>(1.0, 4.0, 8.0, 16.0, 32.0);
 
 const LOCAL_AXIS = array<vec3i, 3>(
     vec3i(1, 0, 0), // x-axis
@@ -33,15 +35,26 @@ struct EnvironmentUniform {
     ground_color: vec4f,
 }
 
+struct RegionGrids {
+    grid4: array<u32, 16>,  // 4x4x4 voxel bricks, 512 per region
+    grid8: array<u32, 2>,   // 8x8x8 voxel bricks, 64 per region
+    grid16: u32             // 16x16x16 bricks, 8 per region
+}
+
+/// Global uniforms (updated once per frame)
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
 @group(0) @binding(1) var<uniform> env: EnvironmentUniform;
-@group(0) @binding(2) var grass_alpha_mask: texture_2d<f32>;
-@group(0) @binding(3) var block_atlas: texture_2d<f32>;
-@group(0) @binding(4) var block_sampler: sampler;
-@group(0) @binding(5) var<uniform> atlas_uvs: array<vec4f, 5>;
-@group(0) @binding(6) var<storage, read> voxels: array<u32>;
-@group(0) @binding(7) var<storage, read> grid16: array<u32>;
-@group(0) @binding(8) var output: texture_storage_2d<rgba16float, write>;
+
+/// Material related bindings (static)
+@group(1) @binding(0) var grass_alpha_mask: texture_2d<f32>;
+@group(1) @binding(1) var block_atlas: texture_2d<f32>;
+@group(1) @binding(2) var block_sampler: sampler;
+@group(1) @binding(3) var<uniform> atlas_uvs: array<vec4f, 5>;
+
+/// World storage and output (updated dynamically based on player interaction)
+@group(2) @binding(0) var<storage, read> voxels: array<u32>;
+@group(2) @binding(1) var<storage, read> grids: array<RegionGrids, 25>;
+@group(2) @binding(2) var output: texture_storage_2d<rgba16float, write>;
 
 struct Material {
     color: vec3f,
@@ -282,13 +295,9 @@ fn get_palette_color(face: VoxelFace, uv_idx: u32) -> vec3f {
     let pad = 4.0 / 1024.0;
     let width = (uv_bounds.z - uv_bounds.x); // max_x - min_x
 
-    var offset = 1.0;
     var is_side = abs(face.normal.y) != 1;
-    if (face.normal.y == -1) { 
-        offset = 2.0;
-    } else if (face.normal.y == 1) { 
-        offset = 0.0;
-    }
+    let offsets = array<f32, 3>(2.0, 1.0, 0.0);
+    let offset = offsets[face.normal.y + 1];
 
     let x_offset = (width + pad) * offset;
     let auv_bounds = vec4f(
@@ -303,12 +312,15 @@ fn get_palette_color(face: VoxelFace, uv_idx: u32) -> vec3f {
     let texel = textureSampleLevel(block_atlas, block_sampler, uv, 0.0);
 
     var color_mask = vec3f(1.0);
-    if (i32(uv_idx) == GRASS_VOXEL && is_side) {
-        let grass_overlay = textureSampleLevel(grass_alpha_mask, block_sampler, inv_face_uv, 0.0);
-        let grass_color = vec3f(0.0, 1.0, 0.0) + grass_overlay.rgb;
-        color_mask = mix(vec3f(1.0), grass_color, grass_overlay.a);
-    } else if (i32(uv_idx) == GRASS_VOXEL) {
-        color_mask = vec3f(0.0, 1.0, 0.0);
+    if (i32(uv_idx) == GRASS_VOXEL) {
+        var grass_color = vec3f(0.0, 1.0, 0.0);
+        if (is_side) {
+            let grass_overlay = textureSampleLevel(grass_alpha_mask, block_sampler, inv_face_uv, 0.0);
+            grass_color += grass_overlay.rgb;
+            color_mask = mix(vec3f(1.0), grass_color, grass_overlay.a);
+        } else {
+            color_mask = grass_color;
+        }
     } else if (i32(uv_idx) == WATER_VOXEL) {
         color_mask = vec3f(0.0, 0.3, 0.7);
     }
@@ -316,19 +328,34 @@ fn get_palette_color(face: VoxelFace, uv_idx: u32) -> vec3f {
     return texel.rgb * color_mask;
 }
 
+fn check_grid16(grids: RegionGrids, pos: vec3i) -> bool {
+    let b16 = pos >> vec3u(4);
+    let idx16 = u32(b16.x + (b16.y * 2) + (b16.z * 4));
+    let bit_idx = idx16 >> 5u;
+    return ((grids.grid16 >> bit_idx) & 1u) == 0u;
+}
+
+fn check_grid8(grids: RegionGrids, pos: vec3i) -> bool {
+    let b8 = pos >> vec3u(3);
+    let idx8 = u32(b8.x + (b8.y * 4) + (b8.z * 16));
+    let word_idx = idx8 >> 5u;
+    let bit_idx = idx8 & 31;
+    return ((grids.grid8[word_idx] >> bit_idx) & 1u) == 0u;
+}
+
+fn check_grid4(grids: RegionGrids, pos: vec3i) -> bool {
+    let b4 = pos >> vec3u(2);
+    let idx4 = u32(b4.x + (b4.y * 8) + (b4.z * 64));
+    let word_idx = idx4 >> 5u;
+    let bit_idx = idx4 & 31;
+    return ((grids.grid4[word_idx] >> bit_idx) & 1u) == 0u;
+}
+
 /// Determines the block of a voxel at the given world position
 fn get_block_at(voxel_pos: vec3i) -> i32 {
-    let region = vec3i(
-        voxel_pos.x >> 5u,
-        voxel_pos.y >> 5u,
-        voxel_pos.z >> 5u,
-    );
+    let region: vec3i = voxel_pos >> vec3u(5);
 
-    /// voxels live in a 5x5 band of regions for now
-    if (region.x < -2 || region.x > 2 || 
-        region.y != 0 ||
-        region.z < -2 || region.z > 2) 
-    { 
+    if (any(region < vec3i(-2, 0, -1)) || any(region > vec3i(2, 0, 2))) {
         return AIR_REGION;
     }
 
@@ -336,26 +363,12 @@ fn get_block_at(voxel_pos: vec3i) -> i32 {
     let r_z = region.z + 2;
     let region_idx = (r_x * 5) + r_z;
 
-    let block_pos = vec3i(
-        voxel_pos.x & 31,
-        voxel_pos.y & 31,
-        voxel_pos.z & 31,
-    );
+    let block_pos = voxel_pos & vec3i(31);
+    let grids = grids[region_idx];
 
-    let brick = vec3i(
-        block_pos.x >> 4u,
-        block_pos.y >> 4u,
-        block_pos.z >> 4u,
-    );
-    let bit_idx = u32(brick.x + (brick.y * 2) + brick.z * 4);
-
-    let u32_element = grid16[u32(region_idx) / 4u];
-    let byte_offset = (u32(region_idx) % 4u) * 8u;
-    let region_byte = (u32_element >> byte_offset) & 0xFFu;
-
-    if (((region_byte >> bit_idx) & 1u) == 0u) {
-        return AIR_BRICK;
-    }
+    if (check_grid16(grids, block_pos)) { return AIR_BRICK16; }
+    if (check_grid8(grids, block_pos)) { return AIR_BRICK8; }
+    if (check_grid4(grids, block_pos)) { return AIR_BRICK4; }
 
     let region_start = u32(region_idx) * REGION_VOL;
     let voxel_index = u32(block_pos.x + (block_pos.y * REGION_SIZE) + (block_pos.z * REGION_SIZE * REGION_SIZE));
@@ -420,13 +433,7 @@ fn dda_march(ray: Ray, config: RayMarchConfig) -> HitInfo {
             break;
         }
 
-        var scale_idx = 0u;
-        if (block_id == AIR_BRICK) {
-            scale_idx = 1u;
-        } else if (block_id == AIR_REGION) {
-            scale_idx = 2u;
-        }
-
+        let scale_idx = select(0u, u32(-block_id), block_id <= AIR_BRICK4);
         dda_step(ray, &curr_step, voxel_pos, SCALES[scale_idx]);
 
         hit_info.steps += 1;
@@ -477,27 +484,27 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     let depth = clamp(hit_info.t / max_dist, 0.0, 1.0);
     // let color = vec3f(depth);
 
-    // Step heatmap
-    let ratio = f32(hit_info.steps) / f32(max_steps);
-    let color = mix(vec3f(0.0, 0.2, 1.0), vec3f(1.0, 0.1, 0.0), ratio);
+    // // Step heatmap
+    // let ratio = f32(hit_info.steps) / f32(max_steps) * 1.0;
+    // let color = mix(vec3f(0.0, 0.2, 1.0), vec3f(1.0, 0.1, 0.0), ratio);
 
-    // /// regular rendering
-    // let sun_dir = normalize(env.sun_dir.xyz);
-    // var color = vec3f(0.0);
-    // if (hit_info.did_hit)  {
-    //     // color = hit_info.material.color;
-    //     // color = vec3f(abs(hit_info.face.uv), 0.0);
-    //     color = calc_lighting(hit_info, sun_dir, -ray.dir);
-    // } else {
-    //     color = get_background_color(ray.dir, sun_dir);
-    // }
+    /// regular rendering
+    let sun_dir = normalize(env.sun_dir.xyz);
+    var color = vec3f(0.0);
+    if (hit_info.did_hit)  {
+        // color = hit_info.material.color;
+        // color = vec3f(abs(hit_info.face.uv), 0.0);
+        color = calc_lighting(hit_info, sun_dir, -ray.dir);
+    } else {
+        color = get_background_color(ray.dir, sun_dir);
+    }
 
-    // var fog_factor = 1.0 - exp(-hit_info.t * get_density());
-    // let hit_height = (camera.position + ray.dir * hit_info.t).y;
-    // let height_falloff = saturate(1.0 - abs(ray.dir.y) * 4.0);
+    var fog_factor = 1.0 - exp(-hit_info.t * get_density());
+    let hit_height = (camera.position + ray.dir * hit_info.t).y;
+    let height_falloff = saturate(1.0 - abs(ray.dir.y) * 4.0);
 
-    // fog_factor = saturate(fog_factor * height_falloff);
-    // color = mix(color, env.sky_horizon.xyz, fog_factor);
+    fog_factor = saturate(fog_factor * height_falloff);
+    color = mix(color, env.sky_horizon.xyz, fog_factor);
 
     let out_color = vec4(color, depth);
     textureStore(output, id.xy, out_color);

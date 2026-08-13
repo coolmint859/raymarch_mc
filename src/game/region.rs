@@ -43,8 +43,8 @@ impl Region {
         bytemuck::cast_slice(self.data.voxels.as_ref()).to_vec()
     }
 
-    pub fn grid16_bytes(&self) -> u8 {
-        self.data.grid16
+    pub fn grids(&self) -> Vec<u8> {
+        bytemuck::bytes_of(&self.data.grids).to_vec()
     }
 
     pub fn loc_bytes(&self) -> Vec<u8> {

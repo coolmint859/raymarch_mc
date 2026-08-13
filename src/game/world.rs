@@ -4,7 +4,7 @@ use crate::game::{Environment, EnvironmentUniform, REGION_VOLUME, Region, Region
 
 pub struct RegionBytes {
     pub voxels: Vec<u8>,
-    pub grid16: Vec<u8>,
+    pub grids: Vec<u8>,
 }
 
 pub struct VoxelWorld {
@@ -58,21 +58,17 @@ impl VoxelWorld {
         let bytes_per_region = REGION_VOLUME * 4;
         let vtotal_size = bytes_per_region * self.regions.len();
 
-        let mut vtotal_bytes = Vec::with_capacity(vtotal_size);
-        let mut g16_total_bytes = Vec::with_capacity(self.regions.len());
+        let mut vox_total_bytes = Vec::with_capacity(vtotal_size);
+        let mut grids_total_bytes = Vec::with_capacity(self.regions.len());
 
-        let mut idx = 0;
         for region in &self.regions {
-            vtotal_bytes.extend_from_slice(&region.voxel_bytes());
-            g16_total_bytes.push(region.data.grid16);
-
-            println!("region {idx} grid16: {:?}", region.data.grid16);
-            idx += 1;
+            vox_total_bytes.extend_from_slice(&region.voxel_bytes());
+            grids_total_bytes.extend_from_slice(&region.grids());
         }
 
         RegionBytes {
-            voxels: vtotal_bytes,
-            grid16: g16_total_bytes,
+            voxels: vox_total_bytes,
+            grids: grids_total_bytes,
         }
     }
 }

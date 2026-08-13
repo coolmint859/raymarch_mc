@@ -74,7 +74,7 @@ impl GraphicsInit {
     pub fn new() -> Self {
         Self {
             power_pref: wgpu::PowerPreference::None,
-            present_mode: wgpu::PresentMode::Fifo,
+            present_mode: wgpu::PresentMode::Immediate,
             frame_latency: 2,
             back_end: wgpu::Backends::PRIMARY,
             is_initialized: false
