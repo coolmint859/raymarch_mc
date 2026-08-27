@@ -2,6 +2,7 @@ use std::ops::Deref;
 
 use crate::graphics::{BufferId, SamplerId, TextureId};
 
+/// The target ID for a bind group entry
 #[derive(Clone, Debug)]
 pub enum BindingTarget {
     Buffer(BufferId),
@@ -9,7 +10,7 @@ pub enum BindingTarget {
     Sampler(SamplerId),
 }
 
-/// Represents resource bindings that can be used in a bind group
+/// Represents gpu resources that can be used in a bind group
 pub trait Bindable {
     /// Get the resource binding as it's entire wgpu binding type
     fn as_binding(&self) -> wgpu::BindingType;

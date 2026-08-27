@@ -1,3 +1,5 @@
+use std::println;
+
 use crate::graphics::*;
 
 /// Represents a render pass
@@ -168,24 +170,32 @@ impl GpuContext {
     pub fn remove_texture(&mut self, id: &TextureId) {
         self.textures.remove(id);
         self.executor.invalidate_texture(id, self);
+
+        println!("Removed Texture with label '{:?}'", id);
     }
 
     /// Remove a buffer from the context, releasing the vram allocation
     pub fn remove_buffer(&mut self, id: &BufferId) {
         self.buffers.remove(id);
         self.executor.invalidate_buffer(id, self);
+
+        println!("Removed Buffer with label '{:?}'", id);
     }
 
     /// Remove a bind group from the context, releasing the vram allocation
     pub fn remove_bind_group(&mut self, id: &BindGroupId) {
         self.bg_registry.remove(id);
         self.executor.invalidate_bind_group(id);
+
+        println!("Removed Bind Group with label '{:?}'", id);
     }
 
     /// Remove a pipeline from the context, releasing the vram allocation
     pub fn remove_pipeline(&mut self, id: &PipelineId) {
         self.pip_registry.remove(id);
         self.executor.invalidate_pipeline(id);
+
+        println!("Removed Pipeline with label '{:?}'", id);
     }
 
     /// Add a render/compute pass the the context's pass queue

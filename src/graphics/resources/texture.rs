@@ -119,7 +119,7 @@ impl Deref for TextureHandle {
 pub enum TextureType {
     /// A texture created via an algorithm
     Procedural { data: Vec<u8>},
-    // /// A texture created by loading a file from disk
+    /// A texture created by loading a file from disk
     OnDisk { path: &'static str },
     /// A texture created via running a compute shader
     Computed
@@ -134,6 +134,7 @@ pub(crate) struct TextureInfo {
     pub dim: wgpu::TextureDimension,
 }
 
+/// A gpu texture
 pub struct Texture {
     pub label: String,
     pub texture_type: TextureType,
@@ -166,6 +167,7 @@ impl Texture {
         self
     }
 
+    /// Define the texture to be 2d with the provided dimensions
     pub fn with_size_2d(mut self, width: u32, height: u32) -> Self {
         self.info = Some(TextureInfo {
             width, 
@@ -177,6 +179,7 @@ impl Texture {
         self
     }
 
+    /// Define the texture to be 3d with the provided dimensions
     pub fn with_size_3d(mut self, width: u32, height: u32, depth: u32) -> Self {
         self.info = Some(TextureInfo {
             width, 

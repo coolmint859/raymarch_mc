@@ -224,7 +224,7 @@ impl PipelineRegistry {
             }
         }
         
-        // println!("expected layouts: {}, ready layouts: {}", builder.bg_layouts.len(), bg_layouts.len());
+        println!("expected layouts: {}, ready layouts: {}", builder.bg_layouts.len(), bg_layouts.len());
 
         if builder.bg_layouts.len() != bg_layouts.len() {
             self.deferred.insert(*id, builder.clone());

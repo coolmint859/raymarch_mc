@@ -2,7 +2,7 @@ use glam::{Quat, Vec3};
 use winit::{event::MouseButton, keyboard::KeyCode};
 
 use crate::{
-    Graphics, InputEvent, game::{BlitPass, GlobalResources, RayMarchPass, Screen, ScreenTransition, TaaPass, VoxelWorld}, graphics::*, utils::{CameraController, KeyboardHandler, MouseHandler, PerspectiveCamera},
+    Graphics, InputEvent, game::{BlitPass, CoarsePass, GlobalResources, RayMarchFinePass, RayMarchResources, Screen, ScreenTransition, TaaPass, VoxelWorld}, graphics::*, utils::{CameraController, KeyboardHandler, MouseHandler, PerspectiveCamera},
 };
 
 #[derive(Clone, Copy)]
@@ -34,8 +34,10 @@ pub struct Game {
     default_cam_pos: Vec3,
     world: VoxelWorld,
     globals: GlobalResources,
+    rm_rscs: RayMarchResources,
 
-    rm_pass: RayMarchPass,
+    rm_coarse_pass: CoarsePass,
+    rm_fine_pass: RayMarchFinePass,
     taa_pass: TaaPass,
     blit_pass: BlitPass,
 }
@@ -47,6 +49,7 @@ impl Game {
         camera.transform.move_to(default_cam_pos);
 
         let globals = GlobalResources::new();
+        let rm_rscs = RayMarchResources::new();
 
         Self {
             camera,
@@ -55,10 +58,12 @@ impl Game {
             mouse: MouseHandler::new(),
             default_cam_pos,
             world: VoxelWorld::new(),
-            rm_pass: RayMarchPass::new(globals.ids.clone()),
+            rm_coarse_pass: CoarsePass::new(globals.ids.clone(), rm_rscs.ids.clone()),
+            rm_fine_pass: RayMarchFinePass::new(globals.ids.clone(), rm_rscs.ids.clone()),
             taa_pass: TaaPass::new(globals.ids.clone()),
             blit_pass: BlitPass::new(globals.ids.clone()),
             globals,
+            rm_rscs,
         }
     }
 
@@ -84,7 +89,10 @@ impl Screen for Game {
         self.camera.update(graphics.canvas.aspect);
 
         self.globals.init(graphics, &self.camera);
-        self.rm_pass.init(&self.world, graphics);
+        self.rm_rscs.init(graphics, &self.world);
+
+        self.rm_coarse_pass.init(graphics);
+        self.rm_fine_pass.init(graphics, &self.world);
         self.taa_pass.init(graphics);
         self.blit_pass.init(graphics);
 
@@ -94,7 +102,9 @@ impl Screen for Game {
 
     fn on_resize(&mut self, graphics: &mut Graphics) {
         self.globals.on_resize(graphics);
-        self.rm_pass.on_resize(graphics);
+        self.rm_rscs.on_resize(graphics);
+
+        self.rm_fine_pass.on_resize(graphics);
         self.taa_pass.on_resize(graphics);
         self.blit_pass.on_resize(graphics);
     }
@@ -182,11 +192,18 @@ impl Screen for Game {
     }
 
     fn render(&mut self, graphics: &mut Graphics) -> Result<(), wgpu::SurfaceError> {
-        let wx = (graphics.canvas.config.width + 15) / 16;
-        let wy = (graphics.canvas.config.height + 15) / 16;
+        let cw = graphics.canvas.config.width;
+        let ch = graphics.canvas.config.height;
 
-        graphics.gpu.add_command(self.rm_pass.get(wx, wy));
-        graphics.gpu.add_command(self.taa_pass.get(wx, wy));
+        let fwx = (cw + 15) / 16;
+        let fwy = (ch + 15) / 16;
+
+        let hwx = ((cw/2) + 15) / 16;
+        let hwy = ((ch/2) + 15) / 16;
+
+        graphics.gpu.add_command(self.rm_coarse_pass.get(hwx, hwy));
+        graphics.gpu.add_command(self.rm_fine_pass.get(fwx,fwy));
+        graphics.gpu.add_command(self.taa_pass.get(fwx, fwy));
         graphics.gpu.add_command(self.blit_pass.get());
         graphics.gpu.finish(&graphics.canvas)
     }

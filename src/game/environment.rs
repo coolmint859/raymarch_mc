@@ -10,6 +10,7 @@ pub struct EnvironmentUniform {
     pub sky_zenith: [f32; 4],
     pub sky_horizon: [f32; 4],
     pub ground: [f32; 4],
+    pub ao_params: [f32; 3],
 }
 
 /// Describes the environment of the voxel world, simulating day/night cycles and weather
@@ -73,6 +74,7 @@ impl Environment {
             sky_zenith: [sky_zen.x, sky_zen.y, sky_zen.z, 0.0],
             sky_horizon: [sky_hor.x, sky_hor.y, sky_hor.z, 0.0],
             ground: [0.01, 0.01, 0.01, 0.1],
+            ao_params: [0.4, 1.45, 0.15],
         }
     }
 }

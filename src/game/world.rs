@@ -19,8 +19,8 @@ impl VoxelWorld {
         let world_gen = WorldGenerator;
         let mut regions = Vec::new();
 
-        for x in -2..=2 {
-            for z in -2..=2 {
+        for x in -4..=4 {
+            for z in -4..=4 {
                 let location = RegionLocation { x: x, y: 0, z: z, _pad: 0 };
                 let region_data = world_gen.gen_region(location);
 
