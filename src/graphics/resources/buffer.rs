@@ -182,6 +182,16 @@ impl Buffer {
         Buffer::new(wgpu::BufferUsages::STORAGE, contents)
     }
 
+    /// Create a buffer builder with the vertex usage type
+    pub fn as_vertex(contents: BufferContents) -> Self {
+        Buffer::new(wgpu::BufferUsages::VERTEX, contents)
+    }
+
+    /// Create a buffer builder with the index usage type
+    pub fn as_index(contents: BufferContents) -> Self {
+        Buffer::new(wgpu::BufferUsages::INDEX, contents)
+    }
+
     /// Set the label for gpu profiling of the resultant buffer
     pub fn with_label(mut self, label: &str) -> Self {
         self.label = label.to_string();

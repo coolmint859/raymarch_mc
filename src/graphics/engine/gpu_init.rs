@@ -99,7 +99,8 @@ impl GraphicsInit {
         self
     }
 
-    /// Set the target graphics api backend. This is platform specific.
+    /// Set the target graphics api backend. The default is wgpu::Backends::PRIMARY, which is usually Vulkan.
+    /// However it may be worth it to consider setting this to a platform specific backend (such as DX12) depending on your application needs.
     pub fn with_backend(mut self, backend: wgpu::Backends) -> Self {
         self.back_end = backend;
         self

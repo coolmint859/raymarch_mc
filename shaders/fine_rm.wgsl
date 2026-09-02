@@ -15,7 +15,7 @@ const WATER_VOXEL: i32 = 4;
 
 const SCALES = array<f32, 5>(1.0, 4.0, 8.0, 16.0, 32.0);
 
-const RAY_DIR_OFFSET: f32 = 0.06;
+const RAY_DIR_OFFSET: f32 = 0.1;
 const RAY_ORG_OFFSET: f32 = 0.002;
 
 const LOCAL_AXIS = array<vec3i, 3>(
@@ -535,7 +535,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     let sun_dir = normalize(env.sun_dir.xyz);
     var color = vec3f(0.0);
     if (coarse_mat > u32(AIR_VOXEL))  {
-        let dda_config = RayMarchConfig(100u, 300, false);
+        let dda_config = RayMarchConfig(4u, 20, false);
 
         let hit_result = dda_march(ray, dda_config);
 

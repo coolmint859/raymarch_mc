@@ -9,6 +9,7 @@ pub mod game;
 pub mod utils;
 
 pub mod graphics;
+use crate::game::QuadTest;
 use crate::{game::{Game, Screen, ScreenTransition}, graphics::*};
 
 /// Represents events triggered by user input
@@ -34,9 +35,10 @@ struct App {
 
     previous_time: Instant,
     elapsed_time: f32,
-    frame_mod: u32, // used to prevent precision loss,
+    frame_mod: u32,
+    frame_update: u32,
     fps_update: Instant,
-    prev_fps: [f32; 20],
+    prev_fps: [f32; 5],
 }
 
 impl App {
@@ -46,9 +48,10 @@ impl App {
             active_screen: None,
             previous_time: Instant::now(),
             elapsed_time: 0.0,
-            frame_mod: 20,
+            frame_mod: 30,
+            frame_update: 5,
             fps_update: Instant::now(),
-            prev_fps: [0.0; 20]
+            prev_fps: [0.0; 5]
         }
     }
     
@@ -62,8 +65,9 @@ impl App {
         self.previous_time = current_time;
         self.elapsed_time += dt;
 
-        self.prev_fps[graphics.frame as usize] = 1.0/dt;
-        if current_time.duration_since(self.fps_update).as_secs_f32() > 0.15 {
+        self.prev_fps[(graphics.frame % self.frame_update) as usize] = 1.0/dt;
+        let threshold = self.frame_update as f32 / 60.0;
+        if current_time.duration_since(self.fps_update).as_secs_f32() > threshold {
             self.fps_update = current_time;
             let fps_avg = self.prev_fps.iter().sum::<f32>() / self.prev_fps.len() as f32;
             
@@ -103,10 +107,10 @@ impl ApplicationHandler for App {
             let window = Arc::new(event_loop.create_window(window_attrs).unwrap());
             event_loop.listen_device_events(DeviceEvents::Always);
 
-            let mut graphics_init = GraphicsInit::new();
+            let mut graphics_init = GraphicsInit::new().with_backend(wgpu::Backends::DX12);
             let mut graphics = pollster::block_on(graphics_init.init(window)).unwrap();
 
-            let mut game_screen = Game::new();
+            let mut game_screen = QuadTest::new();
             game_screen.init(&mut graphics);
 
             self.active_screen = Some(Box::new(game_screen));

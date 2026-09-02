@@ -30,12 +30,12 @@ impl BindGroupRegistry {
     pub fn request_layout(
         &mut self,
         id: &LayoutId,
-        builder: &BindGroup
+        bg_def: &BindGroup
     ) {
         if self.layout_handles.contains(id) { return; };
 
         let gpu = self.gpu.clone();
-        let builder = builder.clone();
+        let builder = bg_def.clone();
 
         let layout_task = Task::non_blocking(async move {
             gpu.create_bg_layout(builder)
@@ -49,7 +49,7 @@ impl BindGroupRegistry {
         &mut self,
         bg_id: &BindGroupId,
         layout_id: &LayoutId,
-        builder: &BindGroup,
+        bg_def: &BindGroup,
         buffers: &'a ResourceHandler<BufferId, BufferHandle>,
         textures: &'a ResourceHandler<TextureId, TextureHandle>,
         samplers: &'a ResourceHandler<SamplerId, SamplerHandle>,
@@ -59,14 +59,14 @@ impl BindGroupRegistry {
         let layout = match self.layout_handles.get(layout_id) {
             Some(bg_layout) => bg_layout.clone(),
             None => {
-                self.deffered.insert(*bg_id, (*layout_id, builder.clone()));
-                self.request_layout(layout_id, builder);
+                self.deffered.insert(*bg_id, (*layout_id, bg_def.clone()));
+                self.request_layout(layout_id, bg_def);
                 return; 
             }
         };
 
         if !self.blueprints.contains_key(bg_id) {
-            self.blueprints.insert(*bg_id, builder.clone());
+            self.blueprints.insert(*bg_id, bg_def.clone());
         }
 
         let mut buffer_handles = Vec::new();
@@ -77,7 +77,7 @@ impl BindGroupRegistry {
         let mut expected_tex_len = 0usize;
         let mut expected_samp_len = 0usize;
 
-        for binding in &builder.bindings {
+        for binding in &bg_def.bindings {
             match &binding.target {
                 BindingTarget::Buffer(buf_id) => {
                     if let Some(handle) = buffers.get(buf_id) {
@@ -105,14 +105,14 @@ impl BindGroupRegistry {
         let ok_samplers = expected_samp_len == sampler_handles.len();
 
         if !(ok_buffers && ok_textures && ok_samplers) {
-            self.deffered.insert(*bg_id, (*layout_id, builder.clone()));
+            self.deffered.insert(*bg_id, (*layout_id, bg_def.clone()));
             return; 
         };
 
         self.deffered.remove(bg_id);
 
         let gpu = self.gpu.clone();
-        let builder = builder.clone();
+        let builder = bg_def.clone();
 
         let bind_group_task = Task::non_blocking(async move {
             let mut entries = Vec::new();
@@ -154,8 +154,8 @@ impl BindGroupRegistry {
 
         // println!("pending bind groups: {}", self.deffered.len());
         let pending_bgs = std::mem::take(&mut self.deffered);
-        for (bg_id, (bgl_id, builder)) in &pending_bgs {
-            self.request_bg(bg_id, &bgl_id, builder, buffers, textures, samplers);
+        for (bg_id, (bgl_id, bg_def)) in &pending_bgs {
+            self.request_bg(bg_id, &bgl_id, bg_def, buffers, textures, samplers);
         }
     }
 
@@ -207,45 +207,47 @@ impl PipelineRegistry {
     pub fn request<'a>(
         &mut self,
         id: &PipelineId,
-        builder: &Pipeline,
+        pip_def: &Pipeline,
         bind_groups: &'a BindGroupRegistry,
     ) {
         if self.handles.contains(id) { return; }
 
         if !self.blueprints.contains_key(id) {
-            self.blueprints.insert(*id, builder.clone());
+            self.blueprints.insert(*id, pip_def.clone());
         }
 
         let mut bg_layouts = Vec::new();
-        for bg_id in &builder.bg_layouts {
+        for bg_id in &pip_def.bg_layouts {
             if let Some(mut layout) = bind_groups.get_cloned_layout(bg_id) {
                 layout.ref_count += 1;
                 bg_layouts.push((*layout).clone())
             }
         }
         
-        println!("expected layouts: {}, ready layouts: {}", builder.bg_layouts.len(), bg_layouts.len());
+        println!("expected layouts: {}, ready layouts: {}", pip_def.bg_layouts.len(), bg_layouts.len());
 
-        if builder.bg_layouts.len() != bg_layouts.len() {
-            self.deferred.insert(*id, builder.clone());
+        if pip_def.bg_layouts.len() != bg_layouts.len() {
+            self.deferred.insert(*id, pip_def.clone());
             return; 
         }
 
         self.deferred.remove(id);
 
         let gpu = self.gpu.clone();
-        let pip_builder = builder.clone();
-        match builder.pip_type {
+        let pip_def_copy = pip_def.clone();
+        match &pip_def.pip_type {
             PipelineType::Render(ty) => {
+                let pip_type = ty.clone();
                 let r_pip_task = Task::non_blocking(async move {
-                    gpu.create_render_pipeline(pip_builder, ty, bg_layouts)
+                    gpu.create_render_pipeline(pip_def_copy, pip_type, bg_layouts)
                 });
 
                 self.handles.request_new(id, r_pip_task);
             },
             PipelineType::Compute(ty) => {
+                let pip_type = ty.clone();
                 let c_pip_task = Task::non_blocking(async move {
-                    gpu.create_compute_pipeline(pip_builder, ty, bg_layouts)
+                    gpu.create_compute_pipeline(pip_def_copy, pip_type, bg_layouts)
                 });
 
                 self.handles.request_new(id, c_pip_task);
@@ -258,8 +260,8 @@ impl PipelineRegistry {
         self.handles.sync();
 
         let pending_bgs = std::mem::take(&mut self.deferred);
-        for (id, builder) in &pending_bgs {
-            self.request(id, builder, bind_groups);
+        for (id, pip_def) in &pending_bgs {
+            self.request(id, pip_def, bind_groups);
         }
 
         // println!("{:?}", self.handles.status_of_all());

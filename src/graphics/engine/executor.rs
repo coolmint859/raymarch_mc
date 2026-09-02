@@ -119,7 +119,23 @@ impl GpuExecutor {
             };
             render_pass.set_bind_group(idx as u32, bg.deref(), &[]);
         }
-        render_pass.draw(0..info.vertex_count, 0..info.instance_count);
+
+        for (idx, vtx_id) in info.vertex_buffers.iter().enumerate() {
+            let Some(buffer) = context.buffers.get(vtx_id) else {
+                return;
+            };
+            render_pass.set_vertex_buffer(idx as u32, buffer.slice(..));
+        }
+        
+        if let Some(idx_id) = info.index_buffer {
+            let Some(buffer) = context.buffers.get(&idx_id) else {
+                return;
+            };
+            render_pass.set_index_buffer(buffer.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.draw_indexed(0..info.vertex_count, 0, 0..info.instance_count);
+        } else {
+            render_pass.draw(0..info.vertex_count, 0..info.instance_count);
+        }
     }
 
     /// Execute a compute pass on the provided encoder

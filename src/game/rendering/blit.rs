@@ -81,7 +81,9 @@ impl BlitPass {
         GpuCommand::RenderPass(
             RenderPassInfo { 
                 pipeline_id: self.blit_ids.pip_id,
-                bind_groups: vec![blit_bg], 
+                bind_groups: vec![blit_bg],
+                vertex_buffers: Vec::new(),
+                index_buffer: None,
                 vertex_count: 3, 
                 instance_count: 1 
             }

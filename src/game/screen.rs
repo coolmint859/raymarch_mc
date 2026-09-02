@@ -15,13 +15,15 @@ pub trait Screen {
     fn init(&mut self, graphics: &mut Graphics);
 
     /// Called when a input event was detected by the OS
-    fn input_event(&mut self, event: InputEvent);
+    fn input_event(&mut self, _event: InputEvent) {}
 
     /// Called when the window was resized
-    fn on_resize(&mut self, _graphics: &mut Graphics);
+    fn on_resize(&mut self, _graphics: &mut Graphics) {}
 
     /// Process user input
-    fn process_input(&mut self, graphics: &mut Graphics, dt: f32) -> ScreenTransition;
+    fn process_input(&mut self, _graphics: &mut Graphics, _dt: f32) -> ScreenTransition {
+        ScreenTransition::None
+    }
 
     /// Update the screen state
     fn update(&mut self, graphics: &mut Graphics, dt: f32);

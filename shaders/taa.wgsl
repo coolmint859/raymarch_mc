@@ -26,10 +26,9 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>)  {
     let gamma = 0.9;
     let b_min = mean - gamma * std_dev;
     let b_max = mean + gamma * std_dev;
-
-    let blend = 0.9;
     var clipped = clamp(hist_texel.rgb, b_min, b_max);
 
+    let blend = 0.9;
     let curr_texel = textureLoad(current, pixel, 0);
     let accumulated = mix(curr_texel.rgb, clipped, blend);
 

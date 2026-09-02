@@ -7,6 +7,8 @@ use crate::graphics::*;
 pub struct RenderPassInfo {
     pub pipeline_id: PipelineId,
     pub bind_groups: Vec<BindGroupId>,
+    pub vertex_buffers: Vec<BufferId>,
+    pub index_buffer: Option<BufferId>,
     pub vertex_count: u32,
     pub instance_count: u32
 }
@@ -96,47 +98,47 @@ impl GpuContext {
         canvas.surface.configure(&self.gpu.device, &canvas.config);
     }
 
-    /// Request a buffer to be created from the provided builder and mapped to the provided id.
-    pub fn request_buffer(&mut self, id: &BufferId, builder: Buffer) {
+    /// Request a buffer to be created from the provided definition and mapped to the provided id.
+    pub fn request_buffer(&mut self, id: &BufferId, buffer_def: Buffer) {
         if self.buffers.contains(id) { return; }
 
         let gpu = self.gpu.clone();
         let buffer_task = Task::non_blocking( async move {
-            gpu.create_buffer(builder)
+            gpu.create_buffer(buffer_def)
         });
         self.buffers.request_new(id, buffer_task);
     }
 
-    /// Request a texture to be created from the provided builder and mapped to the provided id.
-    pub fn request_texture(&mut self, id: &TextureId, builder: Texture) {
+    /// Request a texture to be created from the provided definition and mapped to the provided id.
+    pub fn request_texture(&mut self, id: &TextureId, texture_def: Texture) {
         if self.textures.contains(id) { return; }
 
         let gpu = self.gpu.clone();
         let texture_task = Task::non_blocking(async move {
-            gpu.create_texture(builder)
+            gpu.create_texture(texture_def)
         });
         self.textures.request_new(id, texture_task);
     }
 
-    /// Request a sampler to be created from the provided builder and mapped to the provided id.
-    pub fn request_sampler(&mut self, id: &SamplerId, builder: Sampler) {
+    /// Request a sampler to be created from the provided definition and mapped to the provided id.
+    pub fn request_sampler(&mut self, id: &SamplerId, sampler_def: Sampler) {
         if self.samplers.contains(id) { return; }
 
         let gpu = self.gpu.clone();
         let sampler_task = Task::non_blocking(async move {
-            gpu.create_sampler(builder)
+            gpu.create_sampler(sampler_def)
         });
         self.samplers.request_new(id, sampler_task);
     }
 
-    /// Request a bind group to be created from the provided builder and mapped to the provided id.
-    pub fn request_bind_group(&mut self, bg_id: &BindGroupId, bgl_id: &LayoutId, builder: &BindGroup) {
-        self.bg_registry.request_bg(bg_id, bgl_id, builder, &self.buffers, &self.textures, &self.samplers);
+    /// Request a bind group to be created from the provided definition and mapped to the provided id.
+    pub fn request_bind_group(&mut self, bg_id: &BindGroupId, bgl_id: &LayoutId, bg_def: &BindGroup) {
+        self.bg_registry.request_bg(bg_id, bgl_id, bg_def, &self.buffers, &self.textures, &self.samplers);
     }
 
-    /// Request a pipeline to be created from the provided builder and mapped to the provided id.
-    pub fn request_pipeline(&mut self, id: &PipelineId, builder: &Pipeline) {
-        self.pip_registry.request(id, &builder, &self.bg_registry);
+    /// Request a pipeline to be created from the provided definition and mapped to the provided id.
+    pub fn request_pipeline(&mut self, id: &PipelineId, pip_def: &Pipeline) {
+        self.pip_registry.request(id, &pip_def, &self.bg_registry);
     }
 
     /// Copy a texture into to another one, overwriting it's data 
@@ -199,15 +201,14 @@ impl GpuContext {
     }
 
     /// Add a render/compute pass the the context's pass queue
-    pub fn add_command(&mut self, pass: GpuCommand) {
-        self.cmds.push(pass);
+    pub fn add_command(&mut self, command: GpuCommand) {
+        self.cmds.push(command);
     }
 
     /// Execute the gpu commands added to the command queue.
     pub fn finish(&mut self, canvas: &Canvas) -> Result<(), wgpu::SurfaceError> {
         let output = canvas.surface.get_current_texture()?;
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
-        // let format = canvas.config.format;
 
         let cmds = std::mem::take(&mut self.cmds);
         self.executor.execute(self, cmds, view);

@@ -1,4 +1,4 @@
-use crate::graphics::LayoutId;
+use crate::graphics::{LayoutId, VertexBufferLayout};
 
 /// Represents a handle to a render/compute pipeline
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -26,20 +26,40 @@ impl PipelineHandle {
 }
 
 /// A render pipeline
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct RenderPipelineType {
     pub vs_main: &'static str, 
     pub fs_main: &'static str, 
-    pub format: wgpu::TextureFormat
+    pub format: wgpu::TextureFormat,
+    pub vertex_layouts: Vec<VertexBufferLayout>,
+}
+
+impl RenderPipelineType {
+    pub fn new(vs_main: &'static str, fs_main: &'static str) -> Self {
+        Self {
+            vs_main,
+            fs_main,
+            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            vertex_layouts: Vec::new()
+        }
+    }
+
+    /// Set the output format of the render pipeline. This must match the target format for the corresponding render pass
+    pub fn with_format(mut self, format: wgpu::TextureFormat) -> Self {
+        self.format = format;
+        self
+    }
+
+    /// Add a vertex layout to the rendering pipeline. A corresponding buffer must be added to the render pass
+    pub fn with_vertex_layout(mut self, layout: &VertexBufferLayout) -> Self {
+        self.vertex_layouts.push(layout.clone());
+        self
+    }
 }
 
 impl Default for RenderPipelineType {
     fn default() -> Self {
-        Self {
-            vs_main: "vs_main",
-            fs_main: "fs_main",
-            format: wgpu::TextureFormat::Bgra8UnormSrgb
-        }
+        RenderPipelineType::new("vs_main", "fs_main")
     }
 }
 
@@ -56,7 +76,7 @@ impl Default for ComputePipelineType {
 }
 
 /// The type of gpu pipeline
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub enum PipelineType {
     Render(RenderPipelineType),
     Compute(ComputePipelineType)
