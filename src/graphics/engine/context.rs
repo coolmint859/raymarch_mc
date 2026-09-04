@@ -1,4 +1,4 @@
-use std::println;
+use std::{collections::HashSet, println};
 
 use crate::graphics::*;
 
@@ -68,12 +68,9 @@ impl NamedBindGroup {
 /// Represents the state of the gpu, providing means to create and modify resources, and execute pipelines
 pub struct GpuContext {
     pub(crate) gpu: GpuHandle,
-    cmds: Vec<GpuCommand>,
-    executor: GpuExecutor,
-
-    pub(crate) buffers: ResourceHandler<BufferId, BufferHandle>,
+    pub(crate) buffers: ResourceHandler<BufferId, wgpu::Buffer>,
     pub(crate) textures: ResourceHandler<TextureId, TextureHandle>,
-    pub(crate) samplers: ResourceHandler<SamplerId, SamplerHandle>,
+    pub(crate) samplers: ResourceHandler<SamplerId, wgpu::Sampler>,
     pub(crate) bg_registry: BindGroupRegistry,
     pub(crate) pip_registry: PipelineRegistry,
 }
@@ -81,9 +78,6 @@ pub struct GpuContext {
 impl GpuContext {
     pub fn new(gpu: GpuHandle) -> Self {
         Self {
-            cmds: Vec::new(),
-            executor: GpuExecutor::new(),
-
             buffers: ResourceHandler::new(),
             textures: ResourceHandler::new(),
             samplers: ResourceHandler::new(),
@@ -146,8 +140,8 @@ impl GpuContext {
         GpuExecutor::copy_textures(self, src_id, dst_id);
     }
 
-    /// Prepare the context for the next frame
-    pub fn prepare_frame(&mut self) {
+    /// Sync pending resources with the main thread. This should be called regularly in frame-based applications
+    pub fn sync(&mut self) {
         self.buffers.sync();
         self.textures.sync();
         self.samplers.sync();
@@ -168,52 +162,106 @@ impl GpuContext {
         }
     }
 
-    /// Remove a texture from the context, releasing the vram allocation
+    /// Remove a texture from the context, releasing the allocation from gpu memory. This also causes any bind group that used it to become invalid.
     pub fn remove_texture(&mut self, id: &TextureId) {
         self.textures.remove(id);
-        self.executor.invalidate_texture(id, self);
+
+        let mut invalid_bgs = HashSet::new();
+
+        for (bd_id, bg_blueprint) in self.bg_registry.get_bg_defs() {
+            for entry in &bg_blueprint.bindings {
+                if let BindingTarget::Texture(tex_id) = &entry.target {
+                    if tex_id == id {
+                        invalid_bgs.insert(bd_id.clone());
+                        continue;
+                    }
+                }
+            }
+        }
+
+        for bg_id in &invalid_bgs {
+            self.bg_registry.invalidate(bg_id);
+        }
 
         println!("Removed Texture with label '{:?}'", id);
     }
 
-    /// Remove a buffer from the context, releasing the vram allocation
+    /// Remove a buffer from the context, releasing the allocation from gpu memory. This also causes any bind group that used it to become invalid.
     pub fn remove_buffer(&mut self, id: &BufferId) {
         self.buffers.remove(id);
-        self.executor.invalidate_buffer(id, self);
+        let mut invalid_bgs = HashSet::new();
+
+        for (bd_id, bg_blueprint) in self.bg_registry.get_bg_defs() {
+            for entry in &bg_blueprint.bindings {
+                if let BindingTarget::Buffer(buf_id) = &entry.target {
+                    if buf_id == id {
+                        invalid_bgs.insert(*bd_id);
+                        continue;
+                    }
+                }
+            }
+        }
+
+        for bg_id in &invalid_bgs {
+            self.bg_registry.invalidate(bg_id);
+        }
+
+        println!("Removed Buffer with label '{:?}'", id);
+    }
+
+    /// Remove a sampler from the context, releasing the allocation from gpu memory. This also causes any bind group that used it to become invalid.
+    pub fn remove_sampler(&mut self, id: &SamplerId) {
+        self.samplers.remove(id);
+        let mut invalid_bgs = HashSet::new();
+
+        for (bd_id, bg_blueprint) in self.bg_registry.get_bg_defs() {
+            for entry in &bg_blueprint.bindings {
+                if let BindingTarget::Sampler(samp_id) = &entry.target {
+                    if samp_id == id {
+                        invalid_bgs.insert(*bd_id);
+                        continue;
+                    }
+                }
+            }
+        }
+
+        for bg_id in &invalid_bgs {
+            self.bg_registry.invalidate(bg_id);
+        }
 
         println!("Removed Buffer with label '{:?}'", id);
     }
 
     /// Remove a bind group from the context, releasing the vram allocation
-    pub fn remove_bind_group(&mut self, id: &BindGroupId) {
-        self.bg_registry.remove(id);
-        self.executor.invalidate_bind_group(id);
+    pub fn remove_bind_group(&mut self, bg_id: &BindGroupId) {
+        if let Some(bg_handle) = self.bg_registry.get_bg(bg_id).cloned() {
+            self.bg_registry.check_dec_bgl(&bg_handle.layout_id);
+        }
+        self.bg_registry.remove(bg_id);
 
-        println!("Removed Bind Group with label '{:?}'", id);
+        println!("Removed Bind Group with label '{:?}'", bg_id);
     }
 
     /// Remove a pipeline from the context, releasing the vram allocation
     pub fn remove_pipeline(&mut self, id: &PipelineId) {
+        if let Some(pip) = self.pip_registry.get_blueprint(id) {
+            for layout_id in &pip.bg_layouts {
+                self.bg_registry.check_dec_bgl(layout_id);
+            }
+        }
+
         self.pip_registry.remove(id);
-        self.executor.invalidate_pipeline(id);
 
         println!("Removed Pipeline with label '{:?}'", id);
     }
 
-    /// Add a render/compute pass the the context's pass queue
-    pub fn add_command(&mut self, command: GpuCommand) {
-        self.cmds.push(command);
+    /// Validate a bind group, ensuring it can be used in a gpu command
+    pub fn validate_bind_group(&self, bg_id: &BindGroupId) -> Option<BindGroupHandle> {
+        self.bg_registry.validate(bg_id, self)
     }
 
-    /// Execute the gpu commands added to the command queue.
-    pub fn finish(&mut self, canvas: &Canvas) -> Result<(), wgpu::SurfaceError> {
-        let output = canvas.surface.get_current_texture()?;
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-        let cmds = std::mem::take(&mut self.cmds);
-        self.executor.execute(self, cmds, view);
-        output.present();
-
-        Ok(())
+    /// Validate a pipeline, ensuring it can be used in a gpu command
+    pub fn validate_pipeline(&self, pip_id: &PipelineId) -> Option<&PipelineHandle> {
+        self.pip_registry.validate(pip_id, self)
     }
 }

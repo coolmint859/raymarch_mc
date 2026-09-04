@@ -1,6 +1,6 @@
 use winit::event::MouseButton;
 
-use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{Buffer, BufferContents, BufferId, GpuCommand, Pipeline, PipelineId, PipelineType, RenderPassInfo, RenderPipelineType, Vec2Attribute, VertexBufferLayout}, utils::MouseHandler};
+use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{Buffer, BufferContents, BufferId, GpuCommand, GpuExecutor, Pipeline, PipelineId, PipelineType, RenderPassInfo, RenderPipelineType, Vec2Attribute, VertexBufferLayout}, utils::MouseHandler};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -19,6 +19,7 @@ pub struct QuadIds {
 pub struct QuadTest {
     ids: QuadIds,
     mouse: MouseHandler<PlayerMouseAction>,
+    executor: GpuExecutor,
 }
 
 impl QuadTest {
@@ -32,6 +33,7 @@ impl QuadTest {
         Self { 
             ids,
             mouse: MouseHandler::new(),
+            executor: GpuExecutor::new()
         }
     }
 
@@ -122,7 +124,14 @@ impl Screen for QuadTest {
             }
         );
 
-        graphics.gpu.add_command(draw_command);
-        graphics.gpu.finish(&graphics.canvas)
+        let output = graphics.canvas.surface.get_current_texture()?;
+        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        self.executor.add_cmd(draw_command);
+        self.executor.run(&graphics.gpu, view);
+
+        output.present();
+
+        Ok(())
     }
 }

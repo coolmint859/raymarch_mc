@@ -9,8 +9,7 @@ pub mod game;
 pub mod utils;
 
 pub mod graphics;
-use crate::game::QuadTest;
-use crate::{game::{Game, Screen, ScreenTransition}, graphics::*};
+use crate::{game::{Game, QuadTest, Screen, ScreenTransition}, graphics::*};
 
 /// Represents events triggered by user input
 pub enum InputEvent {
@@ -58,7 +57,7 @@ impl App {
     pub fn run_frame(&mut self, event_loop: &ActiveEventLoop) {
         let Some(graphics) = &mut self.graphics else { return; };
 
-        graphics.gpu.prepare_frame();
+        graphics.gpu.sync();
 
         let current_time = Instant::now();
         let dt = (current_time - self.previous_time).as_secs_f32();
@@ -147,10 +146,7 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::RedrawRequested => {
-                let result = screen.render(graphics);
-
-                // println!("{:#?}", passes);
-                match result {
+                match screen.render(graphics) {
                     Err(wgpu::SurfaceError::OutOfMemory) => event_loop.exit(),
                     Err(wgpu::SurfaceError::Lost) => graphics.reset(),
                     _ => {}

@@ -1,18 +1,17 @@
 use std::ops::Deref;
-
 use wgpu::{CommandEncoder, Origin3d, TexelCopyTextureInfo};
 
-use crate::graphics::{BindGroupId, BufferId, ComputePassInfo, GpuCommand, GpuContext, LayoutId, PassValidator, PipelineId, RenderPassInfo, TextureId};
+use crate::graphics::{ComputePassInfo, GpuCommand, GpuContext, RenderPassInfo, TextureId};
 
 /// Executes render and compute pipelines
 pub(crate) struct GpuExecutor {
-    validator: PassValidator,
+    cmds: Vec<GpuCommand>,
 }
 
 impl GpuExecutor {
     pub fn new() -> Self {
         Self {
-            validator: PassValidator::new()
+            cmds: Vec::new()
         }
     }
 
@@ -50,35 +49,16 @@ impl GpuExecutor {
         }
     }
 
-    /// invalidate a buffer, indicating that it was lost/destroyed.
-    pub fn invalidate_buffer<'a>(&self, buf_id: &BufferId, context: &'a GpuContext) {
-        self.validator.invalidate_buffer(buf_id, context);
-    }
-
-    /// invalidate a texture, indicating that it was lost/destroyed.
-    pub fn invalidate_texture<'a>(&self, tex_id: &TextureId, context: &'a GpuContext) {
-        self.validator.invalidate_texture(tex_id, context);
-    }
-    
-    /// invalidate a bind group layout, indicating that it was lost/destroyed.
-    pub fn invalidate_layout<'a>(&self, bgl_id: &LayoutId, context: &'a GpuContext) {
-        self.validator.invalidate_layout(bgl_id, context);
-    }
-
-    /// invalidate a bind group, indicating that it was lost/destroyed.
-    pub fn invalidate_bind_group(&self, bg_id: &BindGroupId) {
-        self.validator.invalidate_bind_group(bg_id);
-    }
-
-    /// invalidate a pipeline, indicating that it was lost/destroyed.
-    pub fn invalidate_pipeline(&self, pip_id: &PipelineId) {
-        self.validator.invalidate_pipeline(pip_id);
+    /// Add a command to the executor.
+    pub fn add_cmd(&mut self, command: GpuCommand) {
+        self.cmds.push(command);
     }
 
     /// Execute the render/compute passes on the provided output view
-    pub fn execute<'a>(&self, context: &'a GpuContext, commands: Vec<GpuCommand>, output_view: wgpu::TextureView) {
+    pub fn run<'a>(&mut self, context: &'a GpuContext, output_view: wgpu::TextureView) {
         let mut encoder = context.gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         
+        let commands = std::mem::take(&mut self.cmds);
         for cmd in commands {
             match cmd {
                 GpuCommand::RenderPass(pass) => self.execute_render_pass(context, &mut encoder, pass, &output_view),
@@ -106,14 +86,14 @@ impl GpuExecutor {
             ..Default::default()
         });
 
-        let Some(pipeline) = self.validator.validate_render_pipeline(&info.pipeline_id, context) else { 
+        let Some(pipeline) = context.validate_pipeline(&info.pipeline_id).and_then(|pip| pip.as_render()) else { 
             // println!("[PassExecutor] Failed to validate render pipeline @{:?}", info.pipeline_id);
             return; 
         };
         render_pass.set_pipeline(&pipeline);
 
         for (idx, bg_id) in info.bind_groups.iter().enumerate() {
-            let Some(bg) = self.validator.validate_bind_group(bg_id, context) else { 
+            let Some(bg) = context.validate_bind_group(bg_id) else { 
                 // println!("[PassExecutor] Failed to validate bind group @{:?} for render pipeline @{:?}", bg_id, info.pipeline_id);
                 return; 
             };
@@ -126,7 +106,7 @@ impl GpuExecutor {
             };
             render_pass.set_vertex_buffer(idx as u32, buffer.slice(..));
         }
-        
+
         if let Some(idx_id) = info.index_buffer {
             let Some(buffer) = context.buffers.get(&idx_id) else {
                 return;
@@ -145,14 +125,14 @@ impl GpuExecutor {
             ..Default::default()
         });
 
-        let Some(pipeline) = self.validator.validate_compute_pipeline(&info.pipeline_id, context) else {
+        let Some(pipeline) = context.validate_pipeline(&info.pipeline_id).and_then(|pip| pip.as_compute()) else {
             // println!("[PassExecutor] Failed to validate compute pipeline @{:?}", info.pipeline_id);
             return; 
         };
         compute_pass.set_pipeline(&pipeline);
 
         for (idx, bg_id) in info.bind_groups.iter().enumerate() {
-            let Some(bg) = self.validator.validate_bind_group(bg_id, context) else { 
+            let Some(bg) = context.validate_bind_group(bg_id) else { 
                 // println!("[PassExecutor] Failed to validate bind group @{:?} for compute pipeline @{:?}", bg_id, info.pipeline_id);
                 return; 
             };

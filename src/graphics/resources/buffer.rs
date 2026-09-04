@@ -1,4 +1,4 @@
-use std::{num::NonZero, ops::Deref};
+use std::num::NonZero;
 
 use crate::graphics::{Bindable, BindingTarget, BufferId};
 
@@ -119,20 +119,6 @@ impl Bindable for BufferBinding {
 
     fn visibility(&self) -> wgpu::ShaderStages {
         self.visibility
-    }
-}
-
-/// A lightweight handle to a gpu buffer
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct BufferHandle {
-    pub buffer: wgpu::Buffer,
-}
-
-impl Deref for BufferHandle {
-    type Target = wgpu::Buffer;
-
-    fn deref(&self) -> &Self::Target {
-        &self.buffer
     }
 }
 

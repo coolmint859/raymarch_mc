@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use crate::graphics::{BufferId, SamplerId, TextureId};
 
 /// The target ID for a bind group entry
@@ -18,35 +16,6 @@ pub trait Bindable {
     fn target(&self) -> BindingTarget;
     /// Get the shader stage visibility of the resource binding
     fn visibility(&self) -> wgpu::ShaderStages;
-}
-
-/// A lightweight handle to a bind group
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct BindGroupHandle {
-    pub bind_group: wgpu::BindGroup
-}
-
-impl Deref for BindGroupHandle {
-    type Target = wgpu::BindGroup;
-
-    fn deref(&self) -> &Self::Target {
-        &self.bind_group
-    }
-}
-
-/// A lightweight handle to a bind group layout
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct BindGroupLayoutHandle {
-    pub ref_count: usize,
-    pub layout: wgpu::BindGroupLayout,
-}
-
-impl Deref for BindGroupLayoutHandle {
-    type Target = wgpu::BindGroupLayout;
-
-    fn deref(&self) -> &Self::Target {
-        &self.layout
-    }
 }
 
 #[derive(Clone, Debug)]

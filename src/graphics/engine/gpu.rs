@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use wgpu::util::DeviceExt;
 
-use crate::graphics::{BindGroup, BindGroupHandle, BindGroupLayoutHandle, Buffer, BufferContents, BufferHandle, ComputePipelineType, Pipeline, PipelineHandle, RenderPipelineType, Sampler, SamplerHandle, Texture, TextureHandle};
+use crate::graphics::{BindGroup, BindGroupLayoutHandle, Buffer, BufferContents, ComputePipelineType, Pipeline, PipelineHandle, RenderPipelineType, Sampler, Texture, TextureHandle};
 
 /// Handle to the gpu device and queue
 #[derive(Clone, Debug)]
@@ -13,7 +13,7 @@ pub struct GpuHandle {
 
 impl GpuHandle {
     /// Create a buffer from the given configuration builder
-    pub fn create_buffer(&self, buffer_def: Buffer) -> Result<BufferHandle, String> {
+    pub fn create_buffer(&self, buffer_def: Buffer) -> Result<wgpu::Buffer, String> {
         let buffer = match &buffer_def.contents {
             BufferContents::Empty(size) => {
                 self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -34,7 +34,7 @@ impl GpuHandle {
 
         println!("[GpuContext] Created new buffer with label '{}'", buffer_def.label);
 
-        Ok(BufferHandle { buffer })
+        Ok(buffer)
     }
 
     /// Create a new texture from the given configuration builder
@@ -83,13 +83,13 @@ impl GpuHandle {
     }
 
     /// Create a new sampler from the given configuration builder
-    pub fn create_sampler(&self, sampler_def: Sampler) -> Result<SamplerHandle, String> {
+    pub fn create_sampler(&self, sampler_def: Sampler) -> Result<wgpu::Sampler, String> {
         let sampler = self.device.create_sampler(&sampler_def.desc);
 
-        Ok(SamplerHandle { sampler })
+        Ok(sampler)
     }
 
-    pub fn create_bg_layout(&self, bg_layout_def: BindGroup ) -> Result<BindGroupLayoutHandle, String> {
+    pub fn create_bg_layout(&self, bg_layout_def: BindGroup ) -> Result<wgpu::BindGroupLayout, String> {
         let layout = self.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor{
             label: Some(&format!("Layout: {}", bg_layout_def.label)),
             entries: &bg_layout_def.layout_entries
@@ -97,7 +97,7 @@ impl GpuHandle {
 
         println!("[GpuContext] Created new bind group layout with label '{}'", bg_layout_def.label);
 
-        Ok(BindGroupLayoutHandle { layout, ref_count: 1 })
+        Ok(layout)
     }
 
     /// Create a new bind group from the given configuration builder and resource map
@@ -106,7 +106,7 @@ impl GpuHandle {
         bg_def: BindGroup, 
         entries: Vec<wgpu::BindGroupEntry<'_>>,
         layout: BindGroupLayoutHandle,
-    ) -> Result<BindGroupHandle, String> {
+    ) -> Result<wgpu::BindGroup, String> {
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some(&bg_def.label),
             layout: &layout,
@@ -115,7 +115,7 @@ impl GpuHandle {
 
         println!("[GpuContext] Created new bind group with label '{}'", bg_def.label);
 
-        Ok(BindGroupHandle { bind_group })
+        Ok(bind_group)
     }
 
     /// Create a new render pipeline from the given configuration builder

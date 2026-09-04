@@ -1,20 +1,4 @@
-use std::ops::Deref;
-
 use crate::graphics::{Bindable, BindingTarget, SamplerId};
-
-/// A lightweight handle to a gpu sampler
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SamplerHandle {
-    pub sampler: wgpu::Sampler,
-}
-
-impl Deref for SamplerHandle {
-    type Target = wgpu::Sampler;
-
-    fn deref(&self) -> &Self::Target {
-        &self.sampler
-    }
-}
 
 pub struct Sampler {
     pub label: String,

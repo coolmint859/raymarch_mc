@@ -201,10 +201,18 @@ impl Screen for Game {
         let hwx = ((cw/2) + 15) / 16;
         let hwy = ((ch/2) + 15) / 16;
 
-        graphics.gpu.add_command(self.rm_coarse_pass.get(hwx, hwy));
-        graphics.gpu.add_command(self.rm_fine_pass.get(fwx,fwy));
-        graphics.gpu.add_command(self.taa_pass.get(fwx, fwy));
-        graphics.gpu.add_command(self.blit_pass.get());
-        graphics.gpu.finish(&graphics.canvas)
+        let output = graphics.canvas.surface.get_current_texture()?;
+        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut executor = GpuExecutor::new();
+        executor.add_cmd(self.rm_coarse_pass.get(hwx, hwy));
+        executor.add_cmd(self.rm_fine_pass.get(fwx,fwy));
+        executor.add_cmd(self.taa_pass.get(fwx, fwy));
+        executor.add_cmd(self.blit_pass.get());
+        executor.run(&graphics.gpu, view);
+
+        output.present();
+
+        Ok(())
     }
 }
