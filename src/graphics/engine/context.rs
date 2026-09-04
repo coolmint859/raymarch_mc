@@ -65,12 +65,34 @@ impl NamedBindGroup {
     }
 }
 
+/// The low level gpu resources as used in bind groups.
+pub(crate) struct GpuResources {
+    pub(crate) buffers: ResourceHandler<BufferId, wgpu::Buffer>,
+    pub(crate) textures: ResourceHandler<TextureId, TextureHandle>,
+    pub(crate) samplers: ResourceHandler<SamplerId, wgpu::Sampler>
+}
+
+impl GpuResources {
+    pub fn new() -> Self {
+        Self {
+            buffers: ResourceHandler::new(),
+            textures: ResourceHandler::new(),
+            samplers: ResourceHandler::new()
+        }
+    }
+
+    /// sync the internal handlers with the main thread
+    pub fn sync(&mut self) {
+        self.buffers.sync();
+        self.textures.sync();
+        self.samplers.sync();
+    }
+}
+
 /// Represents the state of the gpu, providing means to create and modify resources, and execute pipelines
 pub struct GpuContext {
     pub(crate) gpu: GpuHandle,
-    pub(crate) buffers: ResourceHandler<BufferId, wgpu::Buffer>,
-    pub(crate) textures: ResourceHandler<TextureId, TextureHandle>,
-    pub(crate) samplers: ResourceHandler<SamplerId, wgpu::Sampler>,
+    pub(crate) resources: GpuResources,
     pub(crate) bg_registry: BindGroupRegistry,
     pub(crate) pip_registry: PipelineRegistry,
 }
@@ -78,9 +100,7 @@ pub struct GpuContext {
 impl GpuContext {
     pub fn new(gpu: GpuHandle) -> Self {
         Self {
-            buffers: ResourceHandler::new(),
-            textures: ResourceHandler::new(),
-            samplers: ResourceHandler::new(),
+            resources: GpuResources::new(),
             bg_registry: BindGroupRegistry::new(gpu.clone()),
             pip_registry: PipelineRegistry::new(gpu.clone()),
             gpu
@@ -94,40 +114,40 @@ impl GpuContext {
 
     /// Request a buffer to be created from the provided definition and mapped to the provided id.
     pub fn request_buffer(&mut self, id: &BufferId, buffer_def: Buffer) {
-        if self.buffers.contains(id) { return; }
+        if self.resources.buffers.contains(id) { return; }
 
         let gpu = self.gpu.clone();
         let buffer_task = Task::non_blocking( async move {
             gpu.create_buffer(buffer_def)
         });
-        self.buffers.request_new(id, buffer_task);
+        self.resources.buffers.request_new(id, buffer_task);
     }
 
     /// Request a texture to be created from the provided definition and mapped to the provided id.
     pub fn request_texture(&mut self, id: &TextureId, texture_def: Texture) {
-        if self.textures.contains(id) { return; }
+        if self.resources.textures.contains(id) { return; }
 
         let gpu = self.gpu.clone();
         let texture_task = Task::non_blocking(async move {
             gpu.create_texture(texture_def)
         });
-        self.textures.request_new(id, texture_task);
+        self.resources.textures.request_new(id, texture_task);
     }
 
     /// Request a sampler to be created from the provided definition and mapped to the provided id.
     pub fn request_sampler(&mut self, id: &SamplerId, sampler_def: Sampler) {
-        if self.samplers.contains(id) { return; }
+        if self.resources.samplers.contains(id) { return; }
 
         let gpu = self.gpu.clone();
         let sampler_task = Task::non_blocking(async move {
             gpu.create_sampler(sampler_def)
         });
-        self.samplers.request_new(id, sampler_task);
+        self.resources.samplers.request_new(id, sampler_task);
     }
 
     /// Request a bind group to be created from the provided definition and mapped to the provided id.
     pub fn request_bind_group(&mut self, bg_id: &BindGroupId, bgl_id: &LayoutId, bg_def: &BindGroup) {
-        self.bg_registry.request_bg(bg_id, bgl_id, bg_def, &self.buffers, &self.textures, &self.samplers);
+        self.bg_registry.request_bg(bg_id, bgl_id, bg_def, &self.resources);
     }
 
     /// Request a pipeline to be created from the provided definition and mapped to the provided id.
@@ -142,16 +162,14 @@ impl GpuContext {
 
     /// Sync pending resources with the main thread. This should be called regularly in frame-based applications
     pub fn sync(&mut self) {
-        self.buffers.sync();
-        self.textures.sync();
-        self.samplers.sync();
-        self.bg_registry.sync(&self.buffers, &self.textures, &self.samplers);
+        self.resources.sync();
+        self.bg_registry.sync(&self.resources);
         self.pip_registry.sync(&self.bg_registry);
     }
 
     /// Update a buffer with the provided id, if found. The data payload must not exceed the buffer size
     pub fn update_buffer(&mut self, id: &BufferId, update: impl BufferUpdate) {
-        if let Some(buffer) = self.buffers.get(id) {
+        if let Some(buffer) = self.resources.buffers.get(id) {
             let data = update.bytes();
             let offset = update.offset();
 
@@ -164,11 +182,11 @@ impl GpuContext {
 
     /// Remove a texture from the context, releasing the allocation from gpu memory. This also causes any bind group that used it to become invalid.
     pub fn remove_texture(&mut self, id: &TextureId) {
-        self.textures.remove(id);
+        self.resources.textures.remove(id);
 
         let mut invalid_bgs = HashSet::new();
 
-        for (bd_id, bg_blueprint) in self.bg_registry.get_bg_defs() {
+        for (bd_id, bg_blueprint) in &self.bg_registry.bg_defs {
             for entry in &bg_blueprint.bindings {
                 if let BindingTarget::Texture(tex_id) = &entry.target {
                     if tex_id == id {
@@ -188,10 +206,10 @@ impl GpuContext {
 
     /// Remove a buffer from the context, releasing the allocation from gpu memory. This also causes any bind group that used it to become invalid.
     pub fn remove_buffer(&mut self, id: &BufferId) {
-        self.buffers.remove(id);
+        self.resources.buffers.remove(id);
         let mut invalid_bgs = HashSet::new();
 
-        for (bd_id, bg_blueprint) in self.bg_registry.get_bg_defs() {
+        for (bd_id, bg_blueprint) in &self.bg_registry.bg_defs {
             for entry in &bg_blueprint.bindings {
                 if let BindingTarget::Buffer(buf_id) = &entry.target {
                     if buf_id == id {
@@ -211,10 +229,10 @@ impl GpuContext {
 
     /// Remove a sampler from the context, releasing the allocation from gpu memory. This also causes any bind group that used it to become invalid.
     pub fn remove_sampler(&mut self, id: &SamplerId) {
-        self.samplers.remove(id);
+        self.resources.samplers.remove(id);
         let mut invalid_bgs = HashSet::new();
 
-        for (bd_id, bg_blueprint) in self.bg_registry.get_bg_defs() {
+        for (bd_id, bg_blueprint) in &self.bg_registry.bg_defs {
             for entry in &bg_blueprint.bindings {
                 if let BindingTarget::Sampler(samp_id) = &entry.target {
                     if samp_id == id {
@@ -234,7 +252,7 @@ impl GpuContext {
 
     /// Remove a bind group from the context, releasing the vram allocation
     pub fn remove_bind_group(&mut self, bg_id: &BindGroupId) {
-        if let Some(bg_handle) = self.bg_registry.get_bg(bg_id).cloned() {
+        if let Some(bg_handle) = self.bg_registry.bg_handles.get(bg_id).cloned() {
             self.bg_registry.check_dec_bgl(&bg_handle.layout_id);
         }
         self.bg_registry.remove(bg_id);
@@ -256,12 +274,12 @@ impl GpuContext {
     }
 
     /// Validate a bind group, ensuring it can be used in a gpu command
-    pub fn validate_bind_group(&self, bg_id: &BindGroupId) -> Option<BindGroupHandle> {
-        self.bg_registry.validate(bg_id, self)
+    pub(crate) fn validate_bind_group(&self, bg_id: &BindGroupId) -> Option<BindGroupHandle> {
+        self.bg_registry.validate(bg_id, &self.resources)
     }
 
     /// Validate a pipeline, ensuring it can be used in a gpu command
-    pub fn validate_pipeline(&self, pip_id: &PipelineId) -> Option<&PipelineHandle> {
-        self.pip_registry.validate(pip_id, self)
+    pub(crate) fn validate_pipeline(&self, pip_id: &PipelineId) -> Option<&PipelineHandle> {
+        self.pip_registry.validate(pip_id, &self.bg_registry)
     }
 }

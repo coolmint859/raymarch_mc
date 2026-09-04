@@ -1,7 +1,7 @@
 use std::ops::Deref;
 use wgpu::{CommandEncoder, Origin3d, TexelCopyTextureInfo};
 
-use crate::graphics::{ComputePassInfo, GpuCommand, GpuContext, RenderPassInfo, TextureId};
+use crate::graphics::{ComputePassInfo, GpuCommand, GpuContext, GpuResources, RenderPassInfo, TextureId};
 
 /// Executes render and compute pipelines
 pub(crate) struct GpuExecutor {
@@ -18,14 +18,14 @@ impl GpuExecutor {
     /// Copy a texture into another
     pub fn copy_textures<'a>(context: &'a GpuContext, src_id: &TextureId, dst_id: &TextureId) {
         let mut encoder = context.gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        GpuExecutor::copy_textures_from_encoder(context, &mut encoder, src_id, dst_id);
+        GpuExecutor::copy_textures_from_encoder(&context.resources, &mut encoder, src_id, dst_id);
         context.gpu.queue.submit(std::iter::once(encoder.finish()));
     }
 
     /// Copy a texture into another with the provided encoder
-    pub fn copy_textures_from_encoder<'a>(context: &'a GpuContext, encoder: &mut CommandEncoder, src_id: &TextureId, dst_id: &TextureId) {
-        let src_tex_opt = context.textures.get(src_id);
-        let dst_tex_opt = context.textures.get(dst_id);
+    pub fn copy_textures_from_encoder<'a>(resources: &'a GpuResources, encoder: &mut CommandEncoder, src_id: &TextureId, dst_id: &TextureId) {
+        let src_tex_opt = resources.textures.get(src_id);
+        let dst_tex_opt = resources.textures.get(dst_id);
 
         if let (Some(src_tex), Some(dst_tex)) = (src_tex_opt, dst_tex_opt) {
             println!("src format: {:?}, dst format: {:?}", src_tex.texture.format(), dst_tex.texture.format());
@@ -63,7 +63,7 @@ impl GpuExecutor {
             match cmd {
                 GpuCommand::RenderPass(pass) => self.execute_render_pass(context, &mut encoder, pass, &output_view),
                 GpuCommand::ComputePass(pass) => self.execute_compute_pass(context, &mut encoder, pass),
-                GpuCommand::CopyTexture { src, dst } => GpuExecutor::copy_textures_from_encoder(context, &mut encoder, &src, &dst),
+                GpuCommand::CopyTexture { src, dst } => GpuExecutor::copy_textures_from_encoder(&context.resources, &mut encoder, &src, &dst),
             }
         }
 
@@ -101,14 +101,14 @@ impl GpuExecutor {
         }
 
         for (idx, vtx_id) in info.vertex_buffers.iter().enumerate() {
-            let Some(buffer) = context.buffers.get(vtx_id) else {
+            let Some(buffer) = context.resources.buffers.get(vtx_id) else {
                 return;
             };
             render_pass.set_vertex_buffer(idx as u32, buffer.slice(..));
         }
 
         if let Some(idx_id) = info.index_buffer {
-            let Some(buffer) = context.buffers.get(&idx_id) else {
+            let Some(buffer) = context.resources.buffers.get(&idx_id) else {
                 return;
             };
             render_pass.set_index_buffer(buffer.slice(..), wgpu::IndexFormat::Uint16);

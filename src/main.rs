@@ -109,7 +109,7 @@ impl ApplicationHandler for App {
             let mut graphics_init = GraphicsInit::new().with_backend(wgpu::Backends::DX12);
             let mut graphics = pollster::block_on(graphics_init.init(window)).unwrap();
 
-            let mut game_screen = QuadTest::new();
+            let mut game_screen = Game::new();
             game_screen.init(&mut graphics);
 
             self.active_screen = Some(Box::new(game_screen));

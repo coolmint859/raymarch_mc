@@ -86,7 +86,7 @@ impl Screen for QuadTest {
         );
     }
 
-    fn input_event(&mut self, event: crate::InputEvent) {
+    fn input_event(&mut self, event: InputEvent) {
         match event {
             InputEvent::MouseButton { state, button } => {
                 self.mouse.button_event(state, button);
