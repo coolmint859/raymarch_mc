@@ -242,19 +242,14 @@ impl RayMarchFinePass {
         graphics.gpu.request_bind_group(&self.fine_ids.screen_textures_bg.id, &self.fine_ids.screen_textures_bg.layout_id, &deferred_textures_bg);
     }
 
-    pub fn get(&mut self, wx: u32, wy: u32) -> GpuCommand {
-        GpuCommand::ComputePass(
-            ComputePassInfo {
-                pipeline_id: self.fine_ids.pip_id,
-                bind_groups: vec![
-                    self.fine_ids.global_bg_id.id, 
-                    self.fine_ids.material_bg_id.id, 
-                    self.rm_ids.vox_bg_id.id,
-                    self.fine_ids.screen_textures_bg.id,
-                ],
-                work_groups: (wx, wy, 1)
-            }
-        )
+    pub fn get(&mut self, wx: u32, wy: u32) -> ComputeCommand {
+        ComputeCommand::new(self.fine_ids.pip_id, (wx, wy, 1))
+            .with_bind_groups(&[
+                self.fine_ids.global_bg_id.id, 
+                self.fine_ids.material_bg_id.id, 
+                self.rm_ids.vox_bg_id.id,
+                self.fine_ids.screen_textures_bg.id,
+            ])
     } 
 }
 
@@ -307,17 +302,12 @@ impl CoarsePass {
         graphics.gpu.request_bind_group(&self.coarse_ids.deferred_tex_bg_id.id, &self.coarse_ids.deferred_tex_bg_id.layout_id, &deferred_textures_bg);
     }
 
-    pub fn get(&mut self, wx: u32, wy: u32) -> GpuCommand {
-        GpuCommand::ComputePass(
-            ComputePassInfo {
-                pipeline_id: self.coarse_ids.pip_id,
-                bind_groups: vec![
-                    self.coarse_ids.global_bg_id.id, 
-                    self.rm_ids.vox_bg_id.id, 
-                    self.coarse_ids.deferred_tex_bg_id.id
-                ],
-                work_groups: (wx, wy, 1)
-            }
-        )
+    pub fn get(&mut self, wx: u32, wy: u32) -> ComputeCommand {
+        ComputeCommand::new(self.coarse_ids.pip_id, (wx, wy, 1))
+            .with_bind_groups(&[
+                self.coarse_ids.global_bg_id.id, 
+                self.rm_ids.vox_bg_id.id, 
+                self.coarse_ids.deferred_tex_bg_id.id
+            ])
     } 
 }

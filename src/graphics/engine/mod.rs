@@ -4,6 +4,7 @@ pub mod context;
 pub mod handler;
 pub mod bg_registry;
 pub mod pip_registry;
+pub mod commands;
 pub mod executor;
 pub mod gpu;
 
@@ -12,6 +13,7 @@ pub use gpu::*;
 pub use gpu_init::*;
 pub use context::*;
 pub use handler::*;
-pub(crate) use executor::*;
+pub use commands::*;
+pub use executor::*;
 pub(crate) use bg_registry::*;
 pub(crate) use pip_registry::*;

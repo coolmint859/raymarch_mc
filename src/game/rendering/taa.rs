@@ -77,7 +77,7 @@ impl TaaPass {
         self.is_bg_a = false;
     }
 
-    pub fn get(&mut self, wx: u32, wy: u32) -> GpuCommand {
+    pub fn get(&mut self, wx: u32, wy: u32) -> ComputeCommand {
         let taa_bg = if self.is_bg_a {
             self.taa_ids.bg_a_id
         } else {
@@ -86,12 +86,7 @@ impl TaaPass {
 
         self.is_bg_a = !self.is_bg_a;
 
-        GpuCommand::ComputePass(
-            ComputePassInfo {
-                pipeline_id: self.taa_ids.pip_id,
-                bind_groups: vec![taa_bg],
-                work_groups: (wx, wy, 1)
-            }
-        )
+        ComputeCommand::new(self.taa_ids.pip_id, (wx, wy, 1))
+            .with_bind_groups(&[taa_bg])
     }
 }

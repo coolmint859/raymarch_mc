@@ -1,6 +1,6 @@
 use winit::event::MouseButton;
 
-use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{Buffer, BufferContents, BufferId, GpuCommand, GpuExecutor, Pipeline, PipelineId, PipelineType, RenderPassInfo, RenderPipelineType, Vec2Attribute, VertexBufferLayout}, utils::MouseHandler};
+use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{Buffer, BufferContents, BufferId, DrawCommand, MultiBufferExecutor, Pipeline, PipelineId, PipelineType, RenderPipelineType, SequentialExecutor, Vec2Attribute, VertexBufferLayout}, utils::MouseHandler};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -19,7 +19,7 @@ pub struct QuadIds {
 pub struct QuadTest {
     ids: QuadIds,
     mouse: MouseHandler<PlayerMouseAction>,
-    executor: GpuExecutor,
+    executor: MultiBufferExecutor,
 }
 
 impl QuadTest {
@@ -33,7 +33,7 @@ impl QuadTest {
         Self { 
             ids,
             mouse: MouseHandler::new(),
-            executor: GpuExecutor::new()
+            executor: MultiBufferExecutor::new()
         }
     }
 
@@ -113,22 +113,15 @@ impl Screen for QuadTest {
     fn update(&mut self, _graphics: &mut Graphics, _dt: f32) {}
 
     fn render(&mut self, graphics: &mut Graphics) -> Result<(), wgpu::SurfaceError> {
-        let draw_command = GpuCommand::RenderPass(
-            RenderPassInfo { 
-                pipeline_id: self.ids.draw_pip_id,
-                bind_groups: Vec::new(),
-                vertex_buffers: vec![self.ids.v_buffer_id],
-                index_buffer: Some(self.ids.i_buffer_id),
-                vertex_count: 6, 
-                instance_count: 1 
-            }
-        );
-
         let output = graphics.canvas.surface.get_current_texture()?;
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        self.executor.add_cmd(draw_command);
-        self.executor.run(&graphics.gpu, view);
+        let quad_draw = DrawCommand::new(self.ids.draw_pip_id, view, 6)
+            .with_vertex_buffers(&[self.ids.v_buffer_id])
+            .with_index_buffer(self.ids.i_buffer_id, wgpu::IndexFormat::Uint16);
+
+        self.executor.add_command(quad_draw);
+        self.executor.record_and_submit(&graphics.gpu);
 
         output.present();
 

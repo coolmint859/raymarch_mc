@@ -2,32 +2,32 @@ use std::{collections::HashSet, println};
 
 use crate::graphics::*;
 
-/// Represents a render pass
-#[derive(Clone, Debug)]
-pub struct RenderPassInfo {
-    pub pipeline_id: PipelineId,
-    pub bind_groups: Vec<BindGroupId>,
-    pub vertex_buffers: Vec<BufferId>,
-    pub index_buffer: Option<BufferId>,
-    pub vertex_count: u32,
-    pub instance_count: u32
-}
+// /// Represents a render pass
+// #[derive(Clone, Debug)]
+// pub struct RenderPassInfo {
+//     pub pipeline_id: PipelineId,
+//     pub bind_groups: Vec<BindGroupId>,
+//     pub vertex_buffers: Vec<BufferId>,
+//     pub index_buffer: Option<BufferId>,
+//     pub vertex_count: u32,
+//     pub instance_count: u32
+// }
 
-/// Represents a compute pass
-#[derive(Clone, Debug)]
-pub struct ComputePassInfo {
-    pub pipeline_id: PipelineId,
-    pub bind_groups: Vec<BindGroupId>,
-    pub work_groups: (u32, u32, u32) // x, y, z
-}
+// /// Represents a compute pass
+// #[derive(Clone, Debug)]
+// pub struct ComputePassInfo {
+//     pub pipeline_id: PipelineId,
+//     pub bind_groups: Vec<BindGroupId>,
+//     pub work_groups: (u32, u32, u32) // x, y, z
+// }
 
-/// Represents a render or compute pass.
-#[derive(Clone, Debug)]
-pub enum GpuCommand {
-    RenderPass(RenderPassInfo),
-    ComputePass(ComputePassInfo),
-    CopyTexture{ src: TextureId, dst: TextureId },
-}
+// /// Represents a render or compute pass.
+// #[derive(Clone, Debug)]
+// pub enum GpuCommand {
+//     RenderPass(RenderPassInfo),
+//     ComputePass(ComputePassInfo),
+//     CopyTexture{ src: TextureId, dst: TextureId },
+// }
 
 /// unique identifier to a buffer
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] pub struct BufferId(pub &'static str);
@@ -89,7 +89,7 @@ impl GpuResources {
     }
 }
 
-/// Represents the state of the gpu, providing means to create and modify resources, and execute pipelines
+/// Represents the state of the gpu, providing means to create and modify gpu resources
 pub struct GpuContext {
     pub(crate) gpu: GpuHandle,
     pub(crate) resources: GpuResources,
@@ -153,11 +153,6 @@ impl GpuContext {
     /// Request a pipeline to be created from the provided definition and mapped to the provided id.
     pub fn request_pipeline(&mut self, id: &PipelineId, pip_def: &Pipeline) {
         self.pip_registry.request(id, &pip_def, &self.bg_registry);
-    }
-
-    /// Copy a texture into to another one, overwriting it's data 
-    pub fn copy_textures(&self, src_id: &TextureId, dst_id: &TextureId) {
-        GpuExecutor::copy_textures(self, src_id, dst_id);
     }
 
     /// Sync pending resources with the main thread. This should be called regularly in frame-based applications

@@ -69,7 +69,7 @@ impl BlitPass {
         self.is_bg_a = true;
     }
 
-    pub fn get(&mut self) -> GpuCommand {
+    pub fn get(&mut self, output_view: wgpu::TextureView) -> DrawCommand {
         let blit_bg = if self.is_bg_a {
             self.blit_ids.bg_a_id
         } else {
@@ -78,15 +78,7 @@ impl BlitPass {
 
         self.is_bg_a = !self.is_bg_a;
 
-        GpuCommand::RenderPass(
-            RenderPassInfo { 
-                pipeline_id: self.blit_ids.pip_id,
-                bind_groups: vec![blit_bg],
-                vertex_buffers: Vec::new(),
-                index_buffer: None,
-                vertex_count: 3, 
-                instance_count: 1 
-            }
-        )
+        DrawCommand::new(self.blit_ids.pip_id, output_view, 3)
+            .with_bind_groups(&[blit_bg])
     }
 }
