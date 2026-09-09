@@ -65,20 +65,20 @@ impl Screen for QuadTest {
         ];
 
         let vertices = bytemuck::cast_slice(&quad_vertices).to_vec();
-        graphics.gpu.request_buffer(
+        graphics.context.request_buffer(
             &self.ids.v_buffer_id, 
             Buffer::as_vertex(BufferContents::WithData(vertices))
                 .with_label("Quad Vertex Buffer")
         );
 
         let indices = bytemuck::cast_slice(&quad_indices).to_vec();
-        graphics.gpu.request_buffer(
+        graphics.context.request_buffer(
             &self.ids.i_buffer_id, 
             Buffer::as_index(BufferContents::WithData(indices))
                 .with_label("Quad Index Buffer")
         );
 
-        graphics.gpu.request_pipeline(
+        graphics.context.request_pipeline(
             &self.ids.draw_pip_id, 
             &Pipeline::new(PipelineType::Render(RenderPipelineType::default().with_vertex_layout(&v_buffer_layout)))
                 .with_label("2D Render Pipeline")
@@ -113,17 +113,16 @@ impl Screen for QuadTest {
     fn update(&mut self, _graphics: &mut Graphics, _dt: f32) {}
 
     fn render(&mut self, graphics: &mut Graphics) -> Result<(), wgpu::SurfaceError> {
-        let output = graphics.canvas.surface.get_current_texture()?;
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let frame = graphics.canvas.next_frame()?;
 
-        let quad_draw = DrawCommand::new(self.ids.draw_pip_id, view, 6)
+        let quad_draw = DrawCommand::new(self.ids.draw_pip_id, frame.view.clone(), 0..6)
             .with_vertex_buffers(&[self.ids.v_buffer_id])
             .with_index_buffer(self.ids.i_buffer_id, wgpu::IndexFormat::Uint16);
 
         self.executor.add_command(quad_draw);
-        self.executor.record_and_submit(&graphics.gpu);
+        self.executor.record_and_submit(&graphics.context);
 
-        output.present();
+        frame.present();
 
         Ok(())
     }

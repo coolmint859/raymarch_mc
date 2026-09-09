@@ -86,7 +86,7 @@ impl Game {
 
 impl Screen for Game {
     fn init(&mut self, graphics: &mut Graphics) {
-        self.camera.update(graphics.canvas.aspect);
+        self.camera.update(graphics.canvas.aspect());
 
         self.globals.init(graphics, &self.camera);
         self.rm_rscs.init(graphics, &self.world);
@@ -138,7 +138,7 @@ impl Screen for Game {
             }
         }
         
-        if graphics.canvas.is_cursor_locked {
+        if graphics.canvas.cursor_locked() {
             let dm = self.mouse.poll_motion();
             if dm.dx != 0.0 || dm.dy != 0.0 {
                 self.controller.rotate_delta(&mut self.camera, dm.dx, dm.dy);
@@ -180,20 +180,19 @@ impl Screen for Game {
 
     fn update(&mut self, graphics: &mut Graphics, dt: f32) {
         self.world.update(dt, false);
-        self.camera.update(graphics.canvas.aspect);
+        self.camera.update(graphics.canvas.aspect());
 
-        graphics.gpu.update_buffer(&self.globals.ids.cam_id, StructuredUpdate {
-            data: &self.camera.to_uniform(graphics.frame),
+        graphics.context.update_buffer(&self.globals.ids.cam_id, StructuredUpdate {
+            data: &self.camera.to_uniform(graphics.canvas.frame_count()),
         });
 
-        graphics.gpu.update_buffer(&self.globals.ids.env_id, StructuredUpdate { 
+        graphics.context.update_buffer(&self.globals.ids.env_id, StructuredUpdate { 
             data: &self.world.env_uniform(),
         });
     }
 
     fn render(&mut self, graphics: &mut Graphics) -> Result<(), wgpu::SurfaceError> {
-        let cw = graphics.canvas.config.width;
-        let ch = graphics.canvas.config.height;
+        let (cw, ch) = graphics.canvas.dimensions();
 
         let fwx = (cw + 15) / 16;
         let fwy = (ch + 15) / 16;
@@ -201,17 +200,16 @@ impl Screen for Game {
         let hwx = ((cw/2) + 15) / 16;
         let hwy = ((ch/2) + 15) / 16;
 
-        let output = graphics.canvas.surface.get_current_texture()?;
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let frame = graphics.canvas.next_frame()?;
 
         let mut executor = MultiBufferExecutor::new();
         executor.add_command(self.rm_coarse_pass.get(hwx, hwy));
         executor.add_command(self.rm_fine_pass.get(fwx,fwy));
         executor.add_command(self.taa_pass.get(fwx, fwy));
-        executor.add_command(self.blit_pass.get(view));
-        executor.record_and_submit(&graphics.gpu);
+        executor.add_command(self.blit_pass.get(frame.view.clone()));
+        executor.record_and_submit(&graphics.context);
 
-        output.present();
+        frame.present();
 
         Ok(())
     }

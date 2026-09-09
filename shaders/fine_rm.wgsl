@@ -145,8 +145,9 @@ fn create_ray(org: vec3f, dir: vec3f, t: f32) -> Ray {
 
 /// Generates a pseudo-random point based on the current pixel and frame number
 fn random_point(pixel_id: vec2f) -> vec2f {
+    let frame_seed = camera.frame % 30.0;
     let phi = 1.61803398875;
-    let n = pixel_id.x * 12.9898 + pixel_id.y * 78.233 + camera.frame * 437.585;
+    let n = pixel_id.x * 12.9898 + pixel_id.y * 78.233 + frame_seed * 437.585;
     let angle = fract(n * phi) * 6.2831853;
     let radius = sqrt(fract(n * 0.754877));
     return vec2f(angle, radius);

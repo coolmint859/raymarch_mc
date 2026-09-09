@@ -81,67 +81,68 @@ impl RayMarchResources {
         let voxel_buffer = Buffer::as_storage(BufferContents::WithData(region_bytes.voxels))
             .with_label("Voxel Buffer")
             .with_additional_usage(wgpu::BufferUsages::COPY_DST);
-        graphics.gpu.request_buffer(&self.ids.vox_id, voxel_buffer);
+        graphics.context.request_buffer(&self.ids.vox_id, voxel_buffer);
 
         let grid_buffer = Buffer::as_storage(BufferContents::WithData(region_bytes.grids))
             .with_label("Grid Buffer")
             .with_additional_usage(wgpu::BufferUsages::COPY_DST);
-        graphics.gpu.request_buffer(&self.ids.grid_id, grid_buffer);
+        graphics.context.request_buffer(&self.ids.grid_id, grid_buffer);
 
         let voxel_bg = BindGroup::new()
             .with_label("Voxel Data")
             .with_entry(BufferBinding::as_storage(self.ids.vox_id, true).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_storage(self.ids.grid_id, true).with_visibility(wgpu::ShaderStages::COMPUTE));
-        graphics.gpu.request_bind_group(&self.ids.vox_bg_id.id, &self.ids.vox_bg_id.layout_id, &voxel_bg);
+        graphics.context.request_bind_group(&self.ids.vox_bg_id.id, &self.ids.vox_bg_id.layout_id, &voxel_bg);
 
         self.create_textures(graphics);
     }
 
     pub fn on_resize(&self, graphics: &mut Graphics) {
-        graphics.gpu.remove_texture(&self.ids.pos_id);
-        graphics.gpu.remove_texture(&self.ids.norm_id);
-        graphics.gpu.remove_texture(&self.ids.depth_id);
-        graphics.gpu.remove_texture(&self.ids.mat_id);
+        graphics.context.remove_texture(&self.ids.pos_id);
+        graphics.context.remove_texture(&self.ids.norm_id);
+        graphics.context.remove_texture(&self.ids.depth_id);
+        graphics.context.remove_texture(&self.ids.mat_id);
 
         self.create_textures(graphics);
     }
 
     fn create_textures(&self, graphics: &mut Graphics) {
         // coarse pass runs at half-resolution
-        let half_canvas_width = graphics.canvas.config.width / 2;
-        let half_canvas_height = graphics.canvas.config.height / 2;
+        let (cw, ch) = graphics.canvas.dimensions();
+        let cw_half = cw / 2;
+        let ch_half = ch / 2;
 
         let positions_texture = Texture::new(TextureType::Computed)
             .with_label("Position Texture")
-            .with_size_2d(half_canvas_width, half_canvas_height)
+            .with_size_2d(cw_half, ch_half)
             .with_format(wgpu::TextureFormat::Rgba16Float)
             .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING)
             .with_additional_usage(wgpu::TextureUsages::COPY_SRC);
-        graphics.gpu.request_texture(&self.ids.pos_id, positions_texture);
+        graphics.context.request_texture(&self.ids.pos_id, positions_texture);
 
         let normals_texture = Texture::new(TextureType::Computed)
             .with_label("Normals Texture")
-            .with_size_2d(half_canvas_width, half_canvas_height)
+            .with_size_2d(cw_half, ch_half)
             .with_format(wgpu::TextureFormat::Rgba8Unorm)
             .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING)
             .with_additional_usage(wgpu::TextureUsages::COPY_SRC);
-        graphics.gpu.request_texture(&self.ids.norm_id, normals_texture);
+        graphics.context.request_texture(&self.ids.norm_id, normals_texture);
 
         let depth_texture = Texture::new(TextureType::Computed)
             .with_label("Normals Texture")
-            .with_size_2d(half_canvas_width, half_canvas_height)
+            .with_size_2d(cw_half, ch_half)
             .with_format(wgpu::TextureFormat::R32Float)
             .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING)
             .with_additional_usage(wgpu::TextureUsages::COPY_SRC);
-        graphics.gpu.request_texture(&self.ids.depth_id, depth_texture);
+        graphics.context.request_texture(&self.ids.depth_id, depth_texture);
 
         let material_texture = Texture::new(TextureType::Computed)
             .with_label("Normals Texture")
-            .with_size_2d(half_canvas_width, half_canvas_height)
+            .with_size_2d(cw_half, ch_half)
             .with_format(wgpu::TextureFormat::R32Float)
             .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING)
             .with_additional_usage(wgpu::TextureUsages::COPY_SRC);
-        graphics.gpu.request_texture(&self.ids.mat_id, material_texture);
+        graphics.context.request_texture(&self.ids.mat_id, material_texture);
     }
 }
 
@@ -172,34 +173,34 @@ impl RayMarchFinePass {
             .with_label("Grass Side Alpha Mask")
             .with_format(wgpu::TextureFormat::Rgba8Unorm)
             .with_additional_usage(wgpu::TextureUsages::COPY_DST);
-        graphics.gpu.request_texture(&self.fine_ids.gsam_id, grass_alpha_mask);
+        graphics.context.request_texture(&self.fine_ids.gsam_id, grass_alpha_mask);
 
         let atlas_texture = Texture::new(TextureType::OnDisk { path: "./assets/textures.png" })
             .with_label("Block Atlas Texture")
             .with_format(wgpu::TextureFormat::Rgba8Unorm)
             .with_additional_usage(wgpu::TextureUsages::COPY_DST);
-        graphics.gpu.request_texture(&self.fine_ids.atlas_id, atlas_texture);
+        graphics.context.request_texture(&self.fine_ids.atlas_id, atlas_texture);
 
         let atlas_sampler = Sampler::new().with_label("Atlas Sampler");
-        graphics.gpu.request_sampler(&self.fine_ids.samp_id, atlas_sampler);
+        graphics.context.request_sampler(&self.fine_ids.samp_id, atlas_sampler);
 
         let env_data = world.env_uniform().to_bytes().to_vec();
         let env_buffer = Buffer::as_uniform(BufferContents::WithData(env_data))
             .with_label("Environment Buffer")
             .with_additional_usage(wgpu::BufferUsages::COPY_DST);
-        graphics.gpu.request_buffer(&self.gb_ids.env_id, env_buffer);
+        graphics.context.request_buffer(&self.gb_ids.env_id, env_buffer);
 
         let palette_data = VoxelPalette::create().colors;
         let palette_buffer = Buffer::as_uniform(BufferContents::WithData(palette_data))
             .with_label("Palette Buffer")
             .with_additional_usage(wgpu::BufferUsages::COPY_DST);
-        graphics.gpu.request_buffer(&self.fine_ids.pal_id, palette_buffer);
+        graphics.context.request_buffer(&self.fine_ids.pal_id, palette_buffer);
 
         let globals_bg = BindGroup::new()
             .with_label("Global Uniforms (Fine)")
             .with_entry(BufferBinding::as_uniform(self.gb_ids.cam_id).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_uniform(self.gb_ids.env_id).with_visibility(wgpu::ShaderStages::COMPUTE));
-        graphics.gpu.request_bind_group(&self.fine_ids.global_bg_id.id, &self.fine_ids.global_bg_id.layout_id, &globals_bg);
+        graphics.context.request_bind_group(&self.fine_ids.global_bg_id.id, &self.fine_ids.global_bg_id.layout_id, &globals_bg);
 
         let material_bg = BindGroup::new()
             .with_label("Material Uniforms")
@@ -207,7 +208,7 @@ impl RayMarchFinePass {
             .with_entry(TextureBinding::as_sampled(self.fine_ids.atlas_id, TextureTypeSampled { filterable: true, multisampled: false }).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(SamplerBinding::new(self.fine_ids.samp_id).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_uniform(self.fine_ids.pal_id).with_visibility(wgpu::ShaderStages::COMPUTE));
-        graphics.gpu.request_bind_group(&self.fine_ids.material_bg_id.id, &self.fine_ids.material_bg_id.layout_id, &material_bg);
+        graphics.context.request_bind_group(&self.fine_ids.material_bg_id.id, &self.fine_ids.material_bg_id.layout_id, &material_bg);
 
         let deferred_textures_bg = BindGroup::new()
             .with_label("Deferred Texture Bind Group (Fine)")
@@ -216,7 +217,7 @@ impl RayMarchFinePass {
             .with_entry(TextureBinding::as_sampled(self.rm_ids.depth_id, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_sampled(self.rm_ids.mat_id, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_storage(self.gb_ids.rm_tex_id, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE));
-        graphics.gpu.request_bind_group(&self.fine_ids.screen_textures_bg.id, &self.fine_ids.screen_textures_bg.layout_id, &deferred_textures_bg);
+        graphics.context.request_bind_group(&self.fine_ids.screen_textures_bg.id, &self.fine_ids.screen_textures_bg.layout_id, &deferred_textures_bg);
 
         let raymarch_pipeline = Pipeline::new(PipelineType::Compute(ComputePipelineType::default()))
             .with_label("RM Fine Pipeline")
@@ -227,11 +228,11 @@ impl RayMarchFinePass {
                 self.fine_ids.screen_textures_bg.layout_id,
             ])
             .with_shader("./shaders/fine_rm.wgsl");
-        graphics.gpu.request_pipeline(&self.fine_ids.pip_id, &raymarch_pipeline);
+        graphics.context.request_pipeline(&self.fine_ids.pip_id, &raymarch_pipeline);
     }
 
     pub fn on_resize(&mut self, graphics: &mut Graphics) {
-        graphics.gpu.remove_bind_group(&self.fine_ids.screen_textures_bg.id);
+        graphics.context.remove_bind_group(&self.fine_ids.screen_textures_bg.id);
         let deferred_textures_bg = BindGroup::new()
             .with_label("Deferred Texture Bind Group (Fine)")
             .with_entry(TextureBinding::as_sampled(self.rm_ids.pos_id, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
@@ -239,7 +240,7 @@ impl RayMarchFinePass {
             .with_entry(TextureBinding::as_sampled(self.rm_ids.depth_id, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_sampled(self.rm_ids.mat_id, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_storage(self.gb_ids.rm_tex_id, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE));
-        graphics.gpu.request_bind_group(&self.fine_ids.screen_textures_bg.id, &self.fine_ids.screen_textures_bg.layout_id, &deferred_textures_bg);
+        graphics.context.request_bind_group(&self.fine_ids.screen_textures_bg.id, &self.fine_ids.screen_textures_bg.layout_id, &deferred_textures_bg);
     }
 
     pub fn get(&mut self, wx: u32, wy: u32) -> ComputeCommand {
@@ -274,7 +275,7 @@ impl CoarsePass {
         let globals_bg = BindGroup::new()
             .with_label("Global Uniforms (Coarse)")
             .with_entry(BufferBinding::as_uniform(self.gb_ids.cam_id).with_visibility(wgpu::ShaderStages::COMPUTE));
-        graphics.gpu.request_bind_group(&self.coarse_ids.global_bg_id.id, &self.coarse_ids.global_bg_id.layout_id, &globals_bg);
+        graphics.context.request_bind_group(&self.coarse_ids.global_bg_id.id, &self.coarse_ids.global_bg_id.layout_id, &globals_bg);
 
         let deferred_textures_bg = BindGroup::new()
             .with_label("Deferred Texture Bind Group (Coarse)")
@@ -282,24 +283,24 @@ impl CoarsePass {
             .with_entry(TextureBinding::as_storage(self.rm_ids.norm_id, TextureTypeStorage { access: wgpu::StorageTextureAccess::WriteOnly, fmt: wgpu::TextureFormat::Rgba8Unorm }).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_storage(self.rm_ids.depth_id, TextureTypeStorage { access: wgpu::StorageTextureAccess::WriteOnly, fmt: wgpu::TextureFormat::R32Float }).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_storage(self.rm_ids.mat_id, TextureTypeStorage { access: wgpu::StorageTextureAccess::WriteOnly, fmt: wgpu::TextureFormat::R32Float }).with_visibility(wgpu::ShaderStages::COMPUTE));
-        graphics.gpu.request_bind_group(&self.coarse_ids.deferred_tex_bg_id.id, &self.coarse_ids.deferred_tex_bg_id.layout_id, &deferred_textures_bg);
+        graphics.context.request_bind_group(&self.coarse_ids.deferred_tex_bg_id.id, &self.coarse_ids.deferred_tex_bg_id.layout_id, &deferred_textures_bg);
 
         let raymarch_pipeline = Pipeline::new(PipelineType::Compute(ComputePipelineType::default()))
             .with_label("RM Coarse Pipeline")
             .with_bg_layouts(&[self.coarse_ids.global_bg_id.layout_id, self.rm_ids.vox_bg_id.layout_id, self.coarse_ids.deferred_tex_bg_id.layout_id])
             .with_shader("./shaders/coarse_rm.wgsl");
-        graphics.gpu.request_pipeline(&self.coarse_ids.pip_id, &raymarch_pipeline);
+        graphics.context.request_pipeline(&self.coarse_ids.pip_id, &raymarch_pipeline);
     }
 
     pub fn on_resize(&mut self, graphics: &mut Graphics) {
-        graphics.gpu.remove_bind_group(&self.coarse_ids.deferred_tex_bg_id.id);
+        graphics.context.remove_bind_group(&self.coarse_ids.deferred_tex_bg_id.id);
         let deferred_textures_bg = BindGroup::new()
             .with_label("Deferred Texture Bind Group (Coarse)")
             .with_entry(TextureBinding::as_storage(self.rm_ids.pos_id, TextureTypeStorage { access: wgpu::StorageTextureAccess::WriteOnly, fmt: wgpu::TextureFormat::Rgba16Float }).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_storage(self.rm_ids.norm_id, TextureTypeStorage { access: wgpu::StorageTextureAccess::WriteOnly, fmt: wgpu::TextureFormat::Rgba8Unorm }).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_storage(self.rm_ids.depth_id, TextureTypeStorage { access: wgpu::StorageTextureAccess::WriteOnly, fmt: wgpu::TextureFormat::R32Float }).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_storage(self.rm_ids.mat_id, TextureTypeStorage { access: wgpu::StorageTextureAccess::WriteOnly, fmt: wgpu::TextureFormat::R32Float }).with_visibility(wgpu::ShaderStages::COMPUTE));
-        graphics.gpu.request_bind_group(&self.coarse_ids.deferred_tex_bg_id.id, &self.coarse_ids.deferred_tex_bg_id.layout_id, &deferred_textures_bg);
+        graphics.context.request_bind_group(&self.coarse_ids.deferred_tex_bg_id.id, &self.coarse_ids.deferred_tex_bg_id.layout_id, &deferred_textures_bg);
     }
 
     pub fn get(&mut self, wx: u32, wy: u32) -> ComputeCommand {

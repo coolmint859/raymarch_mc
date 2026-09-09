@@ -24,7 +24,7 @@ impl MultiBufferExecutor {
     }
 
     /// Record all known commands into a command buffer. This resets the command queue.
-    pub fn record<'a>(&mut self, context: &'a GpuContext) {
+    pub fn record(&mut self, context: &GpuContext) {
         let mut encoder = context.gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
         let commands = std::mem::take(&mut self.commands);
@@ -36,7 +36,7 @@ impl MultiBufferExecutor {
     }
 
     /// Record and Execute commands on the gpu
-    pub fn record_and_submit<'a>(&mut self, context: &'a GpuContext) {
+    pub fn record_and_submit(&mut self, context: &GpuContext) {
         self.record(context);
         self.submit(context);
     }
@@ -47,7 +47,7 @@ impl SequentialExecutor for MultiBufferExecutor {
         self.commands.push(Box::new(cmd));
     }
 
-    fn submit<'a>(&mut self, context: &'a GpuContext) {
+    fn submit(&mut self, context: &GpuContext) {
         context.gpu.queue.submit(std::mem::take(&mut self.recordings));
     }
 }

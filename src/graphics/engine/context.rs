@@ -1,33 +1,5 @@
 use std::{collections::HashSet, println};
-
 use crate::graphics::*;
-
-// /// Represents a render pass
-// #[derive(Clone, Debug)]
-// pub struct RenderPassInfo {
-//     pub pipeline_id: PipelineId,
-//     pub bind_groups: Vec<BindGroupId>,
-//     pub vertex_buffers: Vec<BufferId>,
-//     pub index_buffer: Option<BufferId>,
-//     pub vertex_count: u32,
-//     pub instance_count: u32
-// }
-
-// /// Represents a compute pass
-// #[derive(Clone, Debug)]
-// pub struct ComputePassInfo {
-//     pub pipeline_id: PipelineId,
-//     pub bind_groups: Vec<BindGroupId>,
-//     pub work_groups: (u32, u32, u32) // x, y, z
-// }
-
-// /// Represents a render or compute pass.
-// #[derive(Clone, Debug)]
-// pub enum GpuCommand {
-//     RenderPass(RenderPassInfo),
-//     ComputePass(ComputePassInfo),
-//     CopyTexture{ src: TextureId, dst: TextureId },
-// }
 
 /// unique identifier to a buffer
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] pub struct BufferId(pub &'static str);
@@ -107,9 +79,9 @@ impl GpuContext {
         }
     }
 
-    /// Reconfigure the surface texture configuration to match the canvas
-    pub fn configure_surface(&self, canvas: &mut Canvas) {
-        canvas.surface.configure(&self.gpu.device, &canvas.config);
+    /// Get a reference to the gpu handle used by the context
+    pub fn gpu_handle(&self) -> &GpuHandle {
+        &self.gpu
     }
 
     /// Request a buffer to be created from the provided definition and mapped to the provided id.

@@ -38,26 +38,19 @@ impl From<wgpu::RequestDeviceError> for GraphicsInitError {
 
 /// Contains the gpu context and rendering canvas
 pub struct Graphics {
-    pub gpu: GpuContext,
+    pub context: GpuContext,
     pub canvas: Canvas,
-    pub frame: u32,
 }
 
 impl Graphics {
     /// Update the graphics state when the user changes the window size
     pub fn on_resize(&mut self, width: u32, height: u32) {
-        self.canvas.resize(width, height);
-        self.gpu.configure_surface(&mut self.canvas);
+        self.canvas.resize(width, height, &self.context.gpu.device);
     }
 
     /// Reset the graphics state
     pub fn reset(&mut self) {
-        self.canvas.reset();
-    }
-
-    /// Request the canvas window for a redraw
-    pub fn request_redraw(&self) {
-        self.canvas.window.request_redraw();
+        self.canvas.reset(&self.context.gpu.device);
     }
 }
 
@@ -146,17 +139,9 @@ impl GraphicsInit {
         };
         surface.configure(&gpu.device, &config);
 
-        let canvas = Canvas {
-            window,
-            surface,
-            aspect: (config.width as f32) / (config.height as f32),
-            config,
-            is_cursor_locked: false,
-            is_focused: true,
-        };
-
+        let canvas = Canvas::new(window, surface, config);
         let gpu = GpuContext::new(gpu);
 
-        Ok(Graphics { gpu, canvas, frame: 0u32 })
+        Ok(Graphics { context: gpu, canvas })
     }
 }

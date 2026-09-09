@@ -34,10 +34,9 @@ struct App {
 
     previous_time: Instant,
     elapsed_time: f32,
-    frame_mod: u32,
     frame_update: u32,
     fps_update: Instant,
-    prev_fps: [f32; 5],
+    prev_fps: [f32; 10],
 }
 
 impl App {
@@ -47,33 +46,32 @@ impl App {
             active_screen: None,
             previous_time: Instant::now(),
             elapsed_time: 0.0,
-            frame_mod: 30,
-            frame_update: 5,
+            frame_update: 10,
             fps_update: Instant::now(),
-            prev_fps: [0.0; 5]
+            prev_fps: [0.0; 10]
         }
     }
     
     pub fn run_frame(&mut self, event_loop: &ActiveEventLoop) {
         let Some(graphics) = &mut self.graphics else { return; };
 
-        graphics.gpu.sync();
+        graphics.context.sync();
 
         let current_time = Instant::now();
         let dt = (current_time - self.previous_time).as_secs_f32();
         self.previous_time = current_time;
         self.elapsed_time += dt;
 
-        self.prev_fps[(graphics.frame % self.frame_update) as usize] = 1.0/dt;
-        let threshold = self.frame_update as f32 / 60.0;
-        if current_time.duration_since(self.fps_update).as_secs_f32() > threshold {
+        let fps_idx = graphics.canvas.frame_count() % self.frame_update;
+        self.prev_fps[fps_idx as usize] = 1.0/dt;
+        if current_time.duration_since(self.fps_update).as_secs_f32() > 0.1 {
             self.fps_update = current_time;
             let fps_avg = self.prev_fps.iter().sum::<f32>() / self.prev_fps.len() as f32;
             
             graphics.canvas.window.set_title(&format!("Voxelcraft (fps: {:.2})", fps_avg));
         }
 
-        if graphics.canvas.is_focused && let Some(ref mut screen) = self.active_screen {
+        if graphics.canvas.is_focused() && let Some(ref mut screen) = self.active_screen {
             match screen.process_input(graphics, dt) {
                 ScreenTransition::Exit => {
                     event_loop.exit();
@@ -90,8 +88,7 @@ impl App {
             }
         }
 
-        graphics.frame = (graphics.frame + 1) % self.frame_mod;
-        graphics.request_redraw();
+        graphics.canvas.redraw();
     }
 }
 
@@ -109,7 +106,7 @@ impl ApplicationHandler for App {
             let mut graphics_init = GraphicsInit::new().with_backend(wgpu::Backends::DX12);
             let mut graphics = pollster::block_on(graphics_init.init(window)).unwrap();
 
-            let mut game_screen = Game::new();
+            let mut game_screen = QuadTest::new();
             game_screen.init(&mut graphics);
 
             self.active_screen = Some(Box::new(game_screen));
@@ -156,7 +153,7 @@ impl ApplicationHandler for App {
                 screen.input_event(InputEvent::Key(event));
             }
             WindowEvent::Focused(focused) => {
-                graphics.canvas.is_focused = focused;
+                graphics.canvas.set_focused(focused);
                 graphics.canvas.set_cursor_lock(focused);
             }
             WindowEvent::MouseInput { state, button, .. } => {

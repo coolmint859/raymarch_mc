@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use crate::graphics::{BindGroupId, BufferId, GpuContext, PipelineId};
 
 /// Represents commands that can submitted and recorded by an Executor implementation.
@@ -20,23 +22,23 @@ pub struct DrawCommand {
     index_buffer: Option<BufferId>,
     /// the format of the index buffer, if provided
     index_format: Option<wgpu::IndexFormat>,
-    /// The number of invocations to run with the pipeline
-    invocations: u32,
-    /// The number of instances to draw.
-    instance_count: u32,
+    /// The range of elements (vertices/indices) to draw with the pipeline
+    element_range: Range<u32>,
+    /// The range of instances to draw with the pipeline.
+    instance_range: Range<u32>,
 }
 
 impl DrawCommand {
-    pub fn new(pip_id: PipelineId, output_view: wgpu::TextureView, invocations: u32) -> Self {
+    pub fn new(pip_id: PipelineId, output_view: wgpu::TextureView, element_range: Range<u32>) -> Self {
         Self {
             pip_id,
             output_view,
-            invocations,
+            element_range,
             bind_groups: Vec::new(),
             vertex_buffers: Vec::new(),
             index_buffer: None,
             index_format: None,
-            instance_count: 1,
+            instance_range: 0..1,
         }
     }
 
@@ -102,9 +104,9 @@ impl GpuCommand for DrawCommand {
                 return;
             };
             render_pass.set_index_buffer(buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..self.invocations, 0, 0..self.instance_count);
+            render_pass.draw_indexed(self.element_range.clone(), 0, self.instance_range.clone());
         } else {
-            render_pass.draw(0..self.invocations, 0..self.instance_count);
+            render_pass.draw(self.element_range.clone(), self.instance_range.clone());
         }
     }
 }
