@@ -1,6 +1,6 @@
 use winit::event::MouseButton;
 
-use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{Buffer, BufferContents, BufferId, DrawCommand, MultiBufferExecutor, Pipeline, PipelineId, PipelineType, RenderPipelineType, SequentialExecutor, Vec2Attribute, VertexBufferLayout}, utils::MouseHandler};
+use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{Buffer, BufferContents, BufferId, DrawCommand, MultiBufferExecutor, Pipeline, PipelineId, SequentialExecutor, Vec2Attribute, VertexBufferLayout}, utils::MouseHandler};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -80,8 +80,9 @@ impl Screen for QuadTest {
 
         graphics.context.request_pipeline(
             &self.ids.draw_pip_id, 
-            &Pipeline::new(PipelineType::Render(RenderPipelineType::default().with_vertex_layout(&v_buffer_layout)))
+            Pipeline::as_render("vs_main", "fs_main")
                 .with_label("2D Render Pipeline")
+                .with_vertex_layout(&v_buffer_layout)
                 .with_shader("./shaders/2d_draw.wgsl")
         );
     }

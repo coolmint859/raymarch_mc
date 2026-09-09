@@ -92,7 +92,7 @@ impl RayMarchResources {
             .with_label("Voxel Data")
             .with_entry(BufferBinding::as_storage(self.ids.vox_id, true).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_storage(self.ids.grid_id, true).with_visibility(wgpu::ShaderStages::COMPUTE));
-        graphics.context.request_bind_group(&self.ids.vox_bg_id.id, &self.ids.vox_bg_id.layout_id, &voxel_bg);
+        graphics.context.request_bind_group(&self.ids.vox_bg_id.id, &self.ids.vox_bg_id.layout_id, voxel_bg);
 
         self.create_textures(graphics);
     }
@@ -200,7 +200,7 @@ impl RayMarchFinePass {
             .with_label("Global Uniforms (Fine)")
             .with_entry(BufferBinding::as_uniform(self.gb_ids.cam_id).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_uniform(self.gb_ids.env_id).with_visibility(wgpu::ShaderStages::COMPUTE));
-        graphics.context.request_bind_group(&self.fine_ids.global_bg_id.id, &self.fine_ids.global_bg_id.layout_id, &globals_bg);
+        graphics.context.request_bind_group(&self.fine_ids.global_bg_id.id, &self.fine_ids.global_bg_id.layout_id, globals_bg);
 
         let material_bg = BindGroup::new()
             .with_label("Material Uniforms")
@@ -208,7 +208,7 @@ impl RayMarchFinePass {
             .with_entry(TextureBinding::as_sampled(self.fine_ids.atlas_id, TextureTypeSampled { filterable: true, multisampled: false }).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(SamplerBinding::new(self.fine_ids.samp_id).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(BufferBinding::as_uniform(self.fine_ids.pal_id).with_visibility(wgpu::ShaderStages::COMPUTE));
-        graphics.context.request_bind_group(&self.fine_ids.material_bg_id.id, &self.fine_ids.material_bg_id.layout_id, &material_bg);
+        graphics.context.request_bind_group(&self.fine_ids.material_bg_id.id, &self.fine_ids.material_bg_id.layout_id, material_bg);
 
         let deferred_textures_bg = BindGroup::new()
             .with_label("Deferred Texture Bind Group (Fine)")
@@ -217,9 +217,9 @@ impl RayMarchFinePass {
             .with_entry(TextureBinding::as_sampled(self.rm_ids.depth_id, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_sampled(self.rm_ids.mat_id, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_storage(self.gb_ids.rm_tex_id, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE));
-        graphics.context.request_bind_group(&self.fine_ids.screen_textures_bg.id, &self.fine_ids.screen_textures_bg.layout_id, &deferred_textures_bg);
+        graphics.context.request_bind_group(&self.fine_ids.screen_textures_bg.id, &self.fine_ids.screen_textures_bg.layout_id, deferred_textures_bg);
 
-        let raymarch_pipeline = Pipeline::new(PipelineType::Compute(ComputePipelineType::default()))
+        let raymarch_pipeline: Pipeline<ComputeType> = Pipeline::default()
             .with_label("RM Fine Pipeline")
             .with_bg_layouts(&[
                 self.fine_ids.global_bg_id.layout_id, 
@@ -228,7 +228,7 @@ impl RayMarchFinePass {
                 self.fine_ids.screen_textures_bg.layout_id,
             ])
             .with_shader("./shaders/fine_rm.wgsl");
-        graphics.context.request_pipeline(&self.fine_ids.pip_id, &raymarch_pipeline);
+        graphics.context.request_pipeline(&self.fine_ids.pip_id, raymarch_pipeline);
     }
 
     pub fn on_resize(&mut self, graphics: &mut Graphics) {
@@ -240,7 +240,7 @@ impl RayMarchFinePass {
             .with_entry(TextureBinding::as_sampled(self.rm_ids.depth_id, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_sampled(self.rm_ids.mat_id, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_storage(self.gb_ids.rm_tex_id, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE));
-        graphics.context.request_bind_group(&self.fine_ids.screen_textures_bg.id, &self.fine_ids.screen_textures_bg.layout_id, &deferred_textures_bg);
+        graphics.context.request_bind_group(&self.fine_ids.screen_textures_bg.id, &self.fine_ids.screen_textures_bg.layout_id, deferred_textures_bg);
     }
 
     pub fn get(&mut self, wx: u32, wy: u32) -> ComputeCommand {
@@ -275,7 +275,7 @@ impl CoarsePass {
         let globals_bg = BindGroup::new()
             .with_label("Global Uniforms (Coarse)")
             .with_entry(BufferBinding::as_uniform(self.gb_ids.cam_id).with_visibility(wgpu::ShaderStages::COMPUTE));
-        graphics.context.request_bind_group(&self.coarse_ids.global_bg_id.id, &self.coarse_ids.global_bg_id.layout_id, &globals_bg);
+        graphics.context.request_bind_group(&self.coarse_ids.global_bg_id.id, &self.coarse_ids.global_bg_id.layout_id, globals_bg);
 
         let deferred_textures_bg = BindGroup::new()
             .with_label("Deferred Texture Bind Group (Coarse)")
@@ -283,13 +283,13 @@ impl CoarsePass {
             .with_entry(TextureBinding::as_storage(self.rm_ids.norm_id, TextureTypeStorage { access: wgpu::StorageTextureAccess::WriteOnly, fmt: wgpu::TextureFormat::Rgba8Unorm }).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_storage(self.rm_ids.depth_id, TextureTypeStorage { access: wgpu::StorageTextureAccess::WriteOnly, fmt: wgpu::TextureFormat::R32Float }).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_storage(self.rm_ids.mat_id, TextureTypeStorage { access: wgpu::StorageTextureAccess::WriteOnly, fmt: wgpu::TextureFormat::R32Float }).with_visibility(wgpu::ShaderStages::COMPUTE));
-        graphics.context.request_bind_group(&self.coarse_ids.deferred_tex_bg_id.id, &self.coarse_ids.deferred_tex_bg_id.layout_id, &deferred_textures_bg);
+        graphics.context.request_bind_group(&self.coarse_ids.deferred_tex_bg_id.id, &self.coarse_ids.deferred_tex_bg_id.layout_id, deferred_textures_bg);
 
-        let raymarch_pipeline = Pipeline::new(PipelineType::Compute(ComputePipelineType::default()))
+        let raymarch_pipeline: Pipeline<ComputeType> = Pipeline::default()
             .with_label("RM Coarse Pipeline")
             .with_bg_layouts(&[self.coarse_ids.global_bg_id.layout_id, self.rm_ids.vox_bg_id.layout_id, self.coarse_ids.deferred_tex_bg_id.layout_id])
             .with_shader("./shaders/coarse_rm.wgsl");
-        graphics.context.request_pipeline(&self.coarse_ids.pip_id, &raymarch_pipeline);
+        graphics.context.request_pipeline(&self.coarse_ids.pip_id, raymarch_pipeline);
     }
 
     pub fn on_resize(&mut self, graphics: &mut Graphics) {
@@ -300,7 +300,7 @@ impl CoarsePass {
             .with_entry(TextureBinding::as_storage(self.rm_ids.norm_id, TextureTypeStorage { access: wgpu::StorageTextureAccess::WriteOnly, fmt: wgpu::TextureFormat::Rgba8Unorm }).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_storage(self.rm_ids.depth_id, TextureTypeStorage { access: wgpu::StorageTextureAccess::WriteOnly, fmt: wgpu::TextureFormat::R32Float }).with_visibility(wgpu::ShaderStages::COMPUTE))
             .with_entry(TextureBinding::as_storage(self.rm_ids.mat_id, TextureTypeStorage { access: wgpu::StorageTextureAccess::WriteOnly, fmt: wgpu::TextureFormat::R32Float }).with_visibility(wgpu::ShaderStages::COMPUTE));
-        graphics.context.request_bind_group(&self.coarse_ids.deferred_tex_bg_id.id, &self.coarse_ids.deferred_tex_bg_id.layout_id, &deferred_textures_bg);
+        graphics.context.request_bind_group(&self.coarse_ids.deferred_tex_bg_id.id, &self.coarse_ids.deferred_tex_bg_id.layout_id, deferred_textures_bg);
     }
 
     pub fn get(&mut self, wx: u32, wy: u32) -> ComputeCommand {

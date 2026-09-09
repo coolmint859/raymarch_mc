@@ -10,8 +10,8 @@ pub(crate) struct PipelineDependencies {
 pub(crate) struct PipelineRegistry {
     gpu: GpuHandle,
     handles: ResourceHandler<PipelineId, PipelineHandle>,
-    pip_defs: HashMap<PipelineId, Pipeline>,
-    deferred: HashMap<PipelineId, Pipeline>,
+    pip_defs: HashMap<PipelineId, PipelineType>,
+    deferred: HashMap<PipelineId, PipelineType>,
     valid_pips: RefCell<HashSet<PipelineId>>
 }
 
@@ -30,44 +30,43 @@ impl PipelineRegistry {
     pub fn request<'a>(
         &mut self,
         id: &PipelineId,
-        pip_def: &Pipeline,
+        pip_def: PipelineType,
         bgs: &'a BindGroupRegistry,
     ) {
         if self.handles.contains(id) { return; }
 
-        if let Some(deps) = self.resolve_dependencies(pip_def, bgs) {
+        if let Some(deps) = self.resolve_dependencies(&pip_def, bgs) {
             self.deferred.remove(id);
 
             if !self.pip_defs.contains_key(id) {
                 self.pip_defs.insert(*id, pip_def.clone());
             }
 
-            for layout_id in &pip_def.bg_layouts {
+            for layout_id in pip_def.bg_layouts().iter() {
                 bgs.check_inc_bgl(layout_id);
             }
 
             let gpu = self.gpu.clone();
-            let pip_def_copy = pip_def.clone();
-            match &pip_def.pip_type {
-                PipelineType::Render(ty) => {
-                    let pip_type = ty.clone();
+            match pip_def {
+                PipelineType::Render(pip_def) => {
+                    let r_pip = pip_def.clone();
                     let r_pip_task = Task::non_blocking(async move {
-                        gpu.create_render_pipeline(pip_def_copy, pip_type, deps.bg_layouts)
+                        gpu.create_render_pipeline(r_pip, deps.bg_layouts)
                     });
 
                     self.handles.request_new(id, r_pip_task);
                 },
-                PipelineType::Compute(ty) => {
-                    let pip_type = ty.clone();
+                PipelineType::Compute(pip_def) => {
+                    let c_pip = pip_def.clone();
                     let c_pip_task = Task::non_blocking(async move {
-                        gpu.create_compute_pipeline(pip_def_copy, pip_type, deps.bg_layouts)
+                        gpu.create_compute_pipeline(c_pip, deps.bg_layouts)
                     });
 
                     self.handles.request_new(id, c_pip_task);
                 }
             };
         } else {
-            self.deferred.insert(*id, pip_def.clone());
+            self.deferred.insert(*id, pip_def);
         }
     }
 
@@ -77,7 +76,7 @@ impl PipelineRegistry {
 
         let pending_bgs = std::mem::take(&mut self.deferred);
         for (id, pip_def) in &pending_bgs {
-            self.request(id, pip_def, bgs);
+            self.request(id, pip_def.clone(), bgs);
         }
     }
 
@@ -89,7 +88,8 @@ impl PipelineRegistry {
         self.invalidate(pip_id);
     }
 
-    pub fn get_blueprint(&self, id: &PipelineId) -> Option<&Pipeline> {
+    /// Get a reference to the blueprint of the pipeline matching the id, if exists
+    pub fn get_blueprint(&self, id: &PipelineId) -> Option<&PipelineType> {
         self.pip_defs.get(id)
     }
 
@@ -113,11 +113,11 @@ impl PipelineRegistry {
 
     fn resolve_dependencies<'a>(
         &self,
-        pip_def: &Pipeline, 
+        pip_def: &PipelineType, 
         bgs: &'a BindGroupRegistry
     ) -> Option<PipelineDependencies> {
         let mut bg_layouts = Vec::new();
-        for bgl_id in &pip_def.bg_layouts {
+        for bgl_id in pip_def.bg_layouts().iter() {
             if let Some(layout) =  bgs.layout_handles.get(bgl_id).cloned() {
                 bg_layouts.push((*layout).clone())
             } else {

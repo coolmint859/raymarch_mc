@@ -89,12 +89,12 @@ impl BindGroupRegistry {
         &mut self,
         bg_id: &BindGroupId,
         bgl_id: &LayoutId,
-        bg_def: &BindGroup,
+        bg_def: BindGroup,
         resources: &'a GpuResources,
     ) {
         if self.bg_handles.contains(bg_id) { return; }
         
-        if let Some(deps) = self.resolve_dependencies(bgl_id, bg_def, resources) {
+        if let Some(deps) = self.resolve_dependencies(bgl_id, &bg_def, resources) {
             self.deferred.remove(bg_id);
 
             if !self.bg_defs.contains_key(bg_id) {
@@ -135,7 +135,7 @@ impl BindGroupRegistry {
 
             self.bg_handles.request_new(bg_id, bind_group_task);
         } else {
-            self.request_layout(bgl_id, bg_def);
+            self.request_layout(bgl_id, &bg_def);
             self.deferred.insert(*bg_id, (*bgl_id, bg_def.clone()));
         }
     }
@@ -148,7 +148,7 @@ impl BindGroupRegistry {
         // println!("pending bind groups: {}", self.deffered.len());
         let pending_bgs = std::mem::take(&mut self.deferred);
         for (bg_id, (bgl_id, bg_def)) in &pending_bgs {
-            self.request_bg(bg_id, &bgl_id, bg_def, resources);
+            self.request_bg(bg_id, &bgl_id, bg_def.clone(), resources);
         }
     }
 

@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use wgpu::util::DeviceExt;
 
-use crate::graphics::{BindGroup, BindGroupLayoutHandle, Buffer, BufferContents, ComputePipelineType, Pipeline, PipelineHandle, RenderPipelineType, Sampler, Texture, TextureHandle};
+use crate::graphics::{BindGroup, BindGroupLayoutHandle, Buffer, BufferContents, ComputeType, Pipeline, PipelineHandle, RenderType, Sampler, Texture, TextureHandle};
 
 /// Handle to the gpu device and queue
 #[derive(Clone, Debug)]
@@ -121,8 +121,7 @@ impl GpuHandle {
     /// Create a new render pipeline from the given configuration builder
     pub fn create_render_pipeline(
         &self,
-        pip_def: Pipeline,
-        ty: RenderPipelineType,
+        pip_def: Pipeline<RenderType>,
         bg_layouts: Vec<wgpu::BindGroupLayout>
     ) -> Result<PipelineHandle, String> {
         let shader_path = pip_def.shader_path
@@ -152,7 +151,7 @@ impl GpuHandle {
             immediate_size: 0,
         });
 
-        let vertex_layouts: Vec<_> = ty.vertex_layouts
+        let vertex_layouts: Vec<_> = pip_def.ty.vertex_layouts
             .iter()
             .map(|l| l.desc())
             .collect();
@@ -162,16 +161,16 @@ impl GpuHandle {
             layout: Some(&layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: Some(&ty.vs_main),
+                entry_point: Some(&pip_def.ty.vs_main),
                 compilation_options: Default::default(),
                 buffers: &vertex_layouts,
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: Some(&ty.fs_main),
+                entry_point: Some(&pip_def.ty.fs_main),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: ty.format,
+                    format: pip_def.ty.format,
                     blend: Some(wgpu::BlendState::REPLACE),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
@@ -190,8 +189,7 @@ impl GpuHandle {
 
     pub fn create_compute_pipeline(
         &self, 
-        pip_def: Pipeline,
-        ty: ComputePipelineType,
+        pip_def: Pipeline<ComputeType>,
         bg_layouts: Vec<wgpu::BindGroupLayout>
     ) -> Result<PipelineHandle, String> {
         let shader_path = pip_def.shader_path
@@ -225,7 +223,7 @@ impl GpuHandle {
             label: Some(&pip_def.label),
             layout: Some(&layout),
             module: &shader,
-            entry_point: Some(&ty.main),
+            entry_point: Some(&pip_def.ty.main),
             compilation_options: Default::default(),
             cache: None
         });

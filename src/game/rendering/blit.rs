@@ -39,18 +39,18 @@ impl BlitPass {
         let blit_bind_group_a = BindGroup::new()
             .with_label("Blit Bind Group A")
             .with_entry(TextureBinding::as_sampled(self.gb_ids.taa_tex_a_id, TextureTypeSampled::default()));
-        graphics.context.request_bind_group(&self.blit_ids.bg_a_id, &self.blit_ids.bgl_id, &blit_bind_group_a);
+        graphics.context.request_bind_group(&self.blit_ids.bg_a_id, &self.blit_ids.bgl_id, blit_bind_group_a);
 
         let blit_bind_group_b = BindGroup::new()
             .with_label("Blit Bind Group B")
             .with_entry(TextureBinding::as_sampled(self.gb_ids.taa_tex_b_id, TextureTypeSampled::default()));
-        graphics.context.request_bind_group(&self.blit_ids.bg_b_id, &self.blit_ids.bgl_id, &blit_bind_group_b);
+        graphics.context.request_bind_group(&self.blit_ids.bg_b_id, &self.blit_ids.bgl_id, blit_bind_group_b);
 
-        let blit_pipeline = Pipeline::new(PipelineType::Render(RenderPipelineType::default()))
+        let blit_pipeline: Pipeline<RenderType> = Pipeline::default()
             .with_label("Voxel Render Pipeline")
             .with_bg_layouts(&[self.blit_ids.bgl_id])
             .with_shader("./shaders/blit.wgsl");
-        graphics.context.request_pipeline(&self.blit_ids.pip_id, &blit_pipeline);
+        graphics.context.request_pipeline(&self.blit_ids.pip_id, blit_pipeline);
     }
 
     pub fn on_resize(&mut self, graphics: &mut Graphics) {
@@ -58,13 +58,13 @@ impl BlitPass {
         let blit_bind_group_a = BindGroup::new()
             .with_label("Blit Bind Group A")
             .with_entry(TextureBinding::as_sampled(self.gb_ids.taa_tex_a_id, TextureTypeSampled::default()));
-        graphics.context.request_bind_group(&self.blit_ids.bg_a_id, &self.blit_ids.bgl_id, &blit_bind_group_a);
+        graphics.context.request_bind_group(&self.blit_ids.bg_a_id, &self.blit_ids.bgl_id, blit_bind_group_a);
 
         graphics.context.remove_bind_group(&self.blit_ids.bg_b_id);
         let blit_bind_group_b = BindGroup::new()
             .with_label("Blit Bind Group B")
             .with_entry(TextureBinding::as_sampled(self.gb_ids.taa_tex_b_id, TextureTypeSampled::default()));
-        graphics.context.request_bind_group(&self.blit_ids.bg_b_id, &self.blit_ids.bgl_id, &blit_bind_group_b);
+        graphics.context.request_bind_group(&self.blit_ids.bg_b_id, &self.blit_ids.bgl_id, blit_bind_group_b);
 
         self.is_bg_a = true;
     }

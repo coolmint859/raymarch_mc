@@ -118,13 +118,13 @@ impl GpuContext {
     }
 
     /// Request a bind group to be created from the provided definition and mapped to the provided id.
-    pub fn request_bind_group(&mut self, bg_id: &BindGroupId, bgl_id: &LayoutId, bg_def: &BindGroup) {
+    pub fn request_bind_group(&mut self, bg_id: &BindGroupId, bgl_id: &LayoutId, bg_def: BindGroup) {
         self.bg_registry.request_bg(bg_id, bgl_id, bg_def, &self.resources);
     }
 
     /// Request a pipeline to be created from the provided definition and mapped to the provided id.
-    pub fn request_pipeline(&mut self, id: &PipelineId, pip_def: &Pipeline) {
-        self.pip_registry.request(id, &pip_def, &self.bg_registry);
+    pub fn request_pipeline(&mut self, id: &PipelineId, pip_def: impl Into<PipelineType>) {
+        self.pip_registry.request(id, pip_def.into(), &self.bg_registry);
     }
 
     /// Sync pending resources with the main thread. This should be called regularly in frame-based applications
@@ -230,7 +230,7 @@ impl GpuContext {
     /// Remove a pipeline from the context, releasing the vram allocation
     pub fn remove_pipeline(&mut self, id: &PipelineId) {
         if let Some(pip) = self.pip_registry.get_blueprint(id) {
-            for layout_id in &pip.bg_layouts {
+            for layout_id in pip.bg_layouts().iter() {
                 self.bg_registry.check_dec_bgl(layout_id);
             }
         }

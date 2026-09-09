@@ -78,7 +78,7 @@ impl GpuCommand for DrawCommand {
             ..Default::default()
         });
 
-        let Some(pipeline) = context.validate_pipeline(&self.pip_id).and_then(|pip| pip.as_render()) else { 
+        let Some(pipeline) = context.validate_pipeline(&self.pip_id).and_then(|pip| pip.to_render()) else { 
             // println!("[DrawCommand] Failed to validate render pipeline @{:?}", info.pipeline_id);
             return; 
         };
@@ -141,7 +141,7 @@ impl GpuCommand for ComputeCommand {
             ..Default::default()
         });
 
-        let Some(pipeline) = context.validate_pipeline(&self.pip_id).and_then(|pip| pip.as_compute()) else {
+        let Some(pipeline) = context.validate_pipeline(&self.pip_id).and_then(|pip| pip.to_compute()) else {
             // println!("[ComputeCommand] Failed to validate compute pipeline @{:?}", info.pipeline_id);
             return; 
         };
