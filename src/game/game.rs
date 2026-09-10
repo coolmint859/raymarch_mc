@@ -182,12 +182,14 @@ impl Screen for Game {
         self.world.update(dt, false);
         self.camera.update(graphics.canvas.aspect());
 
-        graphics.context.update_buffer(&self.globals.ids.cam_id, StructuredUpdate {
+        let _ = graphics.context.update_buffer(&self.globals.ids.cam_id, StructuredUpdate {
             data: &self.camera.to_uniform(graphics.canvas.frame_count()),
+            offset: 0
         });
 
-        graphics.context.update_buffer(&self.globals.ids.env_id, StructuredUpdate { 
+        let _ = graphics.context.update_buffer(&self.globals.ids.env_id, StructuredUpdate { 
             data: &self.world.env_uniform(),
+            offset: 0
         });
     }
 

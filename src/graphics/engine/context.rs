@@ -96,12 +96,13 @@ impl GpuContext {
     }
 
     /// Request a texture to be created from the provided definition and mapped to the provided id.
-    pub fn request_texture(&mut self, id: &TextureId, texture_def: Texture) {
+    pub fn request_texture(&mut self, id: &TextureId, texture_def: impl Into<TextureType>) {
         if self.resources.textures.contains(id) { return; }
 
         let gpu = self.gpu.clone();
+        let tex_type = texture_def.into();
         let texture_task = Task::non_blocking(async move {
-            gpu.create_texture(texture_def)
+            gpu.create_texture(tex_type)
         });
         self.resources.textures.request_new(id, texture_task);
     }
@@ -135,16 +136,20 @@ impl GpuContext {
     }
 
     /// Update a buffer with the provided id, if found. The data payload must not exceed the buffer size
-    pub fn update_buffer(&mut self, id: &BufferId, update: impl BufferUpdate) {
+    pub fn update_buffer(&mut self, id: &BufferId, update: impl BufferUpdate) -> Result<(), String>{
         if let Some(buffer) = self.resources.buffers.get(id) {
             let data = update.bytes();
             let offset = update.offset();
 
             let update_size = offset + data.len() as u64;
-            assert!(update_size <= buffer.size());
+            if update_size > buffer.size() {
+                return Err(format!("[GpuContext] Data payload exceeds the buffer size."));
+            }
 
             self.gpu.queue.write_buffer(buffer, offset, data);
         }
+
+        Ok(())
     }
 
     /// Remove a texture from the context, releasing the allocation from gpu memory. This also causes any bind group that used it to become invalid.
@@ -168,7 +173,7 @@ impl GpuContext {
             self.bg_registry.invalidate(bg_id);
         }
 
-        println!("Removed Texture with label '{:?}'", id);
+        println!("[GpuContext] Removed Texture with label '{:?}'", id);
     }
 
     /// Remove a buffer from the context, releasing the allocation from gpu memory. This also causes any bind group that used it to become invalid.
@@ -191,7 +196,7 @@ impl GpuContext {
             self.bg_registry.invalidate(bg_id);
         }
 
-        println!("Removed Buffer with label '{:?}'", id);
+        println!("[GpuContext] Removed Buffer with label '{:?}'", id);
     }
 
     /// Remove a sampler from the context, releasing the allocation from gpu memory. This also causes any bind group that used it to become invalid.
@@ -214,7 +219,7 @@ impl GpuContext {
             self.bg_registry.invalidate(bg_id);
         }
 
-        println!("Removed Buffer with label '{:?}'", id);
+        println!("[GpuContext] Removed Buffer with label '{:?}'", id);
     }
 
     /// Remove a bind group from the context, releasing the vram allocation
@@ -224,7 +229,7 @@ impl GpuContext {
         }
         self.bg_registry.remove(bg_id);
 
-        println!("Removed Bind Group with label '{:?}'", bg_id);
+        println!("[GpuContext] Removed Bind Group with label '{:?}'", bg_id);
     }
 
     /// Remove a pipeline from the context, releasing the vram allocation
@@ -237,16 +242,26 @@ impl GpuContext {
 
         self.pip_registry.remove(id);
 
-        println!("Removed Pipeline with label '{:?}'", id);
+        println!("[GpuContext] Removed Pipeline with label '{:?}'", id);
     }
 
-    /// Validate a bind group, ensuring it can be used in a gpu command
-    pub(crate) fn validate_bind_group(&self, bg_id: &BindGroupId) -> Option<BindGroupHandle> {
+    /// Validates a bind group. This ensures it can be used in a gpu command. Returns a reference to the bind group if validation passed.
+    /// 
+    /// You can call this prior to rendering to speed up initial gameplay frames, but note that it will only work if
+    /// the dependent resources are already ready.
+    ///  /// 
+    /// Note that any changes to underlying resources will invalidate the bind group, triggering revalidation on the next usage.
+    pub fn validate_bind_group(&self, bg_id: &BindGroupId) -> Option<BindGroupHandle> {
         self.bg_registry.validate(bg_id, &self.resources)
     }
 
-    /// Validate a pipeline, ensuring it can be used in a gpu command
-    pub(crate) fn validate_pipeline(&self, pip_id: &PipelineId) -> Option<&PipelineHandle> {
+    /// Validates a pipeline. This ensures it can be used in future gpu commands. Returns a reference to the pipeline handle if validation passed.
+    /// 
+    /// You can call this prior to rendering to speed up initial gameplay frames, but note that it will only work if
+    /// the dependent resources are already ready.
+    /// 
+    /// Note that any changes to underlying resources will invalidate the pipeline, triggering revalidation on the next usage.
+    pub fn validate_pipeline(&self, pip_id: &PipelineId) -> Option<&PipelineHandle> {
         self.pip_registry.validate(pip_id, &self.bg_registry)
     }
 }

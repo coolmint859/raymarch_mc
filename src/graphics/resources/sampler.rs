@@ -1,5 +1,4 @@
-use crate::graphics::{Bindable, BindingTarget, SamplerId};
-
+/// A blueprint for constructing samplers
 pub struct Sampler {
     pub label: String,
     pub desc: wgpu::SamplerDescriptor<'static>,
@@ -46,39 +45,5 @@ impl Sampler {
     pub fn with_mag_filter(mut self, filter: wgpu::FilterMode) -> Self {
         self.desc.mag_filter = filter;
         self
-    }
-}
-
-pub struct SamplerBinding {
-    sampler_id: SamplerId,
-    visibility: wgpu::ShaderStages,
-}
-
-impl SamplerBinding {
-    pub fn new(target: SamplerId) -> Self {
-        Self {
-            sampler_id: target,
-            visibility: wgpu::ShaderStages::FRAGMENT,
-        }
-    }
-
-    /// Set the shader stage visibility for the sampler binding
-    pub fn with_visibility(mut self, visibility: wgpu::ShaderStages) -> Self {
-        self.visibility = visibility;
-        self
-    }
-}
-
-impl Bindable for SamplerBinding {
-    fn as_binding(&self) -> wgpu::BindingType {
-        wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering)
-    }
-
-    fn target(&self) -> super::BindingTarget {
-        BindingTarget::Sampler(self.sampler_id)
-    }
-
-    fn visibility(&self) -> wgpu::ShaderStages {
-        self.visibility
     }
 }

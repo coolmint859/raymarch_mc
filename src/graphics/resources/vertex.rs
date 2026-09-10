@@ -5,35 +5,41 @@ pub trait VertexAttribute {
     fn count(&self) -> u32 { 1 }
 }
 
+/// an f32 (scalar) vertex attribute. f32 in shader
 pub struct ScalarAttribute;
 impl VertexAttribute for ScalarAttribute {
     fn format(&self) -> wgpu::VertexFormat { wgpu::VertexFormat::Float32 }
 }
 
+/// a 2-value vertex attribute. vec2f in shader
 pub struct Vec2Attribute;
 impl VertexAttribute for Vec2Attribute {
     fn format(&self) -> wgpu::VertexFormat { wgpu::VertexFormat::Float32x2 }
 }
 
+/// a 3-value vertex attribute. vec3f in shader
 pub struct Vec3Attribute;
 impl VertexAttribute for Vec3Attribute {
     fn format(&self) -> wgpu::VertexFormat { wgpu::VertexFormat::Float32x3 }
 }
 
+/// a 4-value vertex attribute. vec4f in shader
 pub struct Vec4Attribute;
 impl VertexAttribute for Vec4Attribute {
     fn format(&self) -> wgpu::VertexFormat { wgpu::VertexFormat::Float32x4 }
 }
 
-pub struct TransformAttribute;
-impl VertexAttribute for TransformAttribute {
+/// A 16-value matrix vertex attribute. 4 vec4f in shader
+pub struct Mat4Attribute;
+impl VertexAttribute for Mat4Attribute {
     fn count(&self) -> u32 { 4 }
     fn format(&self) -> wgpu::VertexFormat { wgpu::VertexFormat::Float32x4 }
 }
 
+/// Blueprint for constructing vertex buffer layouts. Does automatic offset and
+/// and location calculations.
 #[derive(Clone, Debug)]
 pub struct VertexBufferLayout {
-    pub label: String,
     pub attributes: Vec<wgpu::VertexAttribute>,
     pub step_mode: wgpu::VertexStepMode,
     pub curr_loc: u32,
@@ -44,7 +50,6 @@ pub struct VertexBufferLayout {
 impl VertexBufferLayout {
     pub fn new(step_mode: wgpu::VertexStepMode) -> Self {
         Self {
-            label: "vertex_buffer_layout".to_string(),
             attributes: Vec::new(),
             curr_offset: 0,
             step_mode,
@@ -62,12 +67,13 @@ impl VertexBufferLayout {
         VertexBufferLayout::new(wgpu::VertexStepMode::Instance)
     }
 
-    /// Set the label for gpu profiling of the resultant buffer
-    pub fn with_label(mut self, label: &str) -> Self {
-        self.label = label.to_string();
+    /// Set the starting location for the attributes. This should be called prior to any attribute additions.
+    pub fn with_start_loc(mut self, start_loc: u32) -> Self {
+        self.curr_loc = start_loc;
         self
     }
 
+    /// Add an attribute to the buffer layout
     pub fn with_attribute(mut self, attr: impl VertexAttribute) -> Self {
         for _ in 0..attr.count() {
             self.attributes.push(wgpu::VertexAttribute {
@@ -82,8 +88,8 @@ impl VertexBufferLayout {
         self
     }
 
-    /// convert the layout into it's wgpu equivelant for use in a pipeline
-    pub fn desc(&self) -> wgpu::VertexBufferLayout<'_> {
+    /// Convert the layout into it's wgpu equivelant for use in a pipeline
+    pub fn as_wgpu_layout(&self) -> wgpu::VertexBufferLayout<'_> {
         wgpu::VertexBufferLayout {
             array_stride: self.curr_offset,
             step_mode: self.step_mode,

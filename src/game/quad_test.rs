@@ -9,6 +9,15 @@ pub struct Vertex {
     pub uvs: [f32; 2],
 }
 
+impl Vertex {
+    /// Get the buffer layout of the vertices
+    pub fn layout() -> VertexBufferLayout {
+        VertexBufferLayout::as_vertex_step()
+            .with_attribute(Vec2Attribute)
+            .with_attribute(Vec2Attribute)
+    }
+}
+
 pub struct QuadIds {
     v_buffer_id: BufferId,
     i_buffer_id: BufferId,
@@ -47,11 +56,6 @@ impl Screen for QuadTest {
     fn init(&mut self, graphics: &mut Graphics) {
         self.init_input();
 
-        let v_buffer_layout = VertexBufferLayout::as_vertex_step()
-            .with_label("2d_shape_layout")
-            .with_attribute(Vec2Attribute)
-            .with_attribute(Vec2Attribute);
-
         let quad_vertices = [
             Vertex { position: [-0.5, -0.5], uvs: [0.0, 0.0] },
             Vertex { position: [-0.5,  0.5], uvs: [0.0, 1.0] },
@@ -80,9 +84,9 @@ impl Screen for QuadTest {
 
         graphics.context.request_pipeline(
             &self.ids.draw_pip_id, 
-            Pipeline::as_render("vs_main", "fs_main")
+            Pipeline::as_render()
                 .with_label("2D Render Pipeline")
-                .with_vertex_layout(&v_buffer_layout)
+                .with_vertex_layout(Vertex::layout())
                 .with_shader("./shaders/2d_draw.wgsl")
         );
     }

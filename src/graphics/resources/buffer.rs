@@ -1,13 +1,11 @@
-use std::num::NonZero;
-
-use crate::graphics::{Bindable, BindingTarget, BufferId};
-
-/// Represents structs that can be serialized into raw bytes
+/// Represents structs that can be serialized into raw bytes.
+/// 
+/// All structs that implement bytemuck::Pod and bytemuck::Zeroable 
+/// automatically implement Serializable.
 pub trait Serializable {
     fn to_bytes(&self) -> &[u8];
 }
 
-// Any struct that implements Pod and Zeroable is serializable into bytes
 impl<T> Serializable for T 
 where T: bytemuck::Pod + bytemuck::Zeroable
 {
@@ -19,7 +17,7 @@ where T: bytemuck::Pod + bytemuck::Zeroable
 pub trait BufferUpdate {
     /// The data payload as an array slice of bytes
     fn bytes(&self) -> &[u8];
-    /// The offset at which to apply the update.
+    /// The offset at which to insert the data at into the buffer.
     fn offset(&self) -> u64;
 }
 
@@ -27,7 +25,10 @@ pub trait BufferUpdate {
 /// 
 /// Structs which implement bytemuck's POD and Zeroable automatically implement Serializable
 pub struct StructuredUpdate<'a, T: Serializable> {
-    pub data: &'a T
+    /// The struct payload
+    pub data: &'a T,
+    /// The offset at which to insert the struct data at into the buffer
+    pub offset: u64,
 }
 
 impl<'a, T: Serializable> BufferUpdate for StructuredUpdate<'a, T> {
@@ -35,13 +36,15 @@ impl<'a, T: Serializable> BufferUpdate for StructuredUpdate<'a, T> {
     fn bytes(&self) -> &[u8] { self.data.to_bytes() }
 
     #[inline]
-    fn offset(&self) -> u64 { 0 } // all structures have an offset of 0
+    fn offset(&self) -> u64 { self.offset }
 }
 
 /// A buffer update from raw bytes, inserted at an offset
 pub struct RawBytesUpdate<'a> {
+    /// The raw data payload
+    pub data: &'a [u8],
+    /// The offset at which to insert the raw data at into the buffer
     pub offset: u64,
-    pub data: &'a [u8]
 }
 
 impl<'a> BufferUpdate for RawBytesUpdate<'a> {
@@ -52,76 +55,6 @@ impl<'a> BufferUpdate for RawBytesUpdate<'a> {
     fn offset(&self) -> u64 { self.offset }
 }
 
-/// Represents a buffer binding and entry in a bind group
-pub struct BufferBinding {
-    buf_id: BufferId,
-    ty: wgpu::BufferBindingType,
-    visibility: wgpu::ShaderStages,
-    has_dyn_offset: bool,
-    min_binding_size: Option<NonZero<u64>>
-}
-
-impl BufferBinding {
-    pub fn new(target: BufferId, ty: wgpu::BufferBindingType) -> Self {
-        Self {
-            buf_id: target,
-            ty,
-            visibility: wgpu::ShaderStages::FRAGMENT,
-            has_dyn_offset: false,
-            min_binding_size: None,
-        }
-    }
-
-    /// Create a new storage buffer binding
-    pub fn as_storage(target: BufferId, read_only: bool) -> Self {
-        let ty = wgpu::BufferBindingType::Storage { read_only };
-        BufferBinding::new(target, ty)
-    }
-
-    /// Create a new uniform buffer binding
-    pub fn as_uniform(target: BufferId) -> Self {
-        let ty = wgpu::BufferBindingType::Uniform;
-        BufferBinding::new(target, ty)
-    }
-
-    /// Set the shader stage visibility for the buffer binding
-    pub fn with_visibility(mut self, visibility: wgpu::ShaderStages) -> Self {
-        self.visibility = visibility;
-        self
-    }
-
-    /// Set the binding to have a dynamic offset
-    pub fn with_dynamic_offset(mut self) -> Self {
-        self.has_dyn_offset = true;
-        self
-    }
-
-    /// Set the minimum buffer size for the binding. Must be greater than 0.
-    pub fn with_min_size(mut self, size: u64) -> Self {
-        self.min_binding_size = Some(NonZero::new(size)
-            .expect("[Buffer Binding] Expected minimum binding size to be a non zero unsigned number."));
-        self
-    }
-}
-
-impl Bindable for BufferBinding {
-    fn as_binding(&self) -> wgpu::BindingType {
-        wgpu::BindingType::Buffer {
-            ty: self.ty,
-            has_dynamic_offset: self.has_dyn_offset,
-            min_binding_size: self.min_binding_size
-        }
-    }
-
-    fn target(&self) -> BindingTarget {
-        BindingTarget::Buffer(self.buf_id)
-    }
-
-    fn visibility(&self) -> wgpu::ShaderStages {
-        self.visibility
-    }
-}
-
 /// Describes the contents of a buffer
 pub enum BufferContents {
     /// A buffer created with initial byte data
@@ -130,6 +63,7 @@ pub enum BufferContents {
     Empty(u64)
 }
 
+/// A blueprint for constructing wgpu Buffers
 pub struct Buffer {
     pub label: String,
     pub usage: wgpu::BufferUsages,

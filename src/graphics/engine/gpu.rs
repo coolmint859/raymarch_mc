@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use wgpu::util::DeviceExt;
 
-use crate::graphics::{BindGroup, BindGroupLayoutHandle, Buffer, BufferContents, ComputeType, Pipeline, PipelineHandle, RenderType, Sampler, Texture, TextureHandle};
+use crate::graphics::{BindGroup, BindGroupLayoutHandle, Buffer, BufferContents, ComputeType, Pipeline, PipelineHandle, RenderType, Sampler, TextureHandle, TextureType};
 
 /// Handle to the gpu device and queue
 #[derive(Clone, Debug)]
@@ -38,26 +38,27 @@ impl GpuHandle {
     }
 
     /// Create a new texture from the given configuration builder
-    pub fn create_texture(&self, texture_def: Texture) -> Result<TextureHandle, String> {
-        let tex_info = texture_def.get_info()?;
+    pub fn create_texture(&self, texture_def: TextureType) -> Result<TextureHandle, String> {
+        let tex_payload = texture_def.into_payload()?;
+
         let extent = wgpu::Extent3d {
-            width: tex_info.width,
-            height: tex_info.height,
-            depth_or_array_layers: tex_info.depth
+            width: tex_payload.dim.width,
+            height: tex_payload.dim.height,
+            depth_or_array_layers: tex_payload.dim.depth
         };
         
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(&texture_def.label),
+            label: Some(&tex_payload.label),
             size: extent,
-            mip_level_count: 1,
+            mip_level_count: tex_payload.mip_levels,
             sample_count: 1,
-            dimension: tex_info.dim,
-            format: texture_def.format,
-            usage: texture_def.usage,
+            dimension: tex_payload.dim.wgpu_dim,
+            format: tex_payload.format,
+            usage: tex_payload.usage,
             view_formats: &[],
         });
 
-        if let Some(data) = &tex_info.data {
+        if let Some(data) = &tex_payload.data {
             self.queue.write_texture(
                 wgpu::TexelCopyTextureInfo {
                     texture: &texture,
@@ -68,16 +69,16 @@ impl GpuHandle {
                 data,
                 wgpu::TexelCopyBufferLayout {
                     offset: 0,
-                    bytes_per_row: Some(texture_def.bytes_per_pixel() * tex_info.width),
-                    rows_per_image: Some(tex_info.height)
-                }, 
+                    bytes_per_row: Some(tex_payload.bytes_per_pixel() * tex_payload.dim.width),
+                    rows_per_image: Some(tex_payload.dim.height)
+                },
                 extent,
             );
         }
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        println!("[GpuContext] Created new texture with label '{}'", texture_def.label);
+        println!("[GpuContext] Created new texture with label '{}'", tex_payload.label);
 
         Ok(TextureHandle { texture, view, extent })
     }
@@ -153,7 +154,7 @@ impl GpuHandle {
 
         let vertex_layouts: Vec<_> = pip_def.ty.vertex_layouts
             .iter()
-            .map(|l| l.desc())
+            .map(|l| l.as_wgpu_layout())
             .collect();
 
         let pipeline = self.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {

@@ -50,7 +50,7 @@ impl TaaPass {
             .with_entry(TextureBinding::as_storage(self.gb_ids.taa_tex_a_id, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE));
         graphics.context.request_bind_group(&self.taa_ids.bg_b_id, &self.taa_ids.bgl_id, taa_bind_group_b);
 
-        let taa_pipeline: Pipeline<ComputeType> = Pipeline::default()
+        let taa_pipeline = Pipeline::as_compute()
             .with_label("TAA Pipeline")
             .with_bg_layouts(&[self.taa_ids.bgl_id])
             .with_shader("./shaders/taa.wgsl");

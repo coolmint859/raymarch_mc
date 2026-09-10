@@ -112,33 +112,29 @@ impl RayMarchResources {
         let cw_half = cw / 2;
         let ch_half = ch / 2;
 
-        let positions_texture = Texture::new(TextureType::Computed)
+        let positions_texture = Texture::computed(TexDimensions::size_2d(cw_half, ch_half))
             .with_label("Position Texture")
-            .with_size_2d(cw_half, ch_half)
             .with_format(wgpu::TextureFormat::Rgba16Float)
             .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING)
             .with_additional_usage(wgpu::TextureUsages::COPY_SRC);
         graphics.context.request_texture(&self.ids.pos_id, positions_texture);
 
-        let normals_texture = Texture::new(TextureType::Computed)
+        let normals_texture = Texture::computed(TexDimensions::size_2d(cw_half, ch_half))
             .with_label("Normals Texture")
-            .with_size_2d(cw_half, ch_half)
             .with_format(wgpu::TextureFormat::Rgba8Unorm)
             .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING)
             .with_additional_usage(wgpu::TextureUsages::COPY_SRC);
         graphics.context.request_texture(&self.ids.norm_id, normals_texture);
 
-        let depth_texture = Texture::new(TextureType::Computed)
+        let depth_texture = Texture::computed(TexDimensions::size_2d(cw_half, ch_half))
             .with_label("Normals Texture")
-            .with_size_2d(cw_half, ch_half)
             .with_format(wgpu::TextureFormat::R32Float)
             .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING)
             .with_additional_usage(wgpu::TextureUsages::COPY_SRC);
         graphics.context.request_texture(&self.ids.depth_id, depth_texture);
 
-        let material_texture = Texture::new(TextureType::Computed)
+        let material_texture = Texture::computed(TexDimensions::size_2d(cw_half, ch_half))
             .with_label("Normals Texture")
-            .with_size_2d(cw_half, ch_half)
             .with_format(wgpu::TextureFormat::R32Float)
             .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING)
             .with_additional_usage(wgpu::TextureUsages::COPY_SRC);
@@ -169,15 +165,13 @@ impl RayMarchFinePass {
     }
 
     pub fn init(&mut self, graphics: &mut Graphics, world: &VoxelWorld) {
-        let grass_alpha_mask = Texture::new(TextureType::OnDisk { path: "./assets/grass_block_side_overlay.png" })
+        let grass_alpha_mask = Texture::on_disk("./assets/grass_block_side_overlay.png")
             .with_label("Grass Side Alpha Mask")
-            .with_format(wgpu::TextureFormat::Rgba8Unorm)
             .with_additional_usage(wgpu::TextureUsages::COPY_DST);
         graphics.context.request_texture(&self.fine_ids.gsam_id, grass_alpha_mask);
 
-        let atlas_texture = Texture::new(TextureType::OnDisk { path: "./assets/textures.png" })
+        let atlas_texture = Texture::on_disk("./assets/textures.png")
             .with_label("Block Atlas Texture")
-            .with_format(wgpu::TextureFormat::Rgba8Unorm)
             .with_additional_usage(wgpu::TextureUsages::COPY_DST);
         graphics.context.request_texture(&self.fine_ids.atlas_id, atlas_texture);
 
@@ -219,7 +213,7 @@ impl RayMarchFinePass {
             .with_entry(TextureBinding::as_storage(self.gb_ids.rm_tex_id, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE));
         graphics.context.request_bind_group(&self.fine_ids.screen_textures_bg.id, &self.fine_ids.screen_textures_bg.layout_id, deferred_textures_bg);
 
-        let raymarch_pipeline: Pipeline<ComputeType> = Pipeline::default()
+        let raymarch_pipeline = Pipeline::as_compute()
             .with_label("RM Fine Pipeline")
             .with_bg_layouts(&[
                 self.fine_ids.global_bg_id.layout_id, 
@@ -285,7 +279,7 @@ impl CoarsePass {
             .with_entry(TextureBinding::as_storage(self.rm_ids.mat_id, TextureTypeStorage { access: wgpu::StorageTextureAccess::WriteOnly, fmt: wgpu::TextureFormat::R32Float }).with_visibility(wgpu::ShaderStages::COMPUTE));
         graphics.context.request_bind_group(&self.coarse_ids.deferred_tex_bg_id.id, &self.coarse_ids.deferred_tex_bg_id.layout_id, deferred_textures_bg);
 
-        let raymarch_pipeline: Pipeline<ComputeType> = Pipeline::default()
+        let raymarch_pipeline = Pipeline::as_compute()
             .with_label("RM Coarse Pipeline")
             .with_bg_layouts(&[self.coarse_ids.global_bg_id.layout_id, self.rm_ids.vox_bg_id.layout_id, self.coarse_ids.deferred_tex_bg_id.layout_id])
             .with_shader("./shaders/coarse_rm.wgsl");

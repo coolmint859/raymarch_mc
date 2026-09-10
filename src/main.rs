@@ -1,4 +1,4 @@
-use std::{println, sync::Arc};
+use std::sync::Arc;
 use std::time::Instant;
 
 use winit::{
@@ -129,7 +129,7 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(physical_size) => {   
-                println!("---WINDOW RESIZED---");     
+                // println!("---WINDOW RESIZED---");     
                 graphics.on_resize(physical_size.width, physical_size.height);
                 screen.on_resize(graphics);
 

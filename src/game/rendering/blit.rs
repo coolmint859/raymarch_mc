@@ -46,7 +46,7 @@ impl BlitPass {
             .with_entry(TextureBinding::as_sampled(self.gb_ids.taa_tex_b_id, TextureTypeSampled::default()));
         graphics.context.request_bind_group(&self.blit_ids.bg_b_id, &self.blit_ids.bgl_id, blit_bind_group_b);
 
-        let blit_pipeline: Pipeline<RenderType> = Pipeline::default()
+        let blit_pipeline = Pipeline::as_render()
             .with_label("Voxel Render Pipeline")
             .with_bg_layouts(&[self.blit_ids.bgl_id])
             .with_shader("./shaders/blit.wgsl");

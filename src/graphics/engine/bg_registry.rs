@@ -1,4 +1,4 @@
-use std::{cell::{Cell, RefCell}, collections::{HashMap, HashSet}, ops::Deref, println};
+use std::{cell::{Cell, RefCell}, collections::{HashMap, HashSet}, ops::Deref};
 use crate::graphics::*;
 
 /// A lightweight handle to a bind group and associated layout
@@ -191,7 +191,7 @@ impl BindGroupRegistry {
 
             should_remove = layout.ref_count.get() <= 0;
 
-            println!("Subtracted ref count of bind group layout @{:?}; curr count: {}", bgl_id, layout.ref_count.get());
+            // println!("Subtracted ref count of bind group layout @{:?}; curr count: {}", bgl_id, layout.ref_count.get());
         }
 
         if should_remove {
@@ -204,7 +204,7 @@ impl BindGroupRegistry {
         if let Some(layout) = self.layout_handles.get(bgl_id) {
             layout.ref_count.set(layout.ref_count.get() + 1);
 
-            println!("Added ref count of bind group layout @{:?}; curr count: {}", bgl_id, layout.ref_count.get());
+            // println!("Added ref count of bind group layout @{:?}; curr count: {}", bgl_id, layout.ref_count.get());
         }
     }
 
