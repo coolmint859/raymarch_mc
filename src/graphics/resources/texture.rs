@@ -19,49 +19,10 @@ impl Deref for TextureHandle {
     }
 }
 
-/// The type of texture creation mechanism. This is used internally to create the underlying wgpu texture
-pub enum TextureType {
-    /// A texture created via an algorithm
-    Procedural(Texture<Procedural>),
-    /// A texture created by loading a file from disk
-    OnDisk(Texture<OnDisk>),
-    /// A texture created via running a compute shader
-    Computed(Texture<Computed>)
-}
-
-impl TextureType {
-    /// Convert the texture into its full payload information. This is called when creating the wgpu texture via the Device
-    pub(crate) fn into_payload(self) -> Result<TexturePayload, String> {
-        match self {
-            TextureType::Procedural(tex) => {
-                Ok(tex.into_payload())
-            },
-            TextureType::OnDisk(tex) => {
-                tex.into_payload()
-            },
-            TextureType::Computed(tex) => {
-                Ok(tex.into_payload())
-            }
-        }
-    }
-}
-
-impl From<Texture<Procedural>> for TextureType {
-    fn from(tex: Texture<Procedural>) -> Self {
-        Self::Procedural(tex)
-    }
-}
-
-impl From<Texture<OnDisk>> for TextureType {
-    fn from(tex: Texture<OnDisk>) -> Self {
-        Self::OnDisk(tex)
-    }
-}
-
-impl From<Texture<Computed>> for TextureType {
-    fn from(tex: Texture<Computed>) -> Self {
-        Self::Computed(tex)
-    }
+/// Represents resources that can be condensed into a texture payload.
+pub trait TextureType: Send + 'static {
+    /// Convert the texture into its full payload information, if possible. This is called when creating the wgpu texture via the Device
+    fn into_payload(self) -> Result<TexturePayload, String>;
 }
 
 /// Specifies the dimensions of a texture
@@ -92,6 +53,154 @@ impl TexDimensions {
             depth,
             wgpu_dim: wgpu::TextureDimension::D3
         }
+    }
+}
+
+/// A blueprint for constructing wgpu textures. 
+pub struct Texture<T> {
+    pub label: String,
+    format: wgpu::TextureFormat,
+    usage: wgpu::TextureUsages,
+    mip_levels: u32,
+    ty: T,
+}
+
+impl<T> Texture<T> {
+    /// Set the label for gpu profiling of the resultant texture
+    pub fn with_label(mut self, label: &str) -> Self {
+        self.label = label.to_string();
+        self
+    }
+
+    /// Set the format of the texture
+    pub fn with_format(mut self, format: wgpu::TextureFormat) -> Self {
+        self.format = format;
+        self
+    }
+
+    /// Set the mipmap levels for the texture.
+    pub fn with_mip_levels(mut self, levels: u32) -> Self {
+        self.mip_levels = levels;
+        self
+    }
+
+    /// Add a additional usage for the texture
+    pub fn with_additional_usage(mut self, usage: wgpu::TextureUsages) -> Self {
+        self.usage |= usage;
+        self
+    }
+
+    /// Allow the texture to be written to
+    pub fn writable(mut self) -> Self {
+        self.usage |= wgpu::TextureUsages::COPY_DST;
+        self
+    }
+
+    /// Allow the texture to be read from
+    pub fn readable(mut self) -> Self {
+        self.usage |= wgpu::TextureUsages::COPY_SRC;
+        self
+    }
+    
+    /// Allow the texture to be written to and read from
+    pub fn read_write(mut self) -> Self {
+        self.usage |= wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC;
+        self
+    }
+
+    /// Allows the texture to be used for storage in a bind group
+    pub fn storage_bindable(mut self) -> Self {
+        self.usage |= wgpu::TextureUsages::STORAGE_BINDING;
+        self
+    }
+}
+
+impl Texture<Procedural> {
+    /// Create a texture from procedurally generated data
+    pub fn procedural(data: Vec<u8>, dim: TexDimensions) -> Self {
+        Self {
+            label: "procedural_texture".to_string(),
+            format: Procedural::default_fmt(),
+            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            mip_levels: 1,
+            ty: Procedural { data, dim }
+        }
+    }
+}
+
+impl TextureType for Texture<Procedural> {
+    fn into_payload(self) -> Result<TexturePayload, String> {
+        Ok(TexturePayload {
+            label: self.label,
+            size: self.ty.dim, 
+            format: self.format,
+            usage: self.usage,
+            mip_levels: self.mip_levels,
+            data: Some(self.ty.data),
+        })
+    }
+}
+
+impl Texture<OnDisk> {
+    /// Create a texture from an image file
+    pub fn on_disk(path: &'static str) -> Self {
+        Self {
+            label: "disk_loaded_texture".to_string(),
+            format: OnDisk::default_fmt(),
+            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            mip_levels: 1,
+            ty: OnDisk { path }
+        }
+    }
+}
+
+impl TextureType for Texture<OnDisk> {
+    fn into_payload(self) -> Result<TexturePayload, String> {
+        image::open(self.ty.path)
+            .map(|img| {
+                let dim = TexDimensions {
+                    width: img.width(),
+                    height: img.height(),
+                    depth: 1,
+                    wgpu_dim: wgpu::TextureDimension::D2
+                };
+
+                TexturePayload {
+                    label: self.label,
+                    format: self.format,
+                    usage: self.usage,
+                    data: Some(img.to_rgba8().into_raw()),
+                    mip_levels: self.mip_levels,
+                    size: dim,
+                }
+            })
+            .map_err(|err| format!("Failed to read image file with path {}: {}", self.ty.path, err))
+    }
+}
+
+impl Texture<Computed> {
+    /// Create a texture generated by a compute shader
+    pub fn computed(dim: TexDimensions) -> Self {
+        Self {
+            label: "computed_texture".to_string(),
+            format: Computed::default_fmt(),
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::STORAGE_BINDING,
+            mip_levels: 1,
+            ty: Computed { dim }
+        }
+    }
+}
+
+impl TextureType for Texture<Computed> {
+    fn into_payload(self) -> Result<TexturePayload, String> {
+        Ok(TexturePayload {
+            label: self.label,
+            size: self.ty.dim, 
+            format: self.format,
+            usage: self.usage,
+            mip_levels: self.mip_levels,
+            data: None, // generated in the shader
+        })
     }
 }
 
@@ -133,12 +242,11 @@ impl Computed {
 }
 
 /// Condensed version of a texture blueprint. Used to streamline the creation of the corresponding wgpu texture
-#[derive(Clone, Debug)]
-pub(crate) struct TexturePayload {
+pub struct TexturePayload {
     pub label: String,
     pub format: wgpu::TextureFormat,
     pub usage: wgpu::TextureUsages,
-    pub dim: TexDimensions, 
+    pub size: TexDimensions, 
     pub mip_levels: u32,
     pub data: Option<Vec<u8>>,
 }
@@ -154,127 +262,6 @@ impl TexturePayload {
             wgpu::TextureFormat::Rgba16Float => 8,
             wgpu::TextureFormat::Rgba32Float => 16,
             _ => panic!("Unsupported texture format for automatic layout calculation: {:?}", self.format),
-        }
-    }
-}
-
-/// A blueprint for constructing wgpu textures. 
-pub struct Texture<T> {
-    pub label: String,
-    format: wgpu::TextureFormat,
-    usage: wgpu::TextureUsages,
-    mip_levels: u32,
-    ty: T,
-}
-
-impl<T> Texture<T> {
-    /// Set the label for gpu profiling of the resultant texture
-    pub fn with_label(mut self, label: &str) -> Self {
-        self.label = label.to_string();
-        self
-    }
-
-    /// Set the format of the texture
-    pub fn with_format(mut self, format: wgpu::TextureFormat) -> Self {
-        self.format = format;
-        self
-    }
-
-    /// Set the mipmap levels for the texture.
-    pub fn with_mip_levels(mut self, levels: u32) -> Self {
-        self.mip_levels = levels;
-        self
-    }
-
-    /// Add a additional usage for the texture
-    pub fn with_additional_usage(mut self, usage: wgpu::TextureUsages) -> Self {
-        self.usage |= usage;
-        self
-    }
-}
-
-impl Texture<Procedural> {
-    /// Create a texture from procedurally generated data
-    pub fn procedural(data: Vec<u8>, dim: TexDimensions) -> Self {
-        Self {
-            label: "procedural_texture".to_string(),
-            format: Procedural::default_fmt(),
-            usage: wgpu::TextureUsages::TEXTURE_BINDING,
-            mip_levels: 1,
-            ty: Procedural { data, dim }
-        }
-    }
-
-    /// Convert the texture into its full payload information. This is called when creating the wgpu texture via the Device
-    pub(crate) fn into_payload(self) -> TexturePayload {
-        TexturePayload {
-            label: self.label,
-            dim: self.ty.dim, 
-            format: self.format,
-            usage: self.usage,
-            mip_levels: self.mip_levels,
-            data: Some(self.ty.data),
-        }
-    }
-}
-
-impl Texture<OnDisk> {
-    /// Create a texture from an image file
-    pub fn on_disk(path: &'static str) -> Self {
-        Self {
-            label: "disk_loaded_texture".to_string(),
-            format: OnDisk::default_fmt(),
-            usage: wgpu::TextureUsages::TEXTURE_BINDING,
-            mip_levels: 1,
-            ty: OnDisk { path }
-        }
-    }
-
-    /// Convert the texture into its full payload information. This is called when creating the wgpu texture via the Device
-    pub(crate) fn into_payload(self) -> Result<TexturePayload, String> {
-        image::open(self.ty.path)
-            .map(|img| {
-                let dim = TexDimensions {
-                    width: img.width(),
-                    height: img.height(),
-                    depth: 1,
-                    wgpu_dim: wgpu::TextureDimension::D2
-                };
-
-                TexturePayload {
-                    label: self.label,
-                    format: self.format,
-                    usage: self.usage,
-                    data: Some(img.to_rgba8().into_raw()),
-                    mip_levels: self.mip_levels,
-                    dim,
-                }
-            })
-            .map_err(|err| format!("Failed to read image file with path {}: {}", self.ty.path, err))
-    }
-}
-
-impl Texture<Computed> {
-    /// Create a texture generated by a compute shader
-    pub fn computed(dim: TexDimensions) -> Self {
-        Self {
-            label: "computed_texture".to_string(),
-            format: Computed::default_fmt(),
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::STORAGE_BINDING,
-            mip_levels: 1,
-            ty: Computed { dim }
-        }
-    }
-
-    /// Convert the texture into its full payload information. This is called when creating the wgpu texture via the Device
-    pub(crate) fn into_payload(self) -> TexturePayload {
-        TexturePayload {
-            label: self.label,
-            dim: self.ty.dim, 
-            format: self.format,
-            usage: self.usage,
-            mip_levels: self.mip_levels,
-            data: None, // generated in the shader
         }
     }
 }

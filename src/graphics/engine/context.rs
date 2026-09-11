@@ -85,7 +85,7 @@ impl GpuContext {
     }
 
     /// Request a buffer to be created from the provided definition and mapped to the provided id.
-    pub fn request_buffer(&mut self, id: &BufferId, buffer_def: Buffer) {
+    pub fn request_buffer(&mut self, id: &BufferId, buffer_def: impl BufferType) {
         if self.resources.buffers.contains(id) { return; }
 
         let gpu = self.gpu.clone();
@@ -96,13 +96,12 @@ impl GpuContext {
     }
 
     /// Request a texture to be created from the provided definition and mapped to the provided id.
-    pub fn request_texture(&mut self, id: &TextureId, texture_def: impl Into<TextureType>) {
+    pub fn request_texture(&mut self, id: &TextureId, texture_def: impl TextureType)  {
         if self.resources.textures.contains(id) { return; }
 
         let gpu = self.gpu.clone();
-        let tex_type = texture_def.into();
         let texture_task = Task::non_blocking(async move {
-            gpu.create_texture(tex_type)
+            gpu.create_texture(texture_def)
         });
         self.resources.textures.request_new(id, texture_task);
     }

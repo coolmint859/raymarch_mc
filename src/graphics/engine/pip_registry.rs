@@ -49,17 +49,15 @@ impl PipelineRegistry {
             let gpu = self.gpu.clone();
             match pip_def {
                 PipelineType::Render(pip_def) => {
-                    let r_pip = pip_def.clone();
                     let r_pip_task = Task::non_blocking(async move {
-                        gpu.create_render_pipeline(r_pip, deps.bg_layouts)
+                        gpu.create_render_pipeline(pip_def, deps.bg_layouts)
                     });
 
                     self.handles.request_new(id, r_pip_task);
                 },
                 PipelineType::Compute(pip_def) => {
-                    let c_pip = pip_def.clone();
                     let c_pip_task = Task::non_blocking(async move {
-                        gpu.create_compute_pipeline(c_pip, deps.bg_layouts)
+                        gpu.create_compute_pipeline(pip_def, deps.bg_layouts)
                     });
 
                     self.handles.request_new(id, c_pip_task);

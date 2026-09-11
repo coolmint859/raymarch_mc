@@ -35,29 +35,29 @@ impl GlobalResources {
     pub fn init(&self, graphics: &mut Graphics, camera: &PerspectiveCamera) {
         let (cw, ch) = graphics.canvas.dimensions();
 
-        let camera_data = camera.to_uniform(graphics.canvas.frame_count()).to_bytes().to_vec();
-        let camera_buffer = Buffer::as_uniform(BufferContents::WithData(camera_data))
+        let camera_buffer = Buffer::as_uniform()
             .with_label("Camera Buffer")
-            .with_additional_usage(wgpu::BufferUsages::COPY_DST);
+            .with_struct_data(camera.to_uniform(graphics.canvas.frame_count()))
+            .writable();
         graphics.context.request_buffer(&self.ids.cam_id, camera_buffer);
 
         let raymarch_texture = Texture::computed(TexDimensions::size_2d(cw, ch))
             .with_label("Raymarch Texture")
             .with_format(wgpu::TextureFormat::Rgba16Float)
-            .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING)
-            .with_additional_usage(wgpu::TextureUsages::COPY_SRC);
+            .storage_bindable()
+            .writable();
         graphics.context.request_texture(&self.ids.rm_tex_id, raymarch_texture);
 
         let taa_texture_a = Texture::computed(TexDimensions::size_2d(cw, ch))
             .with_label("TAA Texture A")
             .with_format(wgpu::TextureFormat::Rgba16Float)
-            .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING);
+            .storage_bindable();
         graphics.context.request_texture(&self.ids.taa_tex_a_id, taa_texture_a);
 
         let taa_texture_b = Texture::computed(TexDimensions::size_2d(cw, ch))
             .with_label("TAA Texture B")
             .with_format(wgpu::TextureFormat::Rgba16Float)
-            .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING);
+            .storage_bindable();
         graphics.context.request_texture(&self.ids.taa_tex_b_id, taa_texture_b);
     }
 
@@ -68,21 +68,21 @@ impl GlobalResources {
         let raymarch_texture = Texture::computed(TexDimensions::size_2d(cw, ch))
             .with_label("Raymarch Texture")
             .with_format(wgpu::TextureFormat::Rgba16Float)
-            .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING);
+            .storage_bindable();
         graphics.context.request_texture(&self.ids.rm_tex_id, raymarch_texture);
 
         graphics.context.remove_texture(&self.ids.taa_tex_a_id);
         let taa_texture_a = Texture::computed(TexDimensions::size_2d(cw, ch))
             .with_label("TAA Texture A")
             .with_format(wgpu::TextureFormat::Rgba16Float)
-            .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING);
+            .storage_bindable();
         graphics.context.request_texture(&self.ids.taa_tex_a_id, taa_texture_a);
 
         graphics.context.remove_texture(&self.ids.taa_tex_b_id);
         let taa_texture_b = Texture::computed(TexDimensions::size_2d(cw, ch))
             .with_label("TAA Texture B")
             .with_format(wgpu::TextureFormat::Rgba16Float)
-            .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING);
+            .storage_bindable();
         graphics.context.request_texture(&self.ids.taa_tex_b_id, taa_texture_b);
     }
 }

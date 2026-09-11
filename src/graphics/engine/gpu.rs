@@ -1,8 +1,6 @@
 use std::borrow::Cow;
 
-use wgpu::util::DeviceExt;
-
-use crate::graphics::{BindGroup, BindGroupLayoutHandle, Buffer, BufferContents, ComputeType, Pipeline, PipelineHandle, RenderType, Sampler, TextureHandle, TextureType};
+use crate::graphics::{BindGroup, BindGroupLayoutHandle, BufferType, ComputeType, Pipeline, PipelineHandle, RenderType, Sampler, TextureHandle, TextureType};
 
 /// Handle to the gpu device and queue
 #[derive(Clone, Debug)]
@@ -13,38 +11,44 @@ pub struct GpuHandle {
 
 impl GpuHandle {
     /// Create a buffer from the given configuration builder
-    pub fn create_buffer(&self, buffer_def: Buffer) -> Result<wgpu::Buffer, String> {
-        let buffer = match &buffer_def.contents {
-            BufferContents::Empty(size) => {
-                self.device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some(&buffer_def.label),
-                    size: *size,
-                    usage: buffer_def.usage,
-                    mapped_at_creation: false
-                })
-            },
-            BufferContents::WithData(data) => {
-                self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some(&buffer_def.label),
-                    contents: &data,
-                    usage: buffer_def.usage
-                })
+    pub fn create_buffer(&self, buffer_def: impl BufferType) -> Result<wgpu::Buffer, String> {
+        let payload = buffer_def.into_payload()?;
+
+        let size = payload.init_data
+            .as_ref()
+            .map_or(payload.capacity, |data| {
+                if data.len() as u64 > payload.capacity {
+                    data.len() as u64
+                } else {
+                    payload.capacity
+                }
             }
+        );
+
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(&payload.label),
+            size,
+            usage: payload.usage,
+            mapped_at_creation: false
+        });
+
+        if let Some(data) = payload.init_data {
+            self.queue.write_buffer(&buffer, 0, data.as_slice());
         };
 
-        println!("[GpuContext] Created new buffer with label '{}'", buffer_def.label);
+        println!("[GpuContext] Created new buffer with label '{}'", payload.label);
 
         Ok(buffer)
     }
 
     /// Create a new texture from the given configuration builder
-    pub fn create_texture(&self, texture_def: TextureType) -> Result<TextureHandle, String> {
+    pub fn create_texture(&self, texture_def: impl TextureType) -> Result<TextureHandle, String> {
         let tex_payload = texture_def.into_payload()?;
 
         let extent = wgpu::Extent3d {
-            width: tex_payload.dim.width,
-            height: tex_payload.dim.height,
-            depth_or_array_layers: tex_payload.dim.depth
+            width: tex_payload.size.width,
+            height: tex_payload.size.height,
+            depth_or_array_layers: tex_payload.size.depth
         };
         
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
@@ -52,7 +56,7 @@ impl GpuHandle {
             size: extent,
             mip_level_count: tex_payload.mip_levels,
             sample_count: 1,
-            dimension: tex_payload.dim.wgpu_dim,
+            dimension: tex_payload.size.wgpu_dim,
             format: tex_payload.format,
             usage: tex_payload.usage,
             view_formats: &[],
@@ -69,8 +73,8 @@ impl GpuHandle {
                 data,
                 wgpu::TexelCopyBufferLayout {
                     offset: 0,
-                    bytes_per_row: Some(tex_payload.bytes_per_pixel() * tex_payload.dim.width),
-                    rows_per_image: Some(tex_payload.dim.height)
+                    bytes_per_row: Some(tex_payload.bytes_per_pixel() * tex_payload.size.width),
+                    rows_per_image: Some(tex_payload.size.height)
                 },
                 extent,
             );

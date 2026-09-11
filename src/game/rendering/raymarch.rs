@@ -78,13 +78,15 @@ impl RayMarchResources {
 
     pub fn init(&self, graphics: &mut Graphics, world: &VoxelWorld) {
         let region_bytes = world.region_bytes();
-        let voxel_buffer = Buffer::as_storage(BufferContents::WithData(region_bytes.voxels))
+        let voxel_buffer = Buffer::as_storage()
             .with_label("Voxel Buffer")
+            .with_byte_data(&region_bytes.voxels)
             .with_additional_usage(wgpu::BufferUsages::COPY_DST);
         graphics.context.request_buffer(&self.ids.vox_id, voxel_buffer);
 
-        let grid_buffer = Buffer::as_storage(BufferContents::WithData(region_bytes.grids))
+        let grid_buffer = Buffer::as_storage()
             .with_label("Grid Buffer")
+            .with_byte_data(&region_bytes.grids)
             .with_additional_usage(wgpu::BufferUsages::COPY_DST);
         graphics.context.request_buffer(&self.ids.grid_id, grid_buffer);
 
@@ -167,27 +169,28 @@ impl RayMarchFinePass {
     pub fn init(&mut self, graphics: &mut Graphics, world: &VoxelWorld) {
         let grass_alpha_mask = Texture::on_disk("./assets/grass_block_side_overlay.png")
             .with_label("Grass Side Alpha Mask")
-            .with_additional_usage(wgpu::TextureUsages::COPY_DST);
+            .writable();
         graphics.context.request_texture(&self.fine_ids.gsam_id, grass_alpha_mask);
 
         let atlas_texture = Texture::on_disk("./assets/textures.png")
             .with_label("Block Atlas Texture")
-            .with_additional_usage(wgpu::TextureUsages::COPY_DST);
+            .writable();
         graphics.context.request_texture(&self.fine_ids.atlas_id, atlas_texture);
 
         let atlas_sampler = Sampler::new().with_label("Atlas Sampler");
         graphics.context.request_sampler(&self.fine_ids.samp_id, atlas_sampler);
 
-        let env_data = world.env_uniform().to_bytes().to_vec();
-        let env_buffer = Buffer::as_uniform(BufferContents::WithData(env_data))
+        let env_buffer = Buffer::as_uniform()
+            .with_struct_data(world.env_uniform())
             .with_label("Environment Buffer")
-            .with_additional_usage(wgpu::BufferUsages::COPY_DST);
+            .writable();
         graphics.context.request_buffer(&self.gb_ids.env_id, env_buffer);
 
         let palette_data = VoxelPalette::create().colors;
-        let palette_buffer = Buffer::as_uniform(BufferContents::WithData(palette_data))
+        let palette_buffer = Buffer::as_uniform()
+            .with_byte_data(&palette_data)
             .with_label("Palette Buffer")
-            .with_additional_usage(wgpu::BufferUsages::COPY_DST);
+            .writable();
         graphics.context.request_buffer(&self.fine_ids.pal_id, palette_buffer);
 
         let globals_bg = BindGroup::new()

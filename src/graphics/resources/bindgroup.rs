@@ -26,6 +26,7 @@ pub struct GroupEntry {
     pub slot: u32
 }
 
+/// A blueprint for constructing wgpu bind groups
 #[derive(Clone, Debug)]
 pub struct BindGroup {
     pub label: String,

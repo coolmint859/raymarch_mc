@@ -1,6 +1,6 @@
 use winit::event::MouseButton;
 
-use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{Buffer, BufferContents, BufferId, DrawCommand, MultiBufferExecutor, Pipeline, PipelineId, SequentialExecutor, Vec2Attribute, VertexBufferLayout}, utils::MouseHandler};
+use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{Buffer, BufferId, DrawCommand, MultiBufferExecutor, Pipeline, PipelineId, SequentialExecutor, Vec2Attribute, VertexBufferLayout}, utils::MouseHandler};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -71,14 +71,16 @@ impl Screen for QuadTest {
         let vertices = bytemuck::cast_slice(&quad_vertices).to_vec();
         graphics.context.request_buffer(
             &self.ids.v_buffer_id, 
-            Buffer::as_vertex(BufferContents::WithData(vertices))
+            Buffer::as_vertex()
+                .with_byte_data(&vertices)
                 .with_label("Quad Vertex Buffer")
         );
 
         let indices = bytemuck::cast_slice(&quad_indices).to_vec();
         graphics.context.request_buffer(
             &self.ids.i_buffer_id, 
-            Buffer::as_index(BufferContents::WithData(indices))
+            Buffer::as_index()
+                .with_byte_data(&indices)
                 .with_label("Quad Index Buffer")
         );
 
