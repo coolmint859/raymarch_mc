@@ -21,7 +21,7 @@ impl Deref for TextureHandle {
 
 /// Represents resources that can be condensed into a texture payload.
 pub trait TextureType: Send + 'static {
-    /// Convert the texture into its full payload information, if possible. This is called when creating the wgpu texture via the Device
+    /// Convert the texture into its full payload information, if possible.
     fn into_payload(self) -> Result<TexturePayload, String>;
 }
 

@@ -177,7 +177,7 @@ impl RayMarchFinePass {
             .writable();
         graphics.context.request_texture(&self.fine_ids.atlas_id, atlas_texture);
 
-        let atlas_sampler = Sampler::new().with_label("Atlas Sampler");
+        let atlas_sampler = Sampler::nearest().with_label("Atlas Sampler");
         graphics.context.request_sampler(&self.fine_ids.samp_id, atlas_sampler);
 
         let env_buffer = Buffer::as_uniform()

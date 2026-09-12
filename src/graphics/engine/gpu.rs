@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use crate::graphics::{BindGroup, BindGroupLayoutHandle, BufferType, ComputeType, Pipeline, PipelineHandle, RenderType, Sampler, TextureHandle, TextureType};
+use crate::graphics::{BindGroup, BindGroupLayoutHandle, BufferType, ComputeType, Pipeline, PipelineHandle, RenderType, SamplerType, TextureHandle, TextureType};
 
 /// Handle to the gpu device and queue
 #[derive(Clone, Debug)]
@@ -88,8 +88,9 @@ impl GpuHandle {
     }
 
     /// Create a new sampler from the given configuration builder
-    pub fn create_sampler(&self, sampler_def: Sampler) -> Result<wgpu::Sampler, String> {
-        let sampler = self.device.create_sampler(&sampler_def.desc);
+    pub fn create_sampler(&self, sampler_def: impl SamplerType) -> Result<wgpu::Sampler, String> {
+        let payload = sampler_def.into_payload()?;
+        let sampler = self.device.create_sampler(&payload.desc);
 
         Ok(sampler)
     }

@@ -107,7 +107,7 @@ impl GpuContext {
     }
 
     /// Request a sampler to be created from the provided definition and mapped to the provided id.
-    pub fn request_sampler(&mut self, id: &SamplerId, sampler_def: Sampler) {
+    pub fn request_sampler(&mut self, id: &SamplerId, sampler_def: impl SamplerType) {
         if self.resources.samplers.contains(id) { return; }
 
         let gpu = self.gpu.clone();
