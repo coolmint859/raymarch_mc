@@ -190,7 +190,7 @@ impl SamplerType for Sampler<Bordered> {
 pub struct Comparison;
 
 impl Sampler<Comparison> {
-    /// Create a sampler for depth comparisons
+    /// Create a sampler for texture value comparisons
     pub fn comparison(func: wgpu::CompareFunction) -> Self {
         Self {
             ty: std::marker::PhantomData,

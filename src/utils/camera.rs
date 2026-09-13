@@ -4,10 +4,18 @@ use crate::{utils::Transform};
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct CameraUniform {
-    inv_view_proj: [[f32; 4]; 4],
-    camera_postion: [f32; 3],
-    frame: f32,
+pub struct PerspCameraUniform {
+    pub inv_view_proj: [[f32; 4]; 4],
+    pub camera_postion: [f32; 3],
+    pub frame: f32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct OrthoCameraUniform {
+    pub view_proj: [[f32; 4]; 4],
+    pub camera_postion: [f32; 3],
+    pub frame: f32,
 }
 
 /// A camera that embodies perspective projection
@@ -42,9 +50,64 @@ impl PerspectiveCamera {
     }
 
     /// get this camera in it's uniform representation
-    pub fn to_uniform(&self, frame: u32) -> CameraUniform {
-        CameraUniform {
+    pub fn to_uniform(&self, frame: u32) -> PerspCameraUniform {
+        PerspCameraUniform {
             inv_view_proj: self.view_proj.inverse().to_cols_array_2d(),
+            camera_postion: self.transform.get_position().to_array(),
+            frame: frame as f32,
+        }
+    }
+
+    /// Get the camera's current forward axis
+    pub fn forward_axis(&self) -> Vec3 {
+        (self.transform.get_rotation() * Vec3::Z).normalize()
+    }
+
+    /// Get the camera's current rightward axis
+    pub fn rightward_axis(&self) -> Vec3 {
+        (self.transform.get_rotation() * Vec3::X).normalize()
+    }
+
+    /// Get the camera's current upward axis
+    pub fn upward_axis(&self) -> Vec3 {
+        (self.transform.get_rotation() * Vec3::Y).normalize()
+    }
+}
+
+/// A camera that embodies orthographic projection
+pub struct OrthographicCamera {
+    pub transform: Transform,
+    z_near: f32,
+    z_far: f32,
+    view_proj: Mat4,
+}
+
+impl OrthographicCamera {
+    pub fn new() -> Self {
+        Self {
+            transform: Transform::default(),
+            z_near: 0.01,
+            z_far: 100.0,
+            view_proj: Mat4::IDENTITY,
+        }
+    }
+
+    /// Update the camera's view and projection
+    pub fn update(&mut self, aspect: f32) {
+        let l = -aspect;
+        let r = aspect;
+        let b = -1.0;
+        let t = 1.0;
+        let proj_mat = Mat4::orthographic_lh(l, r, b, t, self.z_near, self.z_far);
+        let view_mat = self.transform.to_updated();
+
+        self.view_proj = proj_mat * view_mat;
+    }
+
+    /// get this camera in it's uniform representation
+    pub fn to_uniform(&self, frame: u32) -> OrthoCameraUniform {
+        OrthoCameraUniform {
+            view_proj: self.view_proj.to_cols_array_2d(),
             camera_postion: self.transform.get_position().to_array(),
             frame: frame as f32,
         }

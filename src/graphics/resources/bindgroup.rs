@@ -177,7 +177,7 @@ impl BufferBinding {
         Self {
             buf_id: target,
             ty,
-            visibility: wgpu::ShaderStages::FRAGMENT,
+            visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
             has_dyn_offset: false,
             min_binding_size: None,
         }

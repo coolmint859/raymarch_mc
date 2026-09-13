@@ -60,6 +60,12 @@ impl DrawCommand {
         self.bind_groups.extend_from_slice(groups);
         self
     }
+
+    /// Set the range of instances to draw. Must have a corresponding instance buffer that is at least as large as 'max'.
+    pub fn with_instances(mut self, min: u32, max: u32) -> Self {
+        self.instance_range = min..max;
+        self
+    }
 }
 
 impl GpuCommand for DrawCommand {
