@@ -9,9 +9,9 @@ use tokio::{runtime::Handle, task::JoinHandle};
 #[derive(Debug)]
 pub enum TaskType {
     /// task is cpu-bound
-    Blocking,
+    CpuBound,
     /// task is io-bound
-    NonBlocking
+    IoBound
 }
 
 /// An operation performed by a Future F, where the result R is stored in a
@@ -29,21 +29,21 @@ where
     F: Future<Output = Result<R, String>> + Send + 'static,
     R: Send + 'static
 {
-    /// Create a non-blocking task (useful for io-bound operations)
-    pub fn non_blocking(fut: F) -> Self {
+    /// Create a io-bound task (non-blocking)
+    pub fn io_bound(fut: F) -> Self {
         Self {
             fut,
-            ty: TaskType::NonBlocking,
+            ty: TaskType::IoBound,
             hold_time: None,
             _rsc: PhantomData
         }
     }
 
-    /// Create a blocking task (useful for cpu-bound operations)
-    pub fn blocking(fut: F) -> Self {
+    /// Create a cpu-bound task (blocking)
+    pub fn cpu_bound(fut: F) -> Self {
         Self {
             fut,
-            ty: TaskType::Blocking,
+            ty: TaskType::CpuBound,
             hold_time: None,
             _rsc: PhantomData
         }
@@ -238,7 +238,7 @@ where
         let tx = self.tx.clone();
 
         let tokio_handle = match task.ty {
-            TaskType::NonBlocking => {
+            TaskType::IoBound => {
                 tokio::task::spawn( async move {
                     let result = task.fut.await;
 
@@ -252,7 +252,7 @@ where
                     let _ = tx.send((key_cpy, ready_result));
                 })
             },
-            TaskType::Blocking => {
+            TaskType::CpuBound => {
                 let handle = Handle::current();
                 tokio::task::spawn_blocking(move || {
                     let result = handle.block_on(task.fut);
@@ -455,5 +455,10 @@ where
 
             (key, status)
         }).collect()
+    }
+
+    /// Get an iterator of keys of all known resources, regardless of status
+    pub fn keys(&self) -> impl IntoIterator<Item = &K> {
+        self.resource_map.keys()
     }
 }

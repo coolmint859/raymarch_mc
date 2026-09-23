@@ -1,6 +1,6 @@
 use glam::*;
 
-use crate::{utils::Transform};
+use crate::{graphics::{Buffer, BufferId, Graphics, Serializable, StructuredUpdate}, utils::Transform};
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -77,6 +77,8 @@ impl PerspectiveCamera {
 /// A camera that embodies orthographic projection
 pub struct OrthographicCamera {
     pub transform: Transform,
+    buf_id: BufferId,
+
     z_near: f32,
     z_far: f32,
     view_proj: Mat4,
@@ -86,14 +88,26 @@ impl OrthographicCamera {
     pub fn new() -> Self {
         Self {
             transform: Transform::default(),
+            buf_id: BufferId("ortho_camera"),
             z_near: 0.01,
             z_far: 100.0,
             view_proj: Mat4::IDENTITY,
         }
     }
 
+    pub fn init(&mut self, graphics: &mut Graphics) {
+        graphics.context.request_buffer(
+            &self.buf_id, 
+            Buffer::as_uniform()
+                .with_struct_data(self.to_uniform(graphics.canvas.frame_count()))
+                .writable()
+        );
+    }
+
     /// Update the camera's view and projection
-    pub fn update(&mut self, aspect: f32) {
+    pub fn update(&mut self, graphics: &mut Graphics) {
+        let aspect = graphics.canvas.aspect();
+
         let l = -aspect;
         let r = aspect;
         let b = -1.0;
@@ -102,6 +116,11 @@ impl OrthographicCamera {
         let view_mat = self.transform.to_updated();
 
         self.view_proj = proj_mat * view_mat;
+
+        let _ = graphics.context.update_buffer(&self.buf_id, StructuredUpdate {
+            data: &self.to_uniform(graphics.canvas.frame_count()),
+            offset: 0
+        });
     }
 
     /// get this camera in it's uniform representation
@@ -126,5 +145,90 @@ impl OrthographicCamera {
     /// Get the camera's current upward axis
     pub fn upward_axis(&self) -> Vec3 {
         (self.transform.get_rotation() * Vec3::Y).normalize()
+    }
+}
+
+/// Represents the view and projection of a camera 
+pub trait CameraSpace {
+    type Uniform: Serializable;
+    /// Get the view-projection matrix associated with this camera system
+    fn view_proj_mat(&self, graphics: &Graphics, dt: f32) -> Mat4;
+
+    /// Get the POD uniform struct this camera system represents
+    fn to_uniform(&self, graphics: &Graphics, dt: f32) -> Self::Uniform;
+
+    /// Get the label that best represents this camera space.
+    fn label(&self) -> &'static str;
+}
+
+/// Represents transformations for scene geometry within a space S.
+pub struct Camera<S: CameraSpace> {
+    /// the id to this camera's buffer
+    buf_id: BufferId,
+    /// the space the camera works in (view-projection)
+    space: S,
+}
+
+impl<S: CameraSpace> Camera<S> {
+    pub fn new(space: S) -> Self {
+        Self {
+            buf_id: BufferId(space.label()),
+            space,
+        }
+    }
+
+    /// Initialize the uniform buffer this camera uses on the gpu
+    pub fn init(&mut self, graphics: &mut Graphics) {
+        graphics.context.request_buffer(
+            &self.buf_id, 
+            Buffer::as_uniform()
+                .with_struct_data(self.space.to_uniform(graphics, 0.0))
+                .writable()
+        );
+    }
+
+    /// Update the uniform buffer with the view-projection matrix this camera uses
+    pub fn update(&mut self, graphics: &mut Graphics, dt: f32) {
+        let _ = graphics.context.update_buffer(&self.buf_id, StructuredUpdate {
+            data: &self.space.to_uniform(graphics, dt),
+            offset: 0
+        });
+    }
+
+    /// Get the unique buffer id for this camera
+    pub fn buf_id(&self) -> &BufferId {
+        &self.buf_id
+    }
+}
+
+/// A camera space that represents the canvas drawing surface.
+/// 
+/// This provides a rendering space where (0,0) is in the bottom left corner, 
+/// and (0, 1) is in the top left corner. 
+/// 
+/// For non-square canvases, the x-axis is scaled by the aspect ratio.
+/// 
+/// This is best used for UIs or HUDs.
+pub struct ScreenSpace;
+
+impl CameraSpace for ScreenSpace {
+    type Uniform = OrthoCameraUniform;
+
+    fn view_proj_mat(&self, graphics: &Graphics, _dt: f32) -> Mat4 {
+        let aspect = graphics.canvas.aspect();
+
+        Mat4::orthographic_lh(0.0, aspect, 0.0, 1.0, -1.0, 1.0)
+    }
+
+    fn to_uniform(&self, graphics: &Graphics, dt: f32) -> Self::Uniform {
+        OrthoCameraUniform {
+            view_proj: self.view_proj_mat(graphics, dt).to_cols_array_2d(),
+            camera_postion: Vec3::ZERO.to_array(),
+            frame: graphics.canvas.frame_count() as f32
+        }
+    }
+
+    fn label(&self) -> &'static str {
+        "screen_space_camera"
     }
 }

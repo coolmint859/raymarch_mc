@@ -89,7 +89,7 @@ impl GpuContext {
         if self.resources.buffers.contains(id) { return; }
 
         let gpu = self.gpu.clone();
-        let buffer_task = Task::non_blocking( async move {
+        let buffer_task = Task::io_bound( async move {
             gpu.create_buffer(buffer_def)
         });
         self.resources.buffers.request_new(id, buffer_task);
@@ -100,7 +100,7 @@ impl GpuContext {
         if self.resources.textures.contains(id) { return; }
 
         let gpu = self.gpu.clone();
-        let texture_task = Task::non_blocking(async move {
+        let texture_task = Task::io_bound(async move {
             gpu.create_texture(texture_def)
         });
         self.resources.textures.request_new(id, texture_task);
@@ -111,7 +111,7 @@ impl GpuContext {
         if self.resources.samplers.contains(id) { return; }
 
         let gpu = self.gpu.clone();
-        let sampler_task = Task::non_blocking(async move {
+        let sampler_task = Task::io_bound(async move {
             gpu.create_sampler(sampler_def)
         });
         self.resources.samplers.request_new(id, sampler_task);

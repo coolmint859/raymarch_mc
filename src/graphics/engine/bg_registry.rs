@@ -76,7 +76,7 @@ impl BindGroupRegistry {
         let gpu = self.gpu.clone();
         let builder = bg_def.clone();
 
-        let layout_task = Task::non_blocking(async move {
+        let layout_task = Task::io_bound(async move {
             gpu.create_bg_layout(builder)
                 .and_then(|layout| Ok(BindGroupLayoutHandle { layout, ref_count: Cell::new(1)}))
         });
@@ -107,7 +107,7 @@ impl BindGroupRegistry {
             let builder = bg_def.clone();
             let layout_id_copy = *bgl_id;
 
-            let bind_group_task = Task::non_blocking(async move {
+            let bind_group_task = Task::io_bound(async move {
                 let mut entries = Vec::new();
 
                 for (_id, buf, slot) in &deps.buffers {

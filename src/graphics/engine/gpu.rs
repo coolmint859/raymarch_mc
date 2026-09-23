@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, println};
 
 use crate::graphics::{BindGroup, BindGroupLayoutHandle, BufferType, ComputeType, Pipeline, PipelineHandle, RenderType, SamplerType, TextureHandle, TextureType};
 
@@ -137,12 +137,13 @@ impl GpuHandle {
         let shader_source = match std::fs::read_to_string(&shader_path) {
             Ok(source) => source,
             Err(e) => {
+                println!("Failed to read shader file: {e}");
                 return Err(format!("[Render Pipeline] Failed to read shader file '{}': {e}", shader_path));
             }
         };
 
         let shader = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some(&format!("{}_source", pip_def.label)),
+            label: Some(&pip_def.label),
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(&shader_source))
         });
 

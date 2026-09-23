@@ -1,0 +1,55 @@
+struct CameraUniform {
+    view_proj: mat4x4f,
+    position: vec3f,
+    frame: f32,
+};
+
+@group(0) @binding(0) var<uniform> camera: CameraUniform;
+@group(0) @binding(1) var font_atlas: texture_2d<f32>;
+@group(0) @binding(2) var atlas_sampler: sampler;
+
+struct VertexOutput {
+    @builtin(position) clip_position: vec4f,
+    @location(0) tex_coords: vec2f,
+};
+
+struct VertexInput {
+    @location(0) position: vec3f,
+    @location(1) uv: vec2f,
+}
+
+struct InstanceInput {
+    @location(2) mat_col_0: vec4f,
+    @location(3) mat_col_1: vec4f,
+    @location(4) mat_col_2: vec4f,
+    @location(5) mat_col_3: vec4f,
+    @location(6) bounds: vec4f,
+}
+
+@vertex
+fn vs_main(vertex: VertexInput, model: InstanceInput) -> VertexOutput {
+    var model_matrix = mat4x4f(
+        model.mat_col_0,
+        model.mat_col_1,
+        model.mat_col_2,
+        model.mat_col_3,
+    );
+
+    var out: VertexOutput;
+    out.clip_position = camera.view_proj * model_matrix * vec4f(vertex.position, 1.0);
+    // out.tex_coords = vertex.uv;
+    out.tex_coords = (vertex.uv * model.bounds.zw) + model.bounds.xy;
+    return out;
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4f {
+    let dist = textureSample(font_atlas, atlas_sampler, in.tex_coords).r;
+    let width = fwidth(dist) * 1.5;
+
+    let text_edge = 0.5;
+    let alpha = smoothstep(text_edge - width, text_edge + width, dist);
+
+    let text_color = vec3f(1.0);
+    return vec4f(text_color, alpha);
+}

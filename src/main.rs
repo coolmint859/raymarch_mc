@@ -34,9 +34,6 @@ struct App {
 
     previous_time: Instant,
     elapsed_time: f32,
-    frame_update: u32,
-    fps_update: Instant,
-    prev_fps: [f32; 10],
 }
 
 impl App {
@@ -46,9 +43,6 @@ impl App {
             active_screen: None,
             previous_time: Instant::now(),
             elapsed_time: 0.0,
-            frame_update: 10,
-            fps_update: Instant::now(),
-            prev_fps: [0.0; 10]
         }
     }
     
@@ -62,16 +56,8 @@ impl App {
         self.previous_time = current_time;
         self.elapsed_time += dt;
 
-        let fps_idx = graphics.canvas.frame_count() % self.frame_update;
-        self.prev_fps[fps_idx as usize] = 1.0/dt;
-        if current_time.duration_since(self.fps_update).as_secs_f32() > 0.1 {
-            self.fps_update = current_time;
-            let fps_avg = self.prev_fps.iter().sum::<f32>() / self.prev_fps.len() as f32;
-            
-            graphics.canvas.window.set_title(&format!("Voxelcraft (fps: {:.2})", fps_avg));
-        }
-
         if graphics.canvas.is_focused() && let Some(ref mut screen) = self.active_screen {
+        // if let Some(ref mut screen) = self.active_screen {
             match screen.process_input(graphics, dt) {
                 ScreenTransition::Exit => {
                     event_loop.exit();

@@ -95,7 +95,7 @@ impl From<Pipeline<ComputeType>> for PipelineType {
 pub struct Pipeline<T> {
     pub label: String,
     pub bg_layouts: Vec<LayoutId>,
-    pub shader_path: Option<&'static str>,
+    pub shader_path: Option<String>,
     pub ty: T,
 }
 
@@ -113,8 +113,8 @@ impl<T> Pipeline<T> {
     }
 
     /// Add a shader descriptor to the pipeline
-    pub fn with_shader(mut self, path: &'static str) -> Self {
-        self.shader_path = Some(path);
+    pub fn with_shader(mut self, path: &str) -> Self {
+        self.shader_path = Some(path.to_string());
         self
     }
 }

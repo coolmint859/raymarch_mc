@@ -47,7 +47,7 @@ impl Canvas {
             config,
             aspect,
             is_cursor_locked: false,
-            is_focused: true,
+            is_focused: false,
             frame_number: 0,
         }
     }
