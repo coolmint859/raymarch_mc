@@ -182,6 +182,7 @@ impl<S: CameraSpace> Camera<S> {
         graphics.context.request_buffer(
             &self.buf_id, 
             Buffer::as_uniform()
+                .with_label("camera_uniform_buffer")
                 .with_struct_data(self.space.to_uniform(graphics, 0.0))
                 .writable()
         );

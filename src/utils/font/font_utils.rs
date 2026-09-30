@@ -33,13 +33,13 @@ struct SdfGlyph {
     height: u32,
 }
 
-/// Generate an signed distance field (sdf) font atlas by rasterizing a ttf font
+/// Generate a signed distance field (sdf) font atlas by rasterizing a ttf font
 /// 
 /// * 'font' - the font containing the glyph metrics
-/// * 'size' - the size of the bitmap atlas in pixels
+/// * 'size' - the size of the sdf atlas in pixels
 /// * 'scale' - the size to rasterize the characters with, in pixels per em unit
-/// * 'radius' - spacing between bitmap characters
-pub fn gen_font_atlas(font: fontdue::Font, size: u32, scale: f32, radius: f32) -> (HashMap<char, CharacterGlyph>, Vec<u8>) {
+/// * 'radius' - the signed distance between extreme values in the sdf atlas
+pub fn gen_sdf_atlas(font: fontdue::Font, size: u32, scale: f32, radius: f32) -> (HashMap<char, CharacterGlyph>, Vec<u8>) {
     let padding = radius as u32;
     let spacing: u32 = 2; // spacing between glyphs in the atlas to prevent bleeding
 

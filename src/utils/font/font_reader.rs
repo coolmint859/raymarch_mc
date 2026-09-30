@@ -1,6 +1,6 @@
-use std::{collections::HashMap, fs::File, io::Read};
+use std::{collections::HashMap, fs::File, io::Read, sync::atomic::{AtomicU32, Ordering}};
 
-use crate::{graphics::PipelineId, utils::gen_font_atlas};
+use crate::{graphics::PipelineId, utils::gen_sdf_atlas};
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
 pub struct FontReaderId(pub &'static str);
@@ -53,10 +53,16 @@ pub struct FontPipeline {
 
 /// Reads in font files and creates a texture atlas and glyph map from them
 pub struct FontReader<P> {
+    /// The size of the atlas in pixels
     atlas_size: u32,
+    /// The scale for the glyph rasterization in Em units
     scale: f32,
+    /// A parser implementation
     parser: P,
 }
+
+
+static PIPELINE_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 /// A font reader type for sdf rendered fonts
 pub struct SDF {
@@ -81,8 +87,11 @@ impl FontReaderType for FontReader<SDF> {
     }
 
     fn font_pip(&self) -> FontPipeline {
+        let count = PIPELINE_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let pip_id = Box::leak(Box::new(format!("sdf_font_pipeline_{count}")));
+        
         FontPipeline {
-            id: PipelineId("sdf_font_pipeline"),
+            id: PipelineId(pip_id),
             shader: "./shaders/sdf_font.wgsl".to_string()
         }
     }
@@ -97,7 +106,7 @@ impl FontReaderType for FontReader<SDF> {
             .ok_or("[FontReader<SDF>] Failed to read font line metrics")?;
         let line_height = line_metrics.new_line_size / self.scale;
 
-        let (glyphs, atlas_data) = gen_font_atlas(
+        let (glyphs, atlas_data) = gen_sdf_atlas(
             font, 
             self.atlas_size, 
             self.scale, 

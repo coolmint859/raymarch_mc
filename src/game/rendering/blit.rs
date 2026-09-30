@@ -78,7 +78,14 @@ impl BlitPass {
 
         self.is_bg_a = !self.is_bg_a;
 
-        DrawCommand::new(self.blit_ids.pip_id, output_view, 0..3)
-            .with_bind_groups(&[blit_bg])
+        let draw = IndexedDraw::new(self.blit_ids.pip_id, 0..3).with_bind_groups(&[blit_bg]);
+
+        return DrawCommand::from_draws(
+            RenderingState {
+                output_view,
+                clear_color: Some(wgpu::Color::BLACK)
+            }, 
+            vec![draw]
+        )
     }
 }

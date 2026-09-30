@@ -24,6 +24,21 @@ impl Transform {
         Self { id, position, rotation, scale, world_mat }
     }
 
+    /// Create a new transform with an initial position
+    pub fn from_position(pos: Vec3) -> Self {
+        Transform::default().with_position(pos)
+    }
+
+    /// Create a new transform with an initial rotation
+    pub fn from_rotation(rot: Quat) -> Self {
+        Transform::default().with_rotation(rot)
+    }
+
+    /// Create a new transform with an initial scale
+    pub fn from_scale(scale: Vec3) -> Self {
+        Transform::default().with_scale(scale)
+    }
+    
     /// Set the postition of the transform relative to the world axis
     pub fn with_position(mut self, position: Vec3) -> Self {
         self.position = position;
@@ -128,6 +143,16 @@ impl Transform {
     pub fn to_updated(&self) -> glam::Mat4 {
         self.world_mat.set(Mat4::from_scale_rotation_translation(self.scale, self.rotation, self.position));
         self.world_mat.get()
+    }
+
+    /// Convert this transform into a column-oriented array [f32; 16]
+    pub fn to_cols_array(&self) -> [f32; 16] {
+        self.to_updated().to_cols_array()
+    }
+
+    /// Convert this transform into a row-oriented array [f32; 16]
+    pub fn to_rows_array(&self) -> [f32; 16] {
+        self.to_updated().transpose().to_cols_array()
     }
 
     /// Get the size in bytes of a transform instance

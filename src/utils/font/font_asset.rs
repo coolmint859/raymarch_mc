@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, format};
 
 use crate::{graphics::{BindGroup, Buffer, BufferBinding, BufferId, GpuContext, NamedBindGroup, Pipeline, Sampler, SamplerBinding, SamplerId, Serializable, TexDimensions, Texture, TextureBinding, TextureId, TextureTypeSampled, VertexBufferLayout}, utils::{Camera, CameraSpace, CharacterGlyph, FontPipeline, font_registry::CHAR_LIMIT}};
 
@@ -112,11 +112,11 @@ pub(crate) struct FontAssets {
 impl FontAssets {
     pub fn new(font_id: FontId) -> Self {
         Self {
+            cbuffer_id: BufferId(Box::leak(Box::new(format!("{}@instances", font_id.path)))),
+            atlas_tex_id: TextureId(Box::leak(Box::new(format!("{}@font_atlas", font_id.path)))),
+            atlas_samp_id: SamplerId(Box::leak(Box::new(format!("{}@atlas_sampler", font_id.path)))),
+            bg: NamedBindGroup::new(Box::leak(Box::new(format!("{}@bind_group", font_id.path)))),
             font_id,
-            cbuffer_id: BufferId("char_instances"),
-            atlas_tex_id: TextureId("font_altas"),
-            atlas_samp_id: SamplerId("font_altas"),
-            bg: NamedBindGroup::new("font_bind_group"),
         }
     }
 

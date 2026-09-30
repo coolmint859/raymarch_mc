@@ -6,6 +6,7 @@ pub mod environment;
 pub mod region;
 pub mod world_gen;
 pub mod rendering;
+pub mod text_test;
 pub mod quad_test;
 
 pub use world::*;
@@ -16,4 +17,5 @@ pub use environment::*;
 pub use region::*;
 pub use world_gen::*;
 pub use rendering::*;
+pub use text_test::*;
 pub use quad_test::*;

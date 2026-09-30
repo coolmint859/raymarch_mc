@@ -28,6 +28,8 @@ impl MultiBufferExecutor {
         let mut encoder = context.gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
         let commands = std::mem::take(&mut self.commands);
+
+        // println!("commands: {}", commands.len());
         for mut cmd in commands {
             cmd.record(&mut encoder, context);
         }
@@ -35,7 +37,7 @@ impl MultiBufferExecutor {
         self.recordings.push(encoder.finish());
     }
 
-    /// Record and Execute commands on the gpu
+    /// Record and submit all known commands to be executed on the gpu
     pub fn record_and_submit(&mut self, context: &GpuContext) {
         self.record(context);
         self.submit(context);

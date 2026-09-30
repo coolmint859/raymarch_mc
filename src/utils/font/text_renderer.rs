@@ -1,8 +1,8 @@
-use std::{collections::{HashMap, HashSet}, println};
+use std::{collections::{HashMap, HashSet}};
 
 use glam::{Quat, Vec3};
 
-use crate::{graphics::{CanvasFrame, DrawCommand, GpuContext, RawBytesUpdate, SequentialExecutor}, utils::{Camera, CameraSpace, FontReaderType, Transform, font_asset::{CharInstance, FontId, Quad}, font_registry::{CHAR_LIMIT, FontRegistry}}};
+use crate::{graphics::{CanvasFrame, DrawCommand, GpuContext, IndexedDraw, RawBytesUpdate, RenderingState, SequentialExecutor}, utils::{Camera, CameraSpace, FontReaderType, Transform, font_asset::{CharInstance, FontId, Quad}, font_registry::{CHAR_LIMIT, FontRegistry}}};
 
 /// Options for text display
 pub struct TextOptions {
@@ -48,11 +48,15 @@ impl TextRenderer {
 
     /// State text to be rendered with the provided font and options.
     /// 
-    /// This does not render the text, it only prepares it to be. After staging text, call record() for it to be added to a command executor.
+    /// This does not render the text, it only prepares it to be. After staging text, call record() for a draw command to be added to a command executor.
     pub fn stage_text(&mut self, font_id: &FontId, text: &str, options: TextOptions) {
         if let Some(font) = self.font_registry.get_font_asset(font_id) {
             // println!("font id: {:?}", font.assets.font_id);
             self.active_fonts.insert(font_id.clone());
+
+            if let Some(instances) = self.instances.get_mut(font_id) {
+                instances.clear();
+            }
 
             let world_mat = options.transform.to_updated();
             let size = options.height / (font.line_height * font.scale);
@@ -121,7 +125,13 @@ impl TextRenderer {
 
     /// Records draw commands for any previously staged text to the provided executor.
     pub fn record(&mut self, frame: &CanvasFrame, executor: &mut impl SequentialExecutor) {
-        // println!("Active fonts: {}", self.active_fonts.len());
+        // println!("Active fonts: {}", self.active_fonts.len());\
+
+        let mut draw_cmd = DrawCommand::new(RenderingState {
+            output_view: frame.view.clone(),
+            clear_color: Some(wgpu::Color::BLACK)
+        });
+
         for font_id in &std::mem::take(&mut self.active_fonts) {
             if let (Some(chars), Some(font)) = (
                 self.instances.get_mut(font_id),
@@ -129,16 +139,18 @@ impl TextRenderer {
             ) {
                 let instance_count = chars.len() as u32;
 
-                let draw_text = DrawCommand::new(font_id.pip.id.clone(), frame.view.clone(), 0..6)
+                let draw_text = IndexedDraw::new(font_id.pip.id.clone(), 0..6)
                     .with_bind_groups(&[font.assets.bg.id])
                     .with_vertex_buffers(&[self.char_geometry.vbuffer_id, font.assets.cbuffer_id])
                     .with_index_buffer(self.char_geometry.ibuffer_id, wgpu::IndexFormat::Uint16)
-                    .with_instances(0, instance_count);
+                    .with_instances(0..instance_count);
 
-                executor.add_command(draw_text);
-
-                chars.clear();
+                draw_cmd.add_draw(draw_text);
             }
+        }
+
+        if draw_cmd.has_draws() {
+            executor.add_command(draw_cmd);
         }
     }
 }

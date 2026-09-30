@@ -1,19 +1,11 @@
 pub mod canvas;
 pub mod gpu_init;
-pub mod context;
-pub mod handler;
-pub mod bg_registry;
-pub mod pip_registry;
-pub mod commands;
-pub mod executor;
+pub mod execution;
 pub mod gpu;
+pub mod gpu_state;
 
 pub use canvas::*;
 pub use gpu::*;
 pub use gpu_init::*;
-pub use context::*;
-pub use handler::*;
-pub use commands::*;
-pub use executor::*;
-pub(crate) use bg_registry::*;
-pub(crate) use pip_registry::*;
+pub use execution::*;
+pub use gpu_state::*;
