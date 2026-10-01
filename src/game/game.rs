@@ -2,7 +2,7 @@ use glam::{Quat, Vec3};
 use winit::{event::MouseButton, keyboard::KeyCode};
 
 use crate::{
-    Graphics, InputEvent, game::{BlitPass, CoarsePass, GlobalResources, RayMarchFinePass, RayMarchResources, Screen, ScreenTransition, TaaPass, VoxelWorld}, graphics::*, utils::{CameraController, KeyboardHandler, MouseHandler, PerspectiveCamera},
+    Graphics, InputEvent, game::{BlitPass, CoarsePass, GlobalResources, RayMarchFinePass, RayMarchResources, Screen, ScreenTransition, TaaPass, VoxelWorld}, graphics::*, utils::{Camera, Controllable, EntityController, KeyboardHandler, MouseHandler, RelativePerspective},
 };
 
 #[derive(Clone, Copy)]
@@ -26,8 +26,8 @@ pub enum PlayerMouseAction {
 }
 
 pub struct Game {
-    controller: CameraController,
-    camera: PerspectiveCamera,
+    controller: EntityController,
+    camera: Camera<RelativePerspective>,
     keyboard: KeyboardHandler<PlayerKeyAction>,
     mouse: MouseHandler<PlayerMouseAction>,
 
@@ -45,15 +45,17 @@ pub struct Game {
 impl Game {
     pub fn new() -> Self {
         let default_cam_pos = glam::vec3(16.0, 20.0, 16.0);
-        let mut camera = PerspectiveCamera::new();
-        camera.transform.move_to(default_cam_pos);
 
-        let globals = GlobalResources::new();
+        let cam_space = RelativePerspective::new(0.01, 1000.0, 60.0_f32.to_radians());
+        let mut camera = Camera::new(cam_space);
+        camera.transform_mut().move_to(default_cam_pos);
+
+        let globals = GlobalResources::new(*camera.buf_id());
         let rm_rscs = RayMarchResources::new();
 
         Self {
             camera,
-            controller: CameraController::new(10.0, 0.003),
+            controller: EntityController::new(10.0, 0.003),
             keyboard: KeyboardHandler::new(),
             mouse: MouseHandler::new(),
             default_cam_pos,
@@ -86,9 +88,9 @@ impl Game {
 
 impl Screen for Game {
     fn init(&mut self, graphics: &mut Graphics) {
-        self.camera.update(graphics.canvas.aspect());
+        self.camera.init(graphics);
 
-        self.globals.init(graphics, &self.camera);
+        self.globals.init(graphics);
         self.rm_rscs.init(graphics, &self.world);
 
         self.rm_coarse_pass.init(graphics);
@@ -163,8 +165,8 @@ impl Screen for Game {
                     PlayerKeyAction::PauseSimulation => self.world.toggle_pause(),
                     PlayerKeyAction::StepSimulation => self.world.update(dt, true),
                     PlayerKeyAction::ResetCamera => {
-                        self.camera.transform.move_to(self.default_cam_pos);
-                        self.camera.transform.set_rotation(Quat::IDENTITY);
+                        self.camera.transform_mut().move_to(self.default_cam_pos);
+                        self.camera.transform_mut().set_rotation(Quat::IDENTITY);
                         self.controller.reset_delta();
                     },
                     _ => {}
@@ -180,12 +182,7 @@ impl Screen for Game {
 
     fn update(&mut self, graphics: &mut Graphics, dt: f32) {
         self.world.update(dt, false);
-        self.camera.update(graphics.canvas.aspect());
-
-        let _ = graphics.context.update_buffer(&self.globals.ids.cam_id, StructuredUpdate {
-            data: &self.camera.to_uniform(graphics.canvas.frame_count()),
-            offset: 0
-        });
+        self.camera.update(graphics, dt);
 
         let _ = graphics.context.update_buffer(&self.globals.ids.env_id, StructuredUpdate { 
             data: &self.world.env_uniform(),

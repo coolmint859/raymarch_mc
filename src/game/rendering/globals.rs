@@ -1,4 +1,4 @@
-use crate::{graphics::*, utils::PerspectiveCamera};
+use crate::{graphics::*};
 
 /// Global resource ids
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -19,9 +19,9 @@ pub struct GlobalResources {
 }
 
 impl GlobalResources {
-    pub fn new() -> Self {
+    pub fn new(camera_id: BufferId) -> Self {
         let ids = GlobalIds {
-            cam_id: BufferId("main_camera"),
+            cam_id: camera_id,
             env_id: BufferId("environment"),
 
             rm_tex_id: TextureId("ray_march_texture"),
@@ -32,14 +32,8 @@ impl GlobalResources {
         Self { ids }
     }
 
-    pub fn init(&self, graphics: &mut Graphics, camera: &PerspectiveCamera) {
+    pub fn init(&self, graphics: &mut Graphics) {
         let (cw, ch) = graphics.canvas.dimensions();
-
-        let camera_buffer = Buffer::as_uniform()
-            .with_label("Camera Buffer")
-            .with_struct_data(camera.to_uniform(graphics.canvas.frame_count()))
-            .writable();
-        graphics.context.request_buffer(&self.ids.cam_id, camera_buffer);
 
         let raymarch_texture = Texture::computed(TexDimensions::size_2d(cw, ch))
             .with_label("Raymarch Texture")
