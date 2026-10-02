@@ -36,9 +36,9 @@ impl CharInstance {
             .with_attribute(wgpu::VertexFormat::Float32x4)
     }
 
-    /// Return the length of an instance in bytes
-    pub fn byte_len() -> u64 {
-        return 20;
+    /// Returns the byte stride of an instance.
+    pub fn stride() -> u64 {
+        return CharInstance::layout().stride()
     }
 }
 
@@ -66,11 +66,11 @@ impl Quad {
     }
 
     /// Request the buffers the quad represents to be created
-    pub fn request_buffers(&mut self, context: &mut GpuContext) {
+    pub fn init(&mut self, context: &mut GpuContext) {
         context.request_buffer(
             &self.vbuffer_id,
             Buffer::as_vertex()
-                .with_label("quad_vertices")
+                .with_label("Quad Vertices")
                 .with_byte_data(self.vertices.to_bytes())
                 .writable()
         );
@@ -78,7 +78,7 @@ impl Quad {
         context.request_buffer(
             &self.ibuffer_id, 
             Buffer::as_index()
-                .with_label("quad_indices")
+                .with_label("Quad Indices")
                 .with_byte_data(self.indices.to_bytes())
                 .writable()
         );
@@ -133,7 +133,7 @@ impl FontAssets {
             &self.cbuffer_id, 
             Buffer::as_vertex()
                 .with_label(&format!("Font Instance Buffer @{:?}", self.font_id))
-                .with_capacity(CHAR_LIMIT * CharInstance::byte_len())
+                .with_capacity(CHAR_LIMIT * CharInstance::stride())
                 .writable()
         );
 

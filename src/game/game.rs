@@ -46,8 +46,7 @@ impl Game {
     pub fn new() -> Self {
         let default_cam_pos = glam::vec3(16.0, 20.0, 16.0);
 
-        let cam_space = RelativePerspective::new(0.01, 1000.0, 60.0_f32.to_radians());
-        let mut camera = Camera::new(cam_space);
+        let mut camera = Camera::new(RelativePerspective::default());
         camera.transform_mut().move_to(default_cam_pos);
 
         let globals = GlobalResources::new(*camera.buf_id());

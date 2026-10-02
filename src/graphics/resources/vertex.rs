@@ -30,6 +30,12 @@ impl VertexBufferLayout {
 
     /// Add an attribute to the buffer layout
     pub fn with_attribute(mut self, format: wgpu::VertexFormat) -> Self {
+        self.add_attribute(format);
+        self
+    }
+
+    /// Add an attribute to the buffer layout
+    pub fn add_attribute(&mut self, format: wgpu::VertexFormat) {
         self.attributes.push(wgpu::VertexAttribute {
             format,
             offset: self.curr_offset,
@@ -37,8 +43,6 @@ impl VertexBufferLayout {
         });
         self.curr_loc += 1;
         self.curr_offset += format.size();
-
-        self
     }
 
     /// Convert the layout into it's wgpu equivelant for use in a pipeline
@@ -49,4 +53,7 @@ impl VertexBufferLayout {
             attributes: &self.attributes
         }
     }
+
+    /// Get the stride in bytes of this vertex layout
+    pub fn stride(&self) -> u64 { self.curr_offset }
 }

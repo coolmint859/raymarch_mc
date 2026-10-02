@@ -1,6 +1,6 @@
 use winit::event::MouseButton;
 
-use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{BindGroup, Buffer, BufferBinding, BufferId, DrawCommand, RenderingState, IndexedDraw, MultiBufferExecutor, NamedBindGroup, Pipeline, PipelineId, Sampler, SamplerBinding, SamplerId, SequentialExecutor, Texture, TextureBinding, TextureId, TextureTypeSampled, VertexBufferLayout}, utils::{Camera, MouseHandler, ScreenSpace, Transform, font_asset::{Quad, Vertex}}};
+use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{BindGroup, BufferBinding, DrawCommand, IndexedDraw, MultiBufferExecutor, NamedBindGroup, Pipeline, PipelineId, RenderingState, Sampler, SamplerBinding, SamplerId, SequentialExecutor, Texture, TextureBinding, TextureId, TextureTypeSampled, VertexBufferLayout}, utils::{Camera, Initialized, InstanceGroup, MouseHandler, ScreenSpace, Transform, TransformAttribute, font_asset::{Quad, Vertex}}};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)]
@@ -24,12 +24,10 @@ pub struct QuadTest {
     camera: Camera<ScreenSpace>,
     quad: Quad,
 
-    q1_instances: BufferId,
-    q1_inst_data: Vec<QuadInstance>,
+    q1_instances: InstanceGroup<Initialized>,
     blue_devils: TextureId,
 
-    q2_instances: BufferId,
-    q2_inst_data: Vec<QuadInstance>,
+    q2_instances: InstanceGroup<Initialized>,
     scv: TextureId,
 
     samp: SamplerId,
@@ -47,12 +45,10 @@ impl QuadTest {
             camera: Camera::new(ScreenSpace),
             quad: Quad::new(),
 
-            q1_instances: BufferId("q1_instances"),
-            q1_inst_data: Vec::new(),
+            q1_instances: InstanceGroup::placeholder(),
             blue_devils: TextureId("blue_devils"),
 
-            q2_instances: BufferId("q2_instances"),
-            q2_inst_data: Vec::new(),
+            q2_instances: InstanceGroup::placeholder(),
             scv: TextureId("scv"),
             
             samp: SamplerId("tex_sampler"),
@@ -72,70 +68,31 @@ impl QuadTest {
 impl Screen for QuadTest {
     fn init(&mut self, graphics: &mut Graphics) {
         self.init_input();
+        self.quad.init(&mut graphics.context);
 
-        self.quad.request_buffers(&mut graphics.context);
+        let q1_transforms: Vec<Transform> = vec![
+            Transform::from_position(glam::vec3(0.60, 0.75, 0.0)).with_scale(glam::vec3(0.1, 0.1, 0.1)),
+            Transform::from_position(glam::vec3(0.60, 0.25, 0.0)).with_scale(glam::vec3(0.1, 0.1, 0.1)),
+            Transform::from_position(glam::vec3(0.25, 0.75, 0.0)).with_scale(glam::vec3(0.1, 0.1, 0.1)),
+            Transform::from_position(glam::vec3(0.25, 0.25, 0.0)).with_scale(glam::vec3(0.1, 0.1, 0.1))
+        ];
 
-        self.q1_inst_data.extend_from_slice(&[
-            QuadInstance { 
-                transform: Transform::from_position(glam::vec3(0.60, 0.75, 0.0))
-                    .with_scale(glam::vec3(0.1, 0.1, 0.1))
-                    .to_cols_array() 
-            },
-            QuadInstance { 
-                transform: Transform::from_position(glam::vec3(0.60, 0.25, 0.0))
-                    .with_scale(glam::vec3(0.1, 0.1, 0.1))
-                    .to_cols_array()  
-            },
-            QuadInstance { 
-                transform: Transform::from_position(glam::vec3(0.25, 0.75, 0.0))
-                    .with_scale(glam::vec3(0.1, 0.1, 0.1))
-                    .to_cols_array() 
-            },
-            QuadInstance { 
-                transform: Transform::from_position(glam::vec3(0.25, 0.25, 0.0))
-                    .with_scale(glam::vec3(0.1, 0.1, 0.1))
-                    .to_cols_array() 
-            }
-        ]);
+        self.q1_instances = InstanceGroup::new(2, 4)
+            .with_label("Quad 1 Instances")
+            .with_attribute(TransformAttribute("transform"), q1_transforms)
+            .init(graphics);
 
-        self.q2_inst_data.extend_from_slice(&[
-            QuadInstance { 
-                transform: Transform::from_position(glam::vec3(1.25, 0.75, 0.0))
-                    .with_scale(glam::vec3(0.1, 0.1, 0.1))
-                    .to_cols_array() 
-            },
-            QuadInstance { 
-                transform: Transform::from_position(glam::vec3(1.25, 0.25, 0.0))
-                    .with_scale(glam::vec3(0.1, 0.1, 0.1))
-                    .to_cols_array()  
-            },
-            QuadInstance { 
-                transform: Transform::from_position(glam::vec3(1.55, 0.75, 0.0))
-                    .with_scale(glam::vec3(0.1, 0.1, 0.1))
-                    .to_cols_array() 
-            },
-            QuadInstance { 
-                transform: Transform::from_position(glam::vec3(1.55, 0.25, 0.0))
-                    .with_scale(glam::vec3(0.1, 0.1, 0.1))
-                    .to_cols_array() 
-            }
-        ]);
+        let q2_transforms: Vec<Transform> = vec![
+            Transform::from_position(glam::vec3(1.25, 0.75, 0.0)).with_scale(glam::vec3(0.1, 0.1, 0.1)),
+            Transform::from_position(glam::vec3(1.25, 0.25, 0.0)).with_scale(glam::vec3(0.1, 0.1, 0.1)),
+            Transform::from_position(glam::vec3(1.55, 0.75, 0.0)).with_scale(glam::vec3(0.1, 0.1, 0.1)),
+            Transform::from_position(glam::vec3(1.55, 0.25, 0.0)).with_scale(glam::vec3(0.1, 0.1, 0.1))
+        ];
 
-        graphics.context.request_buffer(
-            &self.q1_instances, 
-            Buffer::as_vertex()
-                .with_label("Quad1 Instances")
-                .with_byte_data(&bytemuck::cast_slice(&self.q1_inst_data))
-                .writable()
-        );
-
-        graphics.context.request_buffer(
-            &self.q2_instances, 
-            Buffer::as_vertex()
-                .with_label("Quad2 Instances")
-                .with_byte_data(&bytemuck::cast_slice(&self.q2_inst_data))
-                .writable()
-        );
+         self.q2_instances = InstanceGroup::new(2, 4)
+            .with_label("Quad 2 Instances")
+            .with_attribute(TransformAttribute("transform"), q2_transforms)
+            .init(graphics);
 
         graphics.context.request_texture(
             &self.blue_devils,
@@ -179,7 +136,7 @@ impl Screen for QuadTest {
                 .with_label("Quad Pipeline")
                 .with_bg_layouts(&[self.qbg1.layout_id])
                 .with_vertex_layout(Vertex::layout())
-                .with_vertex_layout(QuadInstance::layout())
+                .with_vertex_layout(self.q1_instances.layout().clone())
                 .with_shader("./shaders/2d_draw.wgsl")
         );
 
@@ -212,6 +169,8 @@ impl Screen for QuadTest {
 
     fn update(&mut self, graphics: &mut Graphics, dt: f32) {
         self.camera.update(graphics, dt);
+        self.q1_instances.update(graphics);
+        self.q2_instances.update(graphics);
     }
 
     fn render(&mut self, graphics: &mut Graphics) -> Result<(), wgpu::SurfaceError> {
@@ -219,15 +178,15 @@ impl Screen for QuadTest {
 
         let draw_q1 = IndexedDraw::new(self.qpip, 0..6)
             .with_bind_groups(&[self.qbg1.id])
-            .with_vertex_buffers(&[self.quad.vbuffer_id, self.q1_instances])
+            .with_vertex_buffers(&[self.quad.vbuffer_id, *self.q1_instances.buf_id()])
             .with_index_buffer(self.quad.ibuffer_id, wgpu::IndexFormat::Uint16)
-            .with_instances(0..self.q1_inst_data.len() as u32);
-
+            .with_instances(0..4);
+        
         let draw_q2 = IndexedDraw::new(self.qpip, 0..6)
             .with_bind_groups(&[self.qbg2.id])
-            .with_vertex_buffers(&[self.quad.vbuffer_id, self.q2_instances])
+            .with_vertex_buffers(&[self.quad.vbuffer_id, *self.q2_instances.buf_id()])
             .with_index_buffer(self.quad.ibuffer_id, wgpu::IndexFormat::Uint16)
-            .with_instances(0..self.q2_inst_data.len() as u32);
+            .with_instances(0..4);
 
         let draw_cmd = DrawCommand::from_draws(
             RenderingState {

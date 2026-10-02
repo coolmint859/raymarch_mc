@@ -58,7 +58,7 @@ impl TextRenderer {
                 instances.clear();
             }
 
-            let world_mat = options.transform.to_updated();
+            let world_mat = options.transform.as_world_mat();
             let size = options.height / (font.line_height * font.scale);
      
             let mut cursor = Vec3::ZERO;
@@ -88,7 +88,7 @@ impl TextRenderer {
                         Vec3::new(x_scale, y_scale, 1.0)
                     );
 
-                    let final_matrix = world_mat * local_transform.to_updated();
+                    let final_matrix = world_mat * local_transform.as_world_mat();
 
                     let instance = CharInstance {
                         transform: final_matrix.to_cols_array(),
@@ -107,7 +107,7 @@ impl TextRenderer {
 
     /// sync the font resources with the main thread.
     pub fn sync<S: CameraSpace>(&mut self, camera: &Camera<S>, context: &mut GpuContext) {
-        self.char_geometry.request_buffers(context);
+        self.char_geometry.init(context);
         self.font_registry.sync(camera, context);
 
         for font_id in &self.active_fonts {

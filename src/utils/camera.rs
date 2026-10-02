@@ -177,7 +177,7 @@ impl CameraSpace for Orthogonal {
         let top = 1.0;
         let proj_mat = Mat4::orthographic_lh(left, right, bottom, top, self.near, self.far);
         
-        let view_mat = self.transform.to_updated();
+        let view_mat = self.transform.as_view_mat();
         let view_proj = proj_mat * view_mat;
 
         return if self.inverted { view_proj.inverse() } else { view_proj };
@@ -263,7 +263,7 @@ impl CameraSpace for Perspective {
         
         let proj_mat = Mat4::perspective_lh(self.fov_rad, aspect, self.z_near, self.z_far);
               
-        let view_mat = self.transform.to_updated();
+        let view_mat = self.transform.as_view_mat();
         let view_proj = proj_mat * view_mat;
 
         return if self.inverted { view_proj.inverse() } else { view_proj };
@@ -293,7 +293,7 @@ impl Controllable for Perspective {
     }
 }
 
-/// A camera space with perspective projection.
+/// A camera space with orthogonal projection.
 /// 
 /// The view matrix of this space only contains the rotation of the camera's orientation, and the position is excluded.
 /// This is useful for camera-relative rendering such as in voxel ray marched scenes.
@@ -379,7 +379,6 @@ impl Controllable for RelativeOrthogonal {
 /// The view matrix of this space only contains the rotation of the camera's orientation, and the position is excluded.
 /// This is useful for camera-relative rendering such as in voxel ray marched scenes.
 /// 
-///
 /// The space is inverted by default before being sent to the uniform buffer
 pub struct RelativePerspective {
     pub transform: Transform,
