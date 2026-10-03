@@ -2,17 +2,31 @@ use std::{any::Any, cell::{Ref, RefMut}, ops::{Deref, DerefMut}};
 
 use crate::graphics::Serializable;
 
-/// A type erased homogeneous Vector. This is best used in larger collections to allow them to be hetergeneous.
+/// A type erased homogeneous `Vec`. This is best used in larger collections to allow them to be hetergeneous.
 /// 
-/// Note: If `T` is a struct that implements `Serializable`, `Vec<T>` automatically implements this trait.
+/// Note: If `T` is a type that implements `Serializable`, `Vec<T>` automatically implements this trait. 
+/// This allows regular `Vec<T>`s to be used in heterogeneous collections without needing to implement `ColumnVec` directly.
 /// 
-/// Example Usage: A HashMap where each value is a boxed ColumnVec, allowing each concrete Vec to hold different data types.
+/// Example Usage: A HashMap where each value is a boxed ColumnVec, allowing each concrete `Vec` type to hold different data types.
 pub trait ColumnVec {
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 
     /// Get the bytes of a single element in the DynVec
-    fn bytes_of(&self, index: usize) -> Option<&[u8]>; 
+    fn bytes_of(&self, index: usize) -> Option<&[u8]>;
+
+    /// Clear the ColumnVec, removing all values
+    fn clear(&mut self);
+
+    /// Swaps the last element with the element specified at `index`, then removes the last element.
+    /// 
+    /// This effectively removes the value stored at `index`, but in O(1) time, at the cost of not preserving order.
+    fn swap_remove(&mut self, index: usize);
+
+    /// Resize the `ColumnVec` to have size `new_len`, appending default values if the current length is less than `new_len`. 
+    /// 
+    /// If the current length is more than `new_len`, then this truncates the `ColumnVec` to have size `new_len`.
+    fn resize_default(&mut self, new_len: usize);
 
     /// Get the length of this DynVec
     fn len(&self) -> usize;
@@ -30,13 +44,23 @@ impl dyn ColumnVec {
     }
 }
 
-impl<T: Serializable + 'static> ColumnVec for Vec<T> {
+impl<T: Serializable + Default + 'static> ColumnVec for Vec<T> {
     fn as_any(&self) -> &dyn Any { self }
     fn as_any_mut(&mut self) -> &mut dyn Any { self }
 
     fn bytes_of(&self, index: usize) -> Option<&[u8]> {
         self.get(index).and_then(|val| Some(val.to_bytes()))
     }
+
+    fn resize_default(&mut self, new_len: usize) {
+        self.resize_with(new_len, T::default);
+    }
+
+    fn swap_remove(&mut self, index: usize) { 
+        self.swap_remove(index); 
+    }
+    
+    fn clear(&mut self) { self.clear(); }
 
     fn len(&self) -> usize { self.len() }
 }

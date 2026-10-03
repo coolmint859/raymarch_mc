@@ -182,10 +182,10 @@ impl Buffer<Uniform> {
 impl BufferType for Buffer<Uniform> {
     fn into_payload(self) -> Result<BufferPayload, String> {
         let init_data = self.init_data.map(|data| {
-            Buffer::<Uniform>::pad_bytes(data, 16)
+            Buffer::pad_bytes(data, 16)
         });
 
-        let capacity = Buffer::<Uniform>::align(self.capacity, 16);
+        let capacity = Buffer::align(self.capacity, 16);
 
         Ok(BufferPayload { 
             label: self.label, 
