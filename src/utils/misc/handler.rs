@@ -14,8 +14,8 @@ pub enum TaskType {
     IoBound
 }
 
-/// An operation performed by a Future F, where the result R is stored in a
-/// ResourceHandler of the matching type.
+/// An operation performed by a `Future` `F`, where the result `R` is stored in a
+/// `ResourceHandler` of the matching type.
 #[derive(Debug)]
 pub struct Task<F, R> {
     pub fut: F,
@@ -129,11 +129,11 @@ impl<R> ResourceStatus<R> {
 }
 
 /// Manages and stores any memory resources with concurrent creation through futures.
-/// Allows any future as long as the output type is a Result that wraps the resource type.
+/// Allows any future as long as the output type is a `Result` that wraps the resource type.
 /// 
-/// K: The key type to store resouces with
+/// * `K`: The key type to store resouces with
 /// 
-/// R: the resource type that will be stored
+/// * `R`: the resource type that will be stored
 pub struct ResourceHandler<K, R> {
     resource_map: HashMap<K, ResourceStatus<R>>,
 
@@ -149,7 +149,7 @@ where
     K: Hash + Eq + PartialEq + Clone + Send + 'static,
     R: Send + Debug + 'static,
 {
-    /// Create a new resource handler.
+    /// Create a new `ResourcHandler`.
     pub fn new() -> Self {
         let (tx, rx) = mpsc::channel();
         Self {
@@ -177,8 +177,8 @@ where
     /// Retrieve a resource if is is ready. If the resource has not yet been requested, 
     /// a worker thread tracks its creation via a future, and None is returned.
     /// 
-    /// * 'key' - A handle K to query the handler for the resource
-    /// * 'task' - A Task instance whose Future resolves with the resource
+    /// * 'key' - A key of type `K` used query the handler for the resource
+    /// * 'task' - A `Task` whose `Future` resolves with the resource
     pub fn get_or_request<F>(&mut self, key: &K, task: Task<F, R>) -> Option<&R> 
     where 
         F: Future<Output = Result<R, String>> + Send + 'static
@@ -198,13 +198,13 @@ where
         self.get(key)
     }
 
-    /// Request a worker thread to create a resource via a Future if previously failed.
+    /// Request a worker thread to create a resource via a `Future` if previously failed.
     /// 
     /// If the resource does not exist, this method still spawns a thread.
     /// If the resource exists and is pending or ready, no thread is spawned.
     /// 
-    /// * 'key' - A handle K to query the handler for the resource
-    /// * 'task' - A Task instance whose Future resolves with the resource
+    /// * 'key' - A key of type `K` used query the handler for the resource
+    /// * 'task' - A `Task` whose `Future` resolves with the resource
     pub fn request_retry<F>(&mut self, key: &K, task: Task<F, R>)
     where 
         F: Future<Output = Result<R, String>> + Send + 'static
@@ -224,8 +224,8 @@ where
     /// Request a new worker thread to create a resource via a Future.
     /// Does nothing if a resource with the matching key was already requested.
     /// 
-    /// * 'key' - A handle K to query the handler for the resource
-    /// * 'task' - A Task instance whose Future resolves with the resource
+    /// * 'key' - A key of type `K` used query the handler for the resource
+    /// * 'task' - A `Task` whose `Future` resolves with the resource
     pub fn request_new<F>(&mut self, key: &K, task: Task<F, R>) 
     where 
         F: Future<Output = Result<R, String>> + Send + 'static
@@ -280,8 +280,8 @@ where
     /// 
     /// Returns a result object containing the completed resource, or an error message if failed.
     /// 
-    /// * 'key' - A handle K to query the handler for the resource
-    /// * 'task' - A Task instance whose Future resolves with the resource
+    /// * 'key' - A key of type `K` used query the handler for the resource
+    /// * 'task' - A `Task` whose `Future` resolves with the resource
     pub fn request_wait<F>(&mut self, key: &K, task: Task<F, R>) -> Result<Option<&R>, String>
     where 
         F: Future<Output = Result<R, String>> + Send + 'static
@@ -300,7 +300,7 @@ where
 
     /// Store a preloaded resource into the internal map
     /// 
-    /// * 'key' - A handle K to query the handler for the resource
+    /// * 'key' - A key of type `K` used query the handler for the resource
     /// * 'hold_time' - The time in seconds before a resource is considered 'dead' and is removed from the handler
     /// * 'resource' - An instance of the expected Resource this handler stores
     pub fn store(&mut self, key: &K, hold_time: Option<u64>, resource: R) {

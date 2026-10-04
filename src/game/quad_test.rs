@@ -1,17 +1,75 @@
 use winit::event::MouseButton;
 
-use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{BindGroup, BufferBinding, DrawCommand, IndexedDraw, MultiBufferExecutor, NamedBindGroup, Pipeline, PipelineId, RenderingState, Sampler, SamplerBinding, SamplerId, SequentialExecutor, Texture, TextureBinding, TextureId, TextureTypeSampled}, utils::{Camera, GeometryData, Initialized, MouseHandler, ScreenSpace, Transform, TransformAttribute, font_asset::{Quad, Vertex}}};
+use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{BindGroup, Buffer, BufferBinding, BufferId, DrawCommand, GpuContext, IndexedDraw, MultiBufferExecutor, NamedBindGroup, Pipeline, PipelineId, RenderingState, Sampler, SamplerBinding, SamplerId, SequentialExecutor, Serializable, Texture, TextureBinding, TextureId, TextureTypeSampled}, utils::{Camera, GeometryData, Initialized, MouseHandler, ScreenSpace, Transform, TransformAttribute, Vec2Attribute, Vec3Attribute}};
+
+/// A quad for rendering characters
+#[derive(Debug)]
+pub struct Quad {
+    pub vertices: GeometryData<Initialized>,
+    pub instances: GeometryData<Initialized>,
+    pub idx_buf_id: BufferId,
+}
+
+impl Quad {
+    pub fn new() -> Self {
+        Self {
+            vertices: GeometryData::placeholder(),
+            instances: GeometryData::placeholder(),
+            idx_buf_id: BufferId("quad_index_buffer"),
+        }
+    }
+
+    /// Initialize the quad with the gpu, creating the vertex data that it represents. 
+    pub fn init(&mut self, context: &mut GpuContext, max_instances: u64) {
+        let vert_positions: Vec<[f32; 3]> = vec![
+            [ 0.5,  0.5, 0.0], [-0.5,  0.5, 0.0], [-0.5, -0.5, 0.0], [ 0.5, -0.5, 0.0],
+        ];
+
+        let vert_uvs: Vec<[f32; 2]> = vec![
+            [1.0, 0.0], [0.0, 0.0], [0.0, 1.0], [1.0, 1.0]
+        ];
+
+        let indices: [u16; 6] = [0, 1, 2, 2, 3, 0];
+        
+        self.vertices = GeometryData::as_vertex_group(0)
+            .with_label("Quad Vertices")
+            .with_attribute(Vec3Attribute("positions"), vert_positions)
+            .with_attribute(Vec2Attribute("uvs"), vert_uvs)
+            .init(context, 4);
+
+        self.instances = GeometryData::as_instance_group(2)
+            .with_label("Font Quad Instances")
+            .with_attribute(TransformAttribute("transform"), Vec::<Transform>::new())            
+            .init(context, max_instances);
+
+        context.request_buffer(
+            &self.idx_buf_id, 
+            Buffer::as_index()
+                .with_label("Quad Index Buffer")
+                .with_byte_data(&indices.to_bytes())
+                .writable()
+        );
+    }
+
+    /// Update the instance buffer owned by this `Quad`
+    pub fn update_instances(&mut self, context: &mut GpuContext) {
+        self.instances.update(context);
+    }
+
+    /// Get the ids to the geometry (vertex/instance) buffers for this quad.
+    pub fn geo_buf_ids(&self) -> [BufferId; 2] {
+        return [*self.vertices.buf_id(), *self.instances.buf_id()]
+    }
+}
 
 pub struct QuadTest {
     mouse: MouseHandler<PlayerMouseAction>,
     executor: MultiBufferExecutor,
     camera: Camera<ScreenSpace>,
-    quad: Quad,
 
-    q1_instances: GeometryData<Initialized>,
+    quad1: Quad,
+    quad2: Quad,
     blue_devils: TextureId,
-
-    q2_instances: GeometryData<Initialized>,
     scv: TextureId,
 
     samp: SamplerId,
@@ -27,12 +85,10 @@ impl QuadTest {
             mouse: MouseHandler::new(),
             executor: MultiBufferExecutor::new(),
             camera: Camera::new(ScreenSpace),
-            quad: Quad::new(),
 
-            q1_instances: GeometryData::placeholder(),
+            quad1: Quad::new(),
+            quad2: Quad::new(),
             blue_devils: TextureId("blue_devils"),
-
-            q2_instances: GeometryData::placeholder(),
             scv: TextureId("scv"),
             
             samp: SamplerId("tex_sampler"),
@@ -52,31 +108,28 @@ impl QuadTest {
 impl Screen for QuadTest {
     fn init(&mut self, graphics: &mut Graphics) {
         self.init_input();
-        self.quad.init(&mut graphics.context);
 
-        let q1_transforms: Vec<Transform> = vec![
-            Transform::from_position(glam::vec3(0.60, 0.75, 0.0)).with_scale(glam::vec3(0.1, 0.1, 0.1)),
-            Transform::from_position(glam::vec3(0.60, 0.25, 0.0)).with_scale(glam::vec3(0.1, 0.1, 0.1)),
-            Transform::from_position(glam::vec3(0.25, 0.75, 0.0)).with_scale(glam::vec3(0.1, 0.1, 0.1)),
-            Transform::from_position(glam::vec3(0.25, 0.25, 0.0)).with_scale(glam::vec3(0.1, 0.1, 0.1))
-        ];
+        self.quad1.init(&mut graphics.context, 4);
+        self.quad1.instances.extend_attribute::<Transform>(
+            "transform", 
+            vec![
+                Transform::from_position(glam::vec3(0.60, 0.75, 0.0)).with_scale(glam::vec3(0.1, 0.1, 0.1)),
+                Transform::from_position(glam::vec3(0.60, 0.25, 0.0)).with_scale(glam::vec3(0.1, 0.1, 0.1)),
+                Transform::from_position(glam::vec3(0.25, 0.75, 0.0)).with_scale(glam::vec3(0.1, 0.1, 0.1)),
+                Transform::from_position(glam::vec3(0.25, 0.25, 0.0)).with_scale(glam::vec3(0.1, 0.1, 0.1))
+            ]
+        );
 
-        self.q1_instances = GeometryData::as_instance_group(2)
-            .with_label("Quad 1 Instances")
-            .with_attribute(TransformAttribute("transform"), q1_transforms)
-            .init(graphics, 4);
-
-        let q2_transforms: Vec<Transform> = vec![
-            Transform::from_position(glam::vec3(1.20, 0.75, 0.0)).with_scale(glam::vec3(0.1, 0.1, 0.1)),
-            Transform::from_position(glam::vec3(1.20, 0.25, 0.0)).with_scale(glam::vec3(0.1, 0.1, 0.1)),
-            Transform::from_position(glam::vec3(1.55, 0.75, 0.0)).with_scale(glam::vec3(0.1, 0.1, 0.1)),
-            Transform::from_position(glam::vec3(1.55, 0.25, 0.0)).with_scale(glam::vec3(0.1, 0.1, 0.1))
-        ];
-
-        self.q2_instances = GeometryData::as_instance_group(2)
-            .with_label("Quad 2 Instances")
-            .with_attribute(TransformAttribute("transform"), q2_transforms)
-            .init(graphics, 4);
+        self.quad2.init(&mut graphics.context, 4);
+        self.quad2.instances.extend_attribute::<Transform>(
+            "transform", 
+            vec![
+                Transform::from_position(glam::vec3(1.20, 0.75, 0.0)).with_scale(glam::vec3(0.1, 0.1, 0.1)),
+                Transform::from_position(glam::vec3(1.20, 0.25, 0.0)).with_scale(glam::vec3(0.1, 0.1, 0.1)),
+                Transform::from_position(glam::vec3(1.55, 0.75, 0.0)).with_scale(glam::vec3(0.1, 0.1, 0.1)),
+                Transform::from_position(glam::vec3(1.55, 0.25, 0.0)).with_scale(glam::vec3(0.1, 0.1, 0.1))
+            ]
+        );
 
         graphics.context.request_texture(
             &self.blue_devils,
@@ -119,8 +172,8 @@ impl Screen for QuadTest {
             Pipeline::as_render()
                 .with_label("Quad Pipeline")
                 .with_bg_layouts(&[self.qbg1.layout_id])
-                .with_vertex_layout(Vertex::layout())
-                .with_vertex_layout(self.q1_instances.layout().clone())
+                .with_vertex_layout(self.quad1.vertices.layout().clone())
+                .with_vertex_layout(self.quad1.instances.layout().clone())
                 .with_shader("./shaders/2d_draw.wgsl")
         );
 
@@ -155,10 +208,10 @@ impl Screen for QuadTest {
         self.camera.update(graphics, dt);
 
         {
-            let q1_inst_proxy = self.q1_instances.borrow_mut();
-            let q2_inst_proxy = self.q2_instances.borrow_mut();
+            let q1_inst_proxy = self.quad1.instances.borrow_mut();
+            let q2_inst_proxy = self.quad2.instances.borrow_mut();
 
-            if let (Some(q1_transforms), Some(q2_transforms)) = (
+            if let (Some(mut q1_transforms), Some(mut q2_transforms)) = (
                 q1_inst_proxy.get_attribute_mut::<Transform>("transform"),
                 q2_inst_proxy.get_attribute_mut::<Transform>("transform")
             ) {
@@ -169,8 +222,8 @@ impl Screen for QuadTest {
             }
         }
 
-        self.q1_instances.update(graphics);
-        self.q2_instances.update(graphics);
+        self.quad1.update_instances(&mut graphics.context);
+        self.quad2.update_instances(&mut graphics.context);
     }
 
     fn render(&mut self, graphics: &mut Graphics) -> Result<(), wgpu::SurfaceError> {
@@ -178,15 +231,15 @@ impl Screen for QuadTest {
 
         let draw_q1 = IndexedDraw::new(self.qpip, 0..6)
             .with_bind_groups(&[self.qbg1.id])
-            .with_vertex_buffers(&[self.quad.vbuffer_id, *self.q1_instances.buf_id()])
-            .with_index_buffer(self.quad.ibuffer_id, wgpu::IndexFormat::Uint16)
-            .with_instances(0..4);
+            .with_vertex_buffers(&self.quad1.geo_buf_ids())
+            .with_index_buffer(self.quad1.idx_buf_id, wgpu::IndexFormat::Uint16)
+            .with_instances(0..self.quad1.instances.len() as u32);
         
         let draw_q2 = IndexedDraw::new(self.qpip, 0..6)
             .with_bind_groups(&[self.qbg2.id])
-            .with_vertex_buffers(&[self.quad.vbuffer_id, *self.q2_instances.buf_id()])
-            .with_index_buffer(self.quad.ibuffer_id, wgpu::IndexFormat::Uint16)
-            .with_instances(0..4);
+            .with_vertex_buffers(&self.quad2.geo_buf_ids())
+            .with_index_buffer(self.quad2.idx_buf_id, wgpu::IndexFormat::Uint16)
+            .with_instances(0..self.quad2.instances.len() as u32);
 
         let draw_cmd = DrawCommand::from_draws(
             RenderingState {

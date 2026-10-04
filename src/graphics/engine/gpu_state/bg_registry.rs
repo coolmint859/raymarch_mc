@@ -1,5 +1,5 @@
 use std::{cell::{Cell, RefCell}, collections::{HashMap, HashSet}, ops::Deref};
-use crate::graphics::*;
+use crate::{graphics::*, utils::{ResourceHandler, Task}};
 
 /// A lightweight handle to a bind group and associated layout
 #[derive(Clone, Debug, PartialEq, Eq)]

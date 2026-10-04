@@ -1,13 +1,13 @@
 use winit::event::MouseButton;
 
-use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::MultiBufferExecutor, utils::{Camera, FontReader, MouseHandler, ScreenSpace, TextOptions, TextRenderer, Transform, font_asset::FontId}};
+use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::MultiBufferExecutor, utils::{Camera, FontReader, MouseHandler, ScreenSpace, TextOptions, TextRenderer, Transform, font::font::FontId}};
 
 pub struct TextTest {
     mouse: MouseHandler<PlayerMouseAction>,
     executor: MultiBufferExecutor,
     text_renderer: TextRenderer,
-    arial: Option<FontId>,
-    mono: Option<FontId>,
+    arial: FontId,
+    mono: FontId,
 
     // controller: CameraController,
     camera: Camera<ScreenSpace>,
@@ -17,8 +17,8 @@ impl TextTest {
     pub fn new() -> Self {
         Self { 
             mouse: MouseHandler::new(),
-            arial: None,
-            mono: None,
+            arial: FontId::uninit(),
+            mono: FontId::uninit(),
             text_renderer: TextRenderer::new(),
             executor: MultiBufferExecutor::new(),
             // controller: CameraController::new(0.5, 0.003),
@@ -36,15 +36,15 @@ impl Screen for TextTest {
     fn init(&mut self, graphics: &mut Graphics) {
         self.init_input();
 
-        self.arial = Some(self.text_renderer.request_font(
+        self.arial = self.text_renderer.request_font(
             "./assets/arial.ttf", 
             FontReader::as_sdf(16.0)
-        ));
+        );
 
-        self.mono = Some(self.text_renderer.request_font(
+        self.mono = self.text_renderer.request_font(
             "./assets/Monopack.ttf", 
             FontReader::as_sdf(16.0)
-        ));
+        );
 
         self.camera.init(graphics);
     }
@@ -76,27 +76,25 @@ impl Screen for TextTest {
     fn update(&mut self, graphics: &mut Graphics, dt: f32) {
         self.camera.update(graphics, dt);
 
-        if let Some(monopack) = &self.mono {
-            self.text_renderer.stage_text(
-                monopack, 
-                &format!("fps: {:.2}", 1.0 / dt), 
-                TextOptions { 
-                    transform: Transform::default().with_position(glam::vec3(0.05, 0.95, 0.0)),
-                    height: 40.0 / graphics.canvas.dimensions().1 as f32
-                }
-            );
-        }
+        let screen_height = graphics.canvas.dimensions().1 as f32;
 
-        if let Some(arial) = &self.arial {
-            self.text_renderer.stage_text(
-                arial, 
-                "The black cat had a heart attack.", 
-                TextOptions { 
-                    transform: Transform::default().with_position(glam::vec3(0.1, 0.1, 0.0)),
-                    height: 100.0 / graphics.canvas.dimensions().1 as f32
-                }
-            );
-        }
+        self.text_renderer.stage_text(
+            &self.mono, 
+            &format!("fps: {:.2}", 1.0 / dt), 
+            TextOptions { 
+                transform: Transform::from_position(glam::vec3(0.05, 0.95, 0.0)),
+                height: 40.0 / screen_height
+            }
+        );
+
+        self.text_renderer.stage_text(
+            &self.arial, 
+            "The quick brown fox jumps over the lazy dog.", 
+            TextOptions { 
+                transform: Transform::from_position(glam::vec3(0.1, 0.1, 0.0)),
+                height: 100.0 / screen_height
+            }
+        );
 
         self.text_renderer.sync(&self.camera, &mut graphics.context);
     }

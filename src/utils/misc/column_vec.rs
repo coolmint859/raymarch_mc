@@ -1,4 +1,4 @@
-use std::{any::Any, cell::{Ref, RefMut}, ops::{Deref, DerefMut}};
+use std::{any::Any, cell::{Ref, RefMut}, fmt::Debug, ops::{Deref, DerefMut}};
 
 use crate::graphics::Serializable;
 
@@ -8,7 +8,7 @@ use crate::graphics::Serializable;
 /// This allows regular `Vec<T>`s to be used in heterogeneous collections without needing to implement `ColumnVec` directly.
 /// 
 /// Example Usage: A HashMap where each value is a boxed ColumnVec, allowing each concrete `Vec` type to hold different data types.
-pub trait ColumnVec {
+pub trait ColumnVec: Debug {
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 
@@ -44,7 +44,9 @@ impl dyn ColumnVec {
     }
 }
 
-impl<T: Serializable + Default + 'static> ColumnVec for Vec<T> {
+impl<T> ColumnVec for Vec<T> 
+where T: Serializable + Default + Debug + 'static
+{
     fn as_any(&self) -> &dyn Any { self }
     fn as_any_mut(&mut self) -> &mut dyn Any { self }
 
@@ -65,9 +67,7 @@ impl<T: Serializable + Default + 'static> ColumnVec for Vec<T> {
     fn len(&self) -> usize { self.len() }
 }
 
-/// A mutable reference guard for a `ColumnVec` that is wrapped in a `RefCell`. 
-/// 
-/// This is needed since `RefMut::try_map()` is not yet stable.
+/// A reference guard for a mutable `ColumnVec` that is wrapped in a `RefCell`
 pub struct VecMut<'a, T> {
     pub _guard: RefMut<'a, Box<dyn ColumnVec>>,
 
@@ -89,9 +89,7 @@ impl<'a, T> DerefMut for VecMut<'a, T> {
     }
 }
 
-/// A reference guard for a `ColumnVec` that is wrapped in a `RefCell`. 
-/// 
-/// This is needed since `RefMut::try_map()` is not yet stable.
+/// A reference guard for a `ColumnVec` that is wrapped in a `RefCell`.
 pub struct VecRef<'a, T> {
     pub _guard: Ref<'a, Box<dyn ColumnVec>>,
 

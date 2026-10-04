@@ -1,16 +1,19 @@
-use std::{cell::{Cell, RefCell}, collections::{HashMap, HashSet}, sync::atomic::{AtomicU32, Ordering}};
+use std::{cell::RefCell, collections::{HashMap, HashSet}, fmt::Debug, sync::atomic::{AtomicU32, Ordering}};
 
-use crate::{graphics::{Buffer, BufferId, Graphics, RawBytesUpdate, Serializable, VertexBufferLayout}, utils::{ColumnVec, VecRef, VertexAttribute}};
+use crate::{graphics::{Buffer, BufferId, GpuContext, RawBytesUpdate, Serializable, VertexBufferLayout}, utils::{ColumnVec, VecMut, VecRef, VertexAttribute}};
 
 static GROUP_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 /// Represents geometry that have no attributes or data
+#[derive(Debug)]
 pub struct Empty;
 
 /// Represents geometry that has attributes/data but are not yet initialized
+#[derive(Debug)]
 pub struct Building;
 
 /// Represents geometry that has been initialized
+#[derive(Debug)]
 pub struct Initialized {
     /// the id to the vertex/instance buffer on the gpu
     pub buf_id: BufferId,
@@ -22,54 +25,81 @@ pub struct Initialized {
 
 /// A proxy struct for `GeometryData` for allowing mutable borrows of one or more attributes.
 pub struct GeometryProxy<'a> {
-    inst_data: &'a mut HashMap<String, RefCell<Box<dyn ColumnVec>>>,
+    /// Reference to the attribute data held by a `GeometryData`
+    attributes: &'a mut HashMap<String, RefCell<Box<dyn ColumnVec>>>,
+    /// Reference to the initialized state held by a `GeometryData`
     state: &'a mut Initialized,
-    max_len: Cell<usize>,
+    /// The set of currently mutably borrowed attributes
     borrowed: RefCell<HashSet<String>>,
 }
 
 impl<'a> GeometryProxy<'a> {
-    /// Mutably borrow an attribute from the `GeometryData` that this Batch represents, if exists
-    pub fn get_attribute_mut<T>(&self, name: impl Into<String>) -> Option<&mut Vec<T>> 
-    where T: Serializable + Default + 'static
+    /// Get a mutable reference to an attribute vector, if exists
+    pub fn get_attribute_mut<T>(&self, name: impl Into<String>) -> Option<VecMut<'_, T>> 
+    where T: Serializable + Default + Debug + 'static
     {
         let name_str = name.into();
         if !self.borrowed.borrow_mut().insert(name_str.clone()) {
             return None;
         }
 
-        let attr = self.inst_data.get(&name_str)?;
+        let attr = self.attributes.get(&name_str)?;
+
+        let mut guard = attr.borrow_mut();
+        let data = guard.downcast_mut::<Vec<T>>()? as *mut Vec<T>;
+
+        Some(VecMut { _guard: guard, data})
+    }
+
+    /// Get a reference to an attribute vector, if exists
+    pub fn get_attribute<T>(&self, name: &str) -> Option<VecRef<'_, T>> 
+    where T: Serializable + Default + Debug + 'static
+    {
+        if self.borrowed.borrow().contains(name) {
+            return None; // disallow borrows on attributes that are already mutably borrowed
+        }
         
-        // Safety: The lifetime marker 'a ensures that the pointer to the attribute data lives as long as the batch does.
-        // Batches only ever live in closures, so the batch will eventually be dropped, allowing the pointer to be safely dropped too.
-        let attr_ptr = attr.as_ptr() as *mut Box<dyn ColumnVec>;
-        let boxed_attr = unsafe { &mut *attr_ptr};
+        let attr = self.attributes.get(name)?;
+        let guard = attr.borrow();
+        let data = guard.downcast_ref::<Vec<T>>()? as *const Vec<T>;
 
-        let vec = boxed_attr.downcast_mut::<Vec<T>>()?;
-        self.max_len.set(self.max_len.get().max(vec.len()));
+        Some(VecRef { _guard: guard, data})
+    }
 
-        Some(vec)
+    /// Extend an attribute from an iterator of `T` items
+    pub fn extend_attribute<T>(&self, name: impl Into<String>, iter: impl IntoIterator<Item = T>)
+    where T: Serializable + Default + Debug + 'static
+    {
+        if let Some(mut vec) = self.get_attribute_mut::<T>(name) {
+            vec.extend(iter);
+        }
     }
 }
 
 impl<'a> Drop for GeometryProxy<'a> {
     fn drop(&mut self) {
-        let new_len = self.max_len.get().min(self.state.capacity as usize);
-        for attr in self.inst_data.values() {
+        let mut max_len = 0;
+        for attr in self.attributes.values() {
+            max_len = max_len.max(attr.borrow().len());
+        }
+
+        let new_len = max_len.min(self.state.capacity as usize);
+        for attr in self.attributes.values() {
             attr.borrow_mut().resize_default(new_len);
         }
         self.state.len = new_len as u64;
-    }
+    } 
 }
 
 /// A container for vertex/instance data
+#[derive(Debug)]
 pub struct GeometryData<S> {
     /// buffer label for gpu profiling
     label: String,
     /// The layout of the instance buffer
     layout: VertexBufferLayout,
-    /// The cpu-side instance data
-    inst_data: HashMap<String, RefCell<Box<dyn ColumnVec>>>,
+    /// The cpu-side attribute data
+    attributes: HashMap<String, RefCell<Box<dyn ColumnVec>>>,
     /// The names of the instance attributes that should be packed into the instance buffer
     gpu_attrs: Vec<String>,
     /// the current state of the group
@@ -90,7 +120,7 @@ impl GeometryData<Empty> {
         Self {
             label: "geometry_data".to_string(),
             layout,
-            inst_data: HashMap::new(),
+            attributes: HashMap::new(),
             gpu_attrs: Vec::new(),
             state: Empty
         }
@@ -116,7 +146,7 @@ impl GeometryData<Empty> {
     pub fn with_attribute<A, T>(self, attr: A, data: Vec<T>) -> GeometryData<Building>
     where
         A: VertexAttribute + 'static,
-        T: Serializable + Default + 'static,
+        T: Serializable + Default + Debug + 'static,
     {
         let builder = GeometryData::<Building>::from_empty(self);
         builder.with_attribute(attr, data)
@@ -131,7 +161,7 @@ impl GeometryData<Building> {
         Self {
             label: empty.label,
             layout: empty.layout,
-            inst_data: empty.inst_data,
+            attributes: empty.attributes,
             gpu_attrs: empty.gpu_attrs,
             state: Building
         }
@@ -147,13 +177,13 @@ impl GeometryData<Building> {
     pub fn with_attribute<A, T>(mut self, attr: A, data: Vec<T>) -> Self
     where
         A: VertexAttribute + 'static,
-        T: Serializable + Default + 'static,
+        T: Serializable + Default + Debug + 'static,
     {
         for _ in 0..attr.count() {
             self.layout.add_attribute(attr.format());
         }
 
-        self.inst_data.insert(attr.name().into(), RefCell::new(Box::new(data)));
+        self.attributes.insert(attr.name().into(), RefCell::new(Box::new(data)));
         self.gpu_attrs.push(attr.name().into());
 
         self
@@ -165,18 +195,18 @@ impl GeometryData<Building> {
     /// Make sure `capacity` is large enough to prevent any attribute data from being truncated.
     /// 
     /// Any attribute data previously added is uploaded to the buffer.
-    pub fn init(self, graphics: &mut Graphics, capacity: u64) -> GeometryData<Initialized> {
+    pub fn init(self, context: &mut GpuContext, capacity: u64) -> GeometryData<Initialized> {
         let id_num = GROUP_COUNTER.fetch_add(1, Ordering::SeqCst);
         let id = Box::new(format!("geometry_data_{id_num}"));
         let buf_id = BufferId(Box::leak(id));
         
         let mut target_len = 0_u64;
-        for attr in self.inst_data.values() {
+        for attr in self.attributes.values() {
             target_len = attr.borrow().len().max(target_len as usize) as u64;
         }
         target_len = target_len.min(capacity);
 
-        for attr in self.inst_data.values() {
+        for attr in self.attributes.values() {
             attr.borrow_mut().resize_default(target_len as usize);
         }
         
@@ -190,7 +220,7 @@ impl GeometryData<Building> {
         let packed = initialized.to_packed();
 
         let total_bytes = initialized.layout.stride() * capacity;
-        graphics.context.request_buffer(
+        context.request_buffer(
             &initialized.buf_id(), 
             Buffer::as_vertex()
                 .with_label(&initialized.label)
@@ -204,7 +234,7 @@ impl GeometryData<Building> {
 }
 
 impl GeometryData<Initialized> {
-    /// Create initialized geomtry data from an uninitialized one. 
+    /// Create initialized geometry data from an uninitialized one. 
     /// 
     /// This is automatically called and returned from `GeometryData::<Building>::init()` 
     pub(crate) fn from_uninit(
@@ -214,7 +244,7 @@ impl GeometryData<Initialized> {
         Self {
             label: uninit.label,
             layout: uninit.layout,
-            inst_data: uninit.inst_data,
+            attributes: uninit.attributes,
             gpu_attrs: uninit.gpu_attrs,
             state
         }
@@ -228,7 +258,7 @@ impl GeometryData<Initialized> {
         Self {
             label: "Placeholder Geometry".to_string(),
             layout: VertexBufferLayout::as_instance_step(0),
-            inst_data: HashMap::new(),
+            attributes: HashMap::new(),
             gpu_attrs: Vec::new(),
             state: Initialized { capacity: 0, len: 0, buf_id: BufferId("placeholder") }
         }
@@ -244,22 +274,30 @@ impl GeometryData<Initialized> {
         &self.layout
     }
 
-    /// Borrow the GeometryData mutably -  returns a `GeometryProxy` which references the inner attribute data.
+    /// Borrow the `GeometryData` mutably -  returns a `GeometryProxy` which references the inner attribute data.
     /// 
     /// Given that any of the borrowed attribute(s) could be resized during a borrow, the returned `GeometryProxy` will 
     /// ensure all other attributes match the length of the largest mutated attribute, unless greater than the capacity.
     pub fn borrow_mut(&mut self) -> GeometryProxy<'_>{
         GeometryProxy {
-            inst_data: &mut self.inst_data,
+            attributes: &mut self.attributes,
             state: &mut self.state,
-            max_len: Cell::new(0),
             borrowed: RefCell::new(HashSet::new())
         }
     }
 
+    /// Extend an attribute from an iterator of `T` items
+    pub fn extend_attribute<T>(&mut self, name: impl Into<String>, iter: impl IntoIterator<Item = T>)
+    where T: Serializable + Default + Debug + 'static
+    {
+        self.borrow_mut().extend_attribute(name, iter);
+    }
+
     /// Get a reference to an attribute vector, if exists
-    pub fn get_attribute<T: Serializable + Default + 'static>(&self, name: &str) -> Option<VecRef<'_, T>> {
-        let attr = self.inst_data.get(name)?;
+    pub fn get_attribute<T>(&self, name: &str) -> Option<VecRef<'_, T>> 
+    where T: Serializable + Default + Debug + 'static
+    {
+        let attr = self.attributes.get(name)?;
 
         let guard = attr.borrow();
         let data = guard.downcast_ref::<Vec<T>>()? as *const Vec<T>;
@@ -268,10 +306,10 @@ impl GeometryData<Initialized> {
     }
 
     /// Update the instance buffer this group represents
-    pub fn update(&self, graphics: &mut Graphics) {
+    pub fn update(&self, context: &mut GpuContext) {
         let packed = self.to_packed();
 
-        let _ = graphics.context.update_buffer(
+        let _ = context.update_buffer(
             &self.state.buf_id,
             RawBytesUpdate { data: &packed, offset: 0 }
         );
@@ -293,7 +331,7 @@ impl GeometryData<Initialized> {
 
         for i in 0..self.state.len as usize {
             for name in &self.gpu_attrs {
-                if let Some(cell) = self.inst_data.get(name) {
+                if let Some(cell) = self.attributes.get(name) {
                     let data = cell.borrow();
                     let attr_bytes = data.bytes_of(i)
                         .expect("[GeometryData] Attribute data missing!");

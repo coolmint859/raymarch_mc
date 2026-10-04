@@ -1,5 +1,5 @@
 use std::{collections::HashSet, println};
-use crate::graphics::{pip_registry::PipelineRegistry, *};
+use crate::{graphics::{pip_registry::PipelineRegistry, *}, utils::{ResourceHandler, Task}};
 
 /// unique identifier to a buffer
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] pub struct BufferId(pub &'static str);

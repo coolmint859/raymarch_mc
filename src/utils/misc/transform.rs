@@ -9,7 +9,7 @@ static TRANSFORM_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 /// Represents the translation, rotation, and scaling of an entity
 /// 
-/// Implements Serializable
+/// Implements `Serializable`
 #[derive(Clone, Debug)]
 pub struct Transform {
     id: u32,
@@ -171,11 +171,13 @@ impl Transform {
         transformed.xyz()
     }
 
-    /// Update and get a copy of this transform's world matrix
-    // pub fn to_updated(&self) -> glam::Mat4 {
-    //     self.world_mat.set(Mat4::from_scale_rotation_translation(self.scale, self.rotation, self.position));
-    //     self.world_mat.get()
-    // }
+    /// Mutiply this transform with another, resulting in a new transform
+    pub fn mult(&self, other: &Transform) -> Transform {
+        let combined_mat = self.world_mat * other.world_mat;
+
+        let (s, r, p) = combined_mat.to_scale_rotation_translation();
+        Transform::new(p, r, s)
+    }
 
     /// Convert this transform into a column-oriented array `[f32; 16]`
     pub fn to_cols_array(&self) -> [f32; 16] {
@@ -202,7 +204,7 @@ impl Transform {
         return std::mem::size_of::<glam::Mat4>()
     }
 
-    /// Recalculate the inner world matrix of the transform
+    /// Recalculate the world matrix of the transform
     fn recalc_mat(&mut self) {
         self.world_mat = Mat4::from_scale_rotation_translation(
             self.scale, 

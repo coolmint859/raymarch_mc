@@ -1,5 +1,5 @@
 use std::{cell::RefCell, collections::{HashMap, HashSet}};
-use crate::graphics::*;
+use crate::{graphics::*, utils::{ResourceHandler, Task}};
 
 /// The resolved dependencies of a bind group
 pub(crate) struct PipelineDependencies {
