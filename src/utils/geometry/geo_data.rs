@@ -24,7 +24,7 @@ pub struct Initialized {
 }
 
 /// A proxy struct for `GeometryData` for allowing mutable borrows of one or more attributes.
-pub struct GeometryProxy<'a> {
+pub struct GeometryDataProxy<'a> {
     /// Reference to the attribute data held by a `GeometryData`
     attributes: &'a mut HashMap<String, RefCell<Box<dyn ColumnVec>>>,
     /// Reference to the initialized state held by a `GeometryData`
@@ -33,7 +33,7 @@ pub struct GeometryProxy<'a> {
     borrowed: RefCell<HashSet<String>>,
 }
 
-impl<'a> GeometryProxy<'a> {
+impl<'a> GeometryDataProxy<'a> {
     /// Get a mutable reference to an attribute vector, if exists
     pub fn get_attribute_mut<T>(&self, name: impl Into<String>) -> Option<VecMut<'_, T>> 
     where T: Serializable + Default + Debug + 'static
@@ -52,14 +52,15 @@ impl<'a> GeometryProxy<'a> {
     }
 
     /// Get a reference to an attribute vector, if exists
-    pub fn get_attribute<T>(&self, name: &str) -> Option<VecRef<'_, T>> 
+    pub fn get_attribute<T>(&self, name: impl Into<String>) -> Option<VecRef<'_, T>> 
     where T: Serializable + Default + Debug + 'static
     {
-        if self.borrowed.borrow().contains(name) {
+        let name_str = name.into();
+        if self.borrowed.borrow().contains(&name_str) {
             return None; // disallow borrows on attributes that are already mutably borrowed
         }
         
-        let attr = self.attributes.get(name)?;
+        let attr = self.attributes.get(&name_str)?;
         let guard = attr.borrow();
         let data = guard.downcast_ref::<Vec<T>>()? as *const Vec<T>;
 
@@ -76,7 +77,7 @@ impl<'a> GeometryProxy<'a> {
     }
 }
 
-impl<'a> Drop for GeometryProxy<'a> {
+impl<'a> Drop for GeometryDataProxy<'a> {
     fn drop(&mut self) {
         let mut max_len = 0;
         for attr in self.attributes.values() {
@@ -278,8 +279,8 @@ impl GeometryData<Initialized> {
     /// 
     /// Given that any of the borrowed attribute(s) could be resized during a borrow, the returned `GeometryProxy` will 
     /// ensure all other attributes match the length of the largest mutated attribute, unless greater than the capacity.
-    pub fn borrow_mut(&mut self) -> GeometryProxy<'_>{
-        GeometryProxy {
+    pub fn borrow_mut(&mut self) -> GeometryDataProxy<'_>{
+        GeometryDataProxy {
             attributes: &mut self.attributes,
             state: &mut self.state,
             borrowed: RefCell::new(HashSet::new())
@@ -323,6 +324,11 @@ impl GeometryData<Initialized> {
     /// Get the length of this instance group
     pub fn len(&self) -> usize{
         self.state.len as usize
+    }
+
+    /// Get the number of attributes defined with this `GeometryData`
+    pub fn attr_count(&self) -> u32 {
+        self.attributes.len() as u32
     }
 
     /// Get this group as a packed `Vec<u8>` (interleaved)

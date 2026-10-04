@@ -56,4 +56,7 @@ impl VertexBufferLayout {
 
     /// Get the stride in bytes of this vertex layout
     pub fn stride(&self) -> u64 { self.curr_offset }
+
+    /// Get the number of attributes defined with this vertex layout
+    pub fn count(&self) -> u32 { self.curr_loc }
 }
