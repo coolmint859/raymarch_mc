@@ -14,7 +14,7 @@ pub struct Building;
 
 /// Represents geometry that has been initialized
 #[derive(Debug)]
-pub struct Initialized {
+pub struct GeoInit {
     /// the id to the vertex/instance buffer on the gpu
     pub buf_id: BufferId,
     /// the total capacity of the group
@@ -28,7 +28,7 @@ pub struct GeometryDataProxy<'a> {
     /// Reference to the attribute data held by a `GeometryData`
     attributes: &'a mut HashMap<String, RefCell<Box<dyn ColumnVec>>>,
     /// Reference to the initialized state held by a `GeometryData`
-    state: &'a mut Initialized,
+    state: &'a mut GeoInit,
     /// The set of currently mutably borrowed attributes
     borrowed: RefCell<HashSet<String>>,
 }
@@ -196,7 +196,7 @@ impl GeometryData<Building> {
     /// Make sure `capacity` is large enough to prevent any attribute data from being truncated.
     /// 
     /// Any attribute data previously added is uploaded to the buffer.
-    pub fn init(self, context: &mut GpuContext, capacity: u64) -> GeometryData<Initialized> {
+    pub fn init(self, context: &mut GpuContext, capacity: u64) -> GeometryData<GeoInit> {
         let id_num = GROUP_COUNTER.fetch_add(1, Ordering::SeqCst);
         let id = Box::new(format!("geometry_data_{id_num}"));
         let buf_id = BufferId(Box::leak(id));
@@ -211,13 +211,13 @@ impl GeometryData<Building> {
             attr.borrow_mut().resize_default(target_len as usize);
         }
         
-        let state = Initialized {
+        let state = GeoInit {
             capacity,
             len: target_len,
             buf_id,
         };
 
-        let initialized = GeometryData::<Initialized>::from_uninit(self, state);
+        let initialized = GeometryData::<GeoInit>::from_uninit(self, state);
         let packed = initialized.to_packed();
 
         let total_bytes = initialized.layout.stride() * capacity;
@@ -234,14 +234,14 @@ impl GeometryData<Building> {
     }
 }
 
-impl GeometryData<Initialized> {
+impl GeometryData<GeoInit> {
     /// Create initialized geometry data from an uninitialized one. 
     /// 
     /// This is automatically called and returned from `GeometryData::<Building>::init()` 
     pub(crate) fn from_uninit(
         uninit: GeometryData<Building>, 
-        state: Initialized,
-    ) -> GeometryData<Initialized> {
+        state: GeoInit,
+    ) -> GeometryData<GeoInit> {
         Self {
             label: uninit.label,
             layout: uninit.layout,
@@ -261,7 +261,7 @@ impl GeometryData<Initialized> {
             layout: VertexBufferLayout::as_instance_step(0),
             attributes: HashMap::new(),
             gpu_attrs: Vec::new(),
-            state: Initialized { capacity: 0, len: 0, buf_id: BufferId("placeholder") }
+            state: GeoInit { capacity: 0, len: 0, buf_id: BufferId("placeholder") }
         }
     }
 

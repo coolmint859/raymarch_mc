@@ -2,7 +2,7 @@ use std::{collections::HashMap, format};
 
 use glam::{Quat, Vec3};
 
-use crate::{graphics::{BindGroup, Buffer, BufferBinding, BufferId, DrawCommand, GpuContext, IndexedDraw, NamedBindGroup, Pipeline, PipelineId, Sampler, SamplerBinding, SamplerId, Serializable, TexDimensions, Texture, TextureBinding, TextureId, TextureTypeSampled}, utils::{Camera, CameraSpace, CharacterGlyph, FontPipeline, GeometryData, Initialized, TextOptions, Transform, TransformAttribute, Vec2Attribute, Vec3Attribute, Vec4Attribute}};
+use crate::{graphics::{BindGroup, Buffer, BufferBinding, BufferId, DrawCommand, GpuContext, IndexedDraw, NamedBindGroup, Pipeline, PipelineId, Sampler, SamplerBinding, SamplerId, Serializable, TexDimensions, Texture, TextureBinding, TextureId, TextureTypeSampled}, utils::{Camera, CameraSpace, CharacterGlyph, FontPipeline, GeoInit, GeometryData, TextOptions, Transform, TransformAttribute, Vec2Attribute, Vec3Attribute, Vec4Attribute}};
 
 /// The maximum number of renderable characters per font
 const CHAR_LIMIT: u64 = 500;
@@ -34,7 +34,7 @@ impl FontId {
 /// Geometry for a quad
 #[derive(Debug)]
 pub struct Quad {
-    pub vertices: GeometryData<Initialized>,
+    pub vertices: GeometryData<GeoInit>,
     pub idx_buf_id: BufferId,
 }
 
@@ -87,7 +87,7 @@ pub(crate) struct FontPrimitive {
     /// the quad that font characters will be rendered on
     pub(crate) quad: Quad,
     /// the individual characters staged to be rendered using this font
-    pub(crate) instances: GeometryData<Initialized>,
+    pub(crate) instances: GeometryData<GeoInit>,
     /// the id of the atlas texture
     pub(crate) atlas_tex_id: TextureId,
     /// the id of the atlas sampler

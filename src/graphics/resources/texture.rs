@@ -1,4 +1,4 @@
-use std::ops::Deref;
+use std::{ops::Deref};
 
 use image::GenericImageView;
 use wgpu::Extent3d;
@@ -26,7 +26,7 @@ pub trait TextureType: Send + 'static {
 }
 
 /// Specifies the dimensions of a texture
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct TexDimensions {
     pub width: u32,
     pub height: u32, 
@@ -143,20 +143,22 @@ impl TextureType for Texture<Procedural> {
 
 impl Texture<OnDisk> {
     /// Create a texture from an image file
-    pub fn on_disk(path: &'static str) -> Self {
+    pub fn on_disk(path: impl Into<String>) -> Self {
         Self {
             label: "disk_loaded_texture".to_string(),
             format: OnDisk::default_fmt(),
             usage: wgpu::TextureUsages::TEXTURE_BINDING,
             mip_levels: 1,
-            ty: OnDisk { path }
+            ty: OnDisk { path: path.into() }
         }
     }
 }
 
 impl TextureType for Texture<OnDisk> {
     fn into_payload(self) -> Result<TexturePayload, String> {
-        image::open(self.ty.path)
+        let path = self.ty.path.clone();
+
+        image::open(path)
             .map(|img| {
                 let dim = TexDimensions {
                     width: img.width(),
@@ -205,6 +207,7 @@ impl TextureType for Texture<Computed> {
 }
 
 /// Description for a procedurally generated texture
+#[derive(Debug)]
 pub struct Procedural { 
     pub data: Vec<u8>,
     pub dim: TexDimensions,
@@ -218,8 +221,9 @@ impl Procedural {
 }
 
 /// Description for a texture loaded from disk
+#[derive(Debug, Clone)]
 pub struct OnDisk {
-    pub path: &'static str
+    pub path: String
 }
 
 impl OnDisk {
@@ -230,6 +234,7 @@ impl OnDisk {
 }
 
 /// Description for a texture generated in a compute shader
+#[derive(Debug, Clone)]
 pub struct Computed {
     pub dim: TexDimensions
 }

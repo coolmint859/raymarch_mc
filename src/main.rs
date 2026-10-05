@@ -9,7 +9,7 @@ pub mod game;
 pub mod utils;
 
 pub mod graphics;
-use crate::{game::{Game, QuadTest, Screen, ScreenTransition, TextTest}, graphics::*};
+use crate::{game::{Game, QuadTest, Screen, ScreenTransition}, graphics::*};
 
 /// Represents events triggered by user input
 pub enum InputEvent {
@@ -92,7 +92,7 @@ impl ApplicationHandler for App {
             let mut graphics_init = GraphicsInit::new().with_backend(wgpu::Backends::DX12);
             let mut graphics = pollster::block_on(graphics_init.init(window)).unwrap();
 
-            let mut game_screen = TextTest::new();
+            let mut game_screen = QuadTest::new();
             game_screen.init(&mut graphics);
 
             self.active_screen = Some(Box::new(game_screen));

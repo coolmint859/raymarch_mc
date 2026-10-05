@@ -51,6 +51,12 @@ impl BindGroup {
 
     /// Add an entry into the bind group
     pub fn with_entry(mut self, entry: impl Bindable) -> Self {
+        self.add_entry(entry);
+        self
+    }
+
+    /// Add an entry into the bind group
+    pub fn add_entry(&mut self, entry: impl Bindable) {
         let slot = self.bindings.len() as u32;
         self.layout_entries.push(wgpu::BindGroupLayoutEntry {
             binding: slot,
@@ -63,13 +69,12 @@ impl BindGroup {
             target: entry.target(),
             slot
         });
-
-        self
     }
 }
 
 
 /// Options for configurating a storage texture binding
+#[derive(Debug, Clone, Copy)]
 pub struct TextureTypeStorage {
     pub access: wgpu::StorageTextureAccess, 
     pub fmt: wgpu::TextureFormat
@@ -85,14 +90,33 @@ impl Default for TextureTypeStorage {
 }
 
 /// options for configuring a sampled texture binding
+#[derive(Debug, Clone, Copy)]
 pub struct TextureTypeSampled {
     pub filterable: bool, 
     pub multisampled: bool,
 }
 
+impl TextureTypeSampled {
+    /// Disallows textures to be filtered when sampled
+    pub fn unfilterable() -> Self {
+        Self { filterable: false, multisampled: false }
+    }
+
+    /// Allows textures to be filtered when sampled
+    pub fn filterable() -> Self {
+        Self { filterable: true, multisampled: false }
+    }
+
+    /// Allows textures to multisampled
+    pub fn with_multisampling(mut self) -> Self {
+        self.multisampled = true;
+        self
+    }
+}
+
 impl Default for TextureTypeSampled {
     fn default() -> Self {
-        Self { filterable: false, multisampled: false }
+        Self::unfilterable()
     }
 }
 

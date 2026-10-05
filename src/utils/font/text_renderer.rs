@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{graphics::{CanvasFrame, DrawCommand, GpuContext, RenderingState, SequentialExecutor}, utils::{Camera, CameraSpace, FontReadResult, FontReaderType, ResourceHandler, Task, Transform, font::font::{Font, FontId, FontPrimitive}}};
+use crate::{graphics::{DrawCommand, GpuContext, RenderingState, SequentialExecutor}, utils::{Camera, CameraSpace, FontReadResult, FontReaderType, ResourceHandler, Task, Transform, font::font::{Font, FontId, FontPrimitive}}};
 
 /// Options for text display
 pub struct TextOptions {
@@ -98,11 +98,8 @@ impl TextRenderer {
     }
 
     /// Records draw commands for any previously staged text to the provided executor.
-    pub fn record(&mut self, frame: &CanvasFrame, executor: &mut impl SequentialExecutor) {
-        let mut draw_cmd = DrawCommand::new(RenderingState {
-            output_view: frame.view.clone(),
-            clear_color: Some(wgpu::Color::BLACK)
-        });
+    pub fn record(&mut self, state: RenderingState, executor: &mut impl SequentialExecutor) {
+        let mut draw_cmd = DrawCommand::new(state);
 
         for font_id in &std::mem::take(&mut self.active_fonts) {
             if let Some(font) = self.ready_fonts.get_mut(font_id) {

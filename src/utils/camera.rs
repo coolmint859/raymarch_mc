@@ -11,6 +11,16 @@ pub struct CameraUniform {
     pub frame: f32,
 }
 
+impl Default for CameraUniform {
+    fn default() -> Self {
+        Self {
+            view_proj_mat: Mat4::IDENTITY.to_cols_array_2d(),
+            cam_position: [0.0; 3],
+            frame: 0.0
+        }
+    }
+}
+
 /// Represents the view and projection of a camera 
 pub trait CameraSpace {
     /// Get the label that best represents this camera space.

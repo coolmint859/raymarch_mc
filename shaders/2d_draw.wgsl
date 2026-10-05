@@ -5,8 +5,9 @@ struct CameraUniform {
 };
 
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
-@group(0) @binding(1) var fire: texture_2d<f32>;
-@group(0) @binding(2) var samp: sampler;
+
+@group(1) @binding(0) var fire: texture_2d<f32>;
+@group(1) @binding(1) var samp: sampler;
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4f,
