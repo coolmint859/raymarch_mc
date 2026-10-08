@@ -85,58 +85,15 @@ impl BindGroupRegistry {
     }
 
     /// Request a new bind group
-    pub fn request_bg<'a>(
-        &mut self,
-        bg_id: &BindGroupId,
-        bgl_id: &LayoutId,
-        bg_def: BindGroup,
-        resources: &'a GpuResources,
-    ) {
-        if self.bg_handles.contains(bg_id) { return; }
+    pub fn request_bg<'a>(&mut self, blueprint: BindGroup, resources: &'a GpuResources) -> BindGroupIdPair {
+        let bg_id = blueprint.create_id();
+        let bgl_id = blueprint.layout.create_id();
         
-        if let Some(deps) = self.resolve_dependencies(bgl_id, &bg_def, resources) {
-            self.deferred.remove(bg_id);
+        self.try_request_bg(blueprint, resources, (&bg_id, &bgl_id));
 
-            if !self.bg_defs.contains_key(bg_id) {
-                self.bg_defs.insert(*bg_id, bg_def.clone());
-            }
-
-            self.check_inc_bgl(bgl_id);
-
-            let gpu = self.gpu.clone();
-            let builder = bg_def.clone();
-            let layout_id_copy = *bgl_id;
-
-            let bind_group_task = Task::io_bound(async move {
-                let mut entries = Vec::new();
-
-                for (_id, buf, slot) in &deps.buffers {
-                    entries.push(wgpu::BindGroupEntry {
-                        binding: *slot,
-                        resource: buf.as_entire_binding()
-                    });
-                }
-                for (_id, tex, slot) in &deps.textures {
-                    entries.push(wgpu::BindGroupEntry {
-                        binding: *slot,
-                        resource: wgpu::BindingResource::TextureView(tex)
-                    });
-                }
-                for (_id, samp, slot) in &deps.samplers {
-                    entries.push(wgpu::BindGroupEntry {
-                        binding: *slot,
-                        resource: wgpu::BindingResource::Sampler(samp)
-                    });
-                }
-
-                gpu.create_bind_group(builder, entries, deps.layout)
-                    .and_then(|bg| Ok(BindGroupHandle { bind_group: bg, layout_id: layout_id_copy}))
-            });
-
-            self.bg_handles.request_new(bg_id, bind_group_task);
-        } else {
-            self.request_layout(bgl_id, &bg_def);
-            self.deferred.insert(*bg_id, (*bgl_id, bg_def.clone()));
+        BindGroupIdPair {
+            id: bg_id,
+            layout_id: bgl_id
         }
     }
 
@@ -148,7 +105,7 @@ impl BindGroupRegistry {
         // println!("pending bind groups: {}", self.deffered.len());
         let pending_bgs = std::mem::take(&mut self.deferred);
         for (bg_id, (bgl_id, bg_def)) in &pending_bgs {
-            self.request_bg(bg_id, &bgl_id, bg_def.clone(), resources);
+            self.try_request_bg(bg_def.clone(), resources, (bg_id, bgl_id));
         }
     }
 
@@ -205,6 +162,61 @@ impl BindGroupRegistry {
             layout.ref_count.set(layout.ref_count.get() + 1);
 
             // println!("Added ref count of bind group layout @{:?}; curr count: {}", bgl_id, layout.ref_count.get());
+        }
+    }
+
+    /// Try requesting a new bind group and layout tied to the provided ids.
+    fn try_request_bg<'a>(
+        &mut self, 
+        blueprint: BindGroup,
+        resources: &'a GpuResources,
+        ids: (&BindGroupId, &LayoutId)
+    ) {
+        let (bg_id, bgl_id) = ids;
+
+        if let Some(deps) = self.resolve_dependencies(&bgl_id, &blueprint, resources) {
+            self.deferred.remove(bg_id);
+
+            if !self.bg_defs.contains_key(&bg_id) {
+                self.bg_defs.insert(*bg_id, blueprint.clone());
+            }
+
+            self.check_inc_bgl(&bgl_id);
+
+            let gpu = self.gpu.clone();
+            let builder = blueprint.clone();
+            let layout_id_copy = bgl_id.clone();
+
+            let bind_group_task = Task::io_bound(async move {
+                let mut entries = Vec::new();
+
+                for (_id, buf, slot) in &deps.buffers {
+                    entries.push(wgpu::BindGroupEntry {
+                        binding: *slot,
+                        resource: buf.as_entire_binding()
+                    });
+                }
+                for (_id, tex, slot) in &deps.textures {
+                    entries.push(wgpu::BindGroupEntry {
+                        binding: *slot,
+                        resource: wgpu::BindingResource::TextureView(tex)
+                    });
+                }
+                for (_id, samp, slot) in &deps.samplers {
+                    entries.push(wgpu::BindGroupEntry {
+                        binding: *slot,
+                        resource: wgpu::BindingResource::Sampler(samp)
+                    });
+                }
+
+                gpu.create_bind_group(builder, entries, deps.layout)
+                    .and_then(|bg| Ok(BindGroupHandle { bind_group: bg, layout_id: layout_id_copy}))
+            });
+
+            self.bg_handles.request_new(&bg_id, bind_group_task);
+        } else {
+            self.request_layout(bgl_id, &blueprint);
+            self.deferred.insert(*bg_id, (*bgl_id, blueprint.clone()));
         }
     }
 

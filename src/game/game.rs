@@ -33,7 +33,7 @@ pub struct Game {
 
     default_cam_pos: Vec3,
     world: VoxelWorld,
-    renderer: Option<VoxelRenderer>
+    renderer: VoxelRenderer
 }
 
 impl Game {
@@ -50,7 +50,7 @@ impl Game {
             mouse: MouseHandler::new(),
             default_cam_pos,
             world: VoxelWorld::new(),
-            renderer: None,
+            renderer: VoxelRenderer::new(),
         }
     }
 
@@ -74,22 +74,14 @@ impl Game {
 impl Screen for Game {
     fn init(&mut self, graphics: &mut Graphics) {
         self.camera.init(graphics);
-
-        let renderer = VoxelRenderer::init(
-            graphics, 
-            &self.world, 
-        *self.camera.buf_id()
-        );
-        self.renderer = Some(renderer);
+        self.renderer.init(graphics, &self.world, *self.camera.buf_id());
 
         self.world.toggle_pause();
         self.init_input();
     }
 
     fn on_resize(&mut self, graphics: &mut Graphics) {
-        if let Some(renderer) = &mut self.renderer {
-            renderer.on_resize(graphics);
-        }
+        self.renderer.on_resize(graphics);
     }
 
     fn input_event(&mut self, event: crate::InputEvent) {
@@ -165,32 +157,26 @@ impl Screen for Game {
         self.world.update(dt, false);
         self.camera.update(graphics, dt);
 
-        if let Some(renderer) = &self.renderer {
-            let env_buffer_id = renderer.resources.world.env;
-
-            let _ = graphics.context.update_buffer(&env_buffer_id, StructuredUpdate { 
-                data: &self.world.env_uniform(),
-                offset: 0
-            });
-        }
+        self.renderer.update_environment(graphics, StructuredUpdate { 
+            data: &self.world.env_uniform(),
+            offset: 0
+        });
     }
 
     fn render(&mut self, graphics: &mut Graphics) -> Result<(), wgpu::SurfaceError> {
         let frame = graphics.canvas.next_frame()?;
 
-        if let Some(renderer) = &mut self.renderer {
-            let mut executor = MultiBufferExecutor::new();
-            renderer.record(
-                &mut executor, 
-                RenderingState { 
-                    output_view: frame.view.clone(), 
-                    clear_color: Some(wgpu::Color::BLACK) 
-                }, 
-                graphics.canvas.dimensions()
-            );
+        let mut executor = MultiBufferExecutor::new();
+        self.renderer.record(
+            &mut executor, 
+            RenderingState { 
+                output_view: frame.view.clone(), 
+                clear_color: Some(wgpu::Color::BLACK) 
+            }, 
+            graphics.canvas.dimensions()
+        );
 
-            executor.record_and_submit(&graphics.context);
-        };
+        executor.record_and_submit(&graphics.context);
 
         frame.present();
 

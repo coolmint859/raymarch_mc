@@ -1,8 +1,9 @@
 use std::{collections::HashMap, format};
 
 use glam::{Quat, Vec3};
+use uuid::Uuid;
 
-use crate::{graphics::{BindGroup, Buffer, BufferBinding, BufferId, DrawCommand, GpuContext, IndexedDraw, NamedBindGroup, Pipeline, PipelineId, Sampler, SamplerBinding, SamplerId, Serializable, TexDimensions, Texture, TextureBinding, TextureId, TextureTypeSampled}, utils::{CharacterGlyph, FontPipeline, GeoInit, GeometryData, TextOptions, Transform, TransformAttribute, Vec2Attribute, Vec3Attribute, Vec4Attribute}};
+use crate::{graphics::{BindGroup, BindGroupIdPair, Buffer, BufferBinding, BufferId, DrawCommand, GpuContext, IndexedDraw, Pipeline, PipelineId, Sampler, SamplerBinding, SamplerId, Serializable, TexDimensions, Texture, TextureBinding, TextureId, TextureTypeSampled}, utils::{CharacterGlyph, GeoInit, GeometryData, TextOptions, Transform, TransformAttribute, Vec2Attribute, Vec3Attribute, Vec4Attribute}};
 
 /// The maximum number of renderable characters per font
 const CHAR_LIMIT: u64 = 500;
@@ -11,24 +12,13 @@ const CHAR_LIMIT: u64 = 500;
 /// 
 /// The reader determines the way the atlas is constructed, so it also provides the best shader to interpret the atlas
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct FontId {
-    pub path: String,
-    pub pip: FontPipeline,
-}
+pub struct FontId(pub Uuid);
 
 impl FontId {
-    /// Create an uninitialized `FontId`. This is useful for architectures with lazy initialization.
-    /// 
-    /// Note that the returned `FontId` doesn't refer to any actual font.
-    pub fn uninit() -> Self {
-        Self {
-            path: "no_path".to_string(),
-            pip: FontPipeline { 
-                id: PipelineId("no id"),
-                shader: "no_shader".to_string()
-            }
-        }
-    }
+    pub const UNINIT: FontId = FontId(Uuid::nil());
+
+    /// Returns a copy of the inner `Uuid`
+    pub fn get(&self) -> Uuid { self.0 }
 }
 
 /// Geometry for a quad
@@ -81,8 +71,6 @@ impl Quad {
 /// Represents the low level gpu resources associated with a specific font
 #[derive(Debug)]
 pub(crate) struct FontPrimitive {
-    /// the id of this specific font (path and pipeline id)
-    pub(crate) id: FontId,
     /// the quad that font characters will be rendered on
     pub(crate) quad: Quad,
     /// the individual characters staged to be rendered using this font
@@ -91,73 +79,67 @@ pub(crate) struct FontPrimitive {
     pub(crate) atlas_tex_id: TextureId,
     /// the id of the atlas sampler
     pub(crate) atlas_samp_id: SamplerId,
-    /// the ids of the bind group / layout
-    pub(crate) bg: NamedBindGroup,
+    /// the ids of the bind group and layout
+    pub(crate) font_bg: BindGroupIdPair,
+    /// the id to the font pipeline
+    pub(crate) font_pip: PipelineId,
 }
 
 impl FontPrimitive {
-    pub fn new(id: FontId) -> Self {
-        let path = id.path.clone();
-        Self {
-            id,
-            quad: Quad::new(),
-            instances: GeometryData::placeholder(),
-            atlas_tex_id: TextureId(Box::leak(Box::new(format!("{}@font_atlas", path)))),
-            atlas_samp_id: SamplerId(Box::leak(Box::new(format!("{}@atlas_sampler", path)))),
-            bg: NamedBindGroup::new(Box::leak(Box::new(format!("{}@bind_group", path)))),
-        }
-    }
-
     /// create the gpu assets that this font uses
     pub fn init(
-        &mut self,
         cam_buf_id: &BufferId,
         atlas: (Vec<u8>, u32),
-        context: &mut GpuContext
-    ) {
+        context: &mut GpuContext,
+        shader_path: &str
+    ) -> Self {
         let (atlas_data, atlas_size) = atlas;
 
-        self.quad.init(context);
+        let mut quad = Quad::new();
+        quad.init(context);
 
-        let start_loc = self.quad.vertices.attr_count();
-        self.instances = GeometryData::as_instance_group(start_loc)
+        let start_loc = quad.vertices.attr_count();
+        let instances = GeometryData::as_instance_group(start_loc)
             .with_label("Font Quad Instances")
             .with_attribute(TransformAttribute("transform"), Vec::<Transform>::new())
             .with_attribute(Vec4Attribute("bounds"), Vec::<glam::Vec4>::new())            
             .init(context, CHAR_LIMIT);
 
         let atlas_dim = TexDimensions::size_2d(atlas_size, atlas_size);
-        context.request_texture(
-            &self.atlas_tex_id,
+        let atlas_tex_id = context.request_texture(
             Texture::procedural(atlas_data, atlas_dim)
-                .with_label(&format!("Font Atlas Texture @{:?}", self.id))
+                .with_label(&format!("Font Atlas Texture shader@{:?}", shader_path))
                 .with_format(wgpu::TextureFormat::R8Unorm)
                 .writable()
         );
 
-        context.request_sampler(
-            &self.atlas_samp_id, 
-            Sampler::linear()
-        );
+        let atlas_samp_id = context.request_sampler(Sampler::linear());
 
-        context.request_bind_group(
-            &self.bg.id, &self.bg.layout_id, 
+        let font_bg = context.request_bind_group(
             BindGroup::new()
-                .with_label(&format!("Font Bind Group @{:?}", self.id))
+                .with_label(&format!("Font Bind Group shader@{:?}", shader_path))
                 .with_entry(BufferBinding::as_uniform(*cam_buf_id))
-                .with_entry(TextureBinding::as_sampled(self.atlas_tex_id, TextureTypeSampled { filterable: true, multisampled: false }))
-                .with_entry(SamplerBinding::new(self.atlas_samp_id).with_binding_type(wgpu::SamplerBindingType::Filtering))
+                .with_entry(TextureBinding::as_sampled(atlas_tex_id, TextureTypeSampled { filterable: true, multisampled: false }))
+                .with_entry(SamplerBinding::new(atlas_samp_id).with_binding_type(wgpu::SamplerBindingType::Filtering))
         );
 
-        context.request_pipeline(
-            &self.id.pip.id,
+        let font_pip = context.request_pipeline(
             Pipeline::as_render()
-                .with_label(&format!("Font Render Pipeline @{:?}", self.id.pip.id))
-                .with_bg_layouts(&[self.bg.layout_id])
-                .with_vertex_layout(self.quad.vertices.layout().clone())
-                .with_vertex_layout(self.instances.layout().clone())
-                .with_shader(&self.id.pip.shader)
+                .with_label(&format!("Font Render Pipeline shader@{:?}", shader_path))
+                .with_bg_layouts(&[font_bg.layout_id])
+                .with_vertex_layout(quad.vertices.layout().clone())
+                .with_vertex_layout(instances.layout().clone())
+                .with_shader(shader_path)
         );
+
+        Self {
+            quad,
+            instances,
+            atlas_tex_id,
+            atlas_samp_id,
+            font_bg,
+            font_pip
+        }
     }
 
     /// Get the vertex/instance buffer ids of this `FontPrimitive`
@@ -236,8 +218,8 @@ impl Font {
 
     /// Issue a draw call of this font to a `DrawCommand`
     pub fn render(&self, draw_cmd: &mut DrawCommand) {
-        let draw_call = IndexedDraw::new(self.primitive.id.pip.id, 0..6)
-            .with_bind_groups(&[self.primitive.bg.id])
+        let draw_call = IndexedDraw::new(self.primitive.font_pip, 0..6)
+            .with_bind_groups(&[self.primitive.font_bg.id])
             .with_vertex_buffers(&self.primitive.geo_buf_ids())
             .with_index_buffer(self.primitive.idx_buf_id(), wgpu::IndexFormat::Uint16)
             .with_instances(0..self.primitive.instances.len() as u32);

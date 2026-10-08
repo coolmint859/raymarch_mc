@@ -1,6 +1,8 @@
-use std::num::NonZero;
+use std::{hash::{DefaultHasher, Hash, Hasher}, num::NonZero};
 
-use crate::graphics::{BufferId, SamplerId, TextureId};
+use uuid::Uuid;
+
+use crate::graphics::{BindGroupId, BufferId, LayoutId, ResourceId, SamplerId, TextureId};
 
 /// The target ID for a bind group entry
 #[derive(Clone, Debug)]
@@ -30,7 +32,7 @@ pub struct GroupEntry {
 #[derive(Clone, Debug)]
 pub struct BindGroup {
     pub label: String,
-    pub layout_entries: Vec<wgpu::BindGroupLayoutEntry>,
+    pub layout: BindGroupLayout,
     pub bindings: Vec<GroupEntry>,
 }
 
@@ -38,7 +40,7 @@ impl BindGroup {
     pub fn new() -> Self {
         Self {
             label: "bind_group".to_string(),
-            layout_entries: Vec::new(),
+            layout: BindGroupLayout::new(),
             bindings: Vec::new(),
         }
     }
@@ -58,12 +60,7 @@ impl BindGroup {
     /// Add an entry into the bind group
     pub fn add_entry(&mut self, entry: impl Bindable) {
         let slot = self.bindings.len() as u32;
-        self.layout_entries.push(wgpu::BindGroupLayoutEntry {
-            binding: slot,
-            visibility: entry.visibility(),
-            ty: entry.as_binding(),
-            count: None,
-        });
+        self.layout.add_entry(&entry);
 
         self.bindings.push(GroupEntry { 
             target: entry.target(),
@@ -72,6 +69,55 @@ impl BindGroup {
     }
 }
 
+impl ResourceId for BindGroup {
+    type Id = BindGroupId;
+
+    fn create_id(&self) -> Self::Id {
+        BindGroupId(Uuid::new_v4())
+    }
+}
+
+/// A blueprint for constucting bind group layouts. Ids are generated for one based on it's contents.
+#[derive(Clone, Debug, Hash)]
+pub struct BindGroupLayout {
+    pub entries: Vec<wgpu::BindGroupLayoutEntry>
+}
+
+impl BindGroupLayout {
+    pub fn new() -> Self {
+        Self { entries: Vec::new() }
+    }
+
+    /// Add an entry into the bind group layout
+    pub fn with_entry(mut self, entry: &impl Bindable) -> Self {
+        self.add_entry(entry);
+        self
+    }
+
+    /// Add an entry into the bind group layout
+    pub fn add_entry(&mut self, entry: &impl Bindable) {
+        let slot = self.entries.len() as u32;
+
+        self.entries.push(wgpu::BindGroupLayoutEntry {
+            binding: slot,
+            visibility: entry.visibility(),
+            ty: entry.as_binding(),
+            count: None,
+        });
+    }
+}
+
+impl ResourceId for BindGroupLayout {
+    type Id = LayoutId;
+
+    fn create_id(&self) -> Self::Id {
+        // Rather than creating a random id, the layout entries are hashed.
+        // This allows structurally identical layouts to have the same id.
+        let mut hasher = DefaultHasher::new();
+        self.hash(&mut hasher);
+        LayoutId(Uuid::from_u128(hasher.finish() as u128))
+    }
+}
 
 /// Options for configurating a storage texture binding
 #[derive(Debug, Clone, Copy)]

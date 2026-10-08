@@ -1,6 +1,6 @@
 use std::{borrow::Cow, println};
 
-use crate::graphics::{BindGroup, BindGroupLayoutHandle, BufferType, ComputeType, Pipeline, PipelineHandle, RenderType, SamplerType, TextureHandle, TextureType};
+use crate::graphics::{BindGroup, BindGroupLayoutHandle, BufferType, Compute, Pipeline, PipelineHandle, Render, SamplerType, TextureHandle, TextureType};
 
 /// Handle to the gpu device and queue
 #[derive(Clone, Debug)]
@@ -98,7 +98,7 @@ impl GpuHandle {
     pub fn create_bg_layout(&self, bg_layout_def: BindGroup ) -> Result<wgpu::BindGroupLayout, String> {
         let layout = self.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor{
             label: Some(&format!("Layout: {}", bg_layout_def.label)),
-            entries: &bg_layout_def.layout_entries
+            entries: &bg_layout_def.layout.entries
         });
 
         println!("[GpuContext] Created new bind group layout with label '{}'", bg_layout_def.label);
@@ -127,7 +127,7 @@ impl GpuHandle {
     /// Create a new render pipeline from the given configuration builder
     pub fn create_render_pipeline(
         &self,
-        pip_def: Pipeline<RenderType>,
+        pip_def: Pipeline<Render>,
         bg_layouts: Vec<wgpu::BindGroupLayout>
     ) -> Result<PipelineHandle, String> {
         let shader_path = pip_def.shader_path
@@ -196,7 +196,7 @@ impl GpuHandle {
 
     pub fn create_compute_pipeline(
         &self, 
-        pip_def: Pipeline<ComputeType>,
+        pip_def: Pipeline<Compute>,
         bg_layouts: Vec<wgpu::BindGroupLayout>
     ) -> Result<PipelineHandle, String> {
         let shader_path = pip_def.shader_path

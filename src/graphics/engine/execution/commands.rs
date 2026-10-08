@@ -42,6 +42,12 @@ impl DrawCommand {
     }
 
     /// Add a Drawable item into the draw command
+    pub fn with_draw(mut self, drawable: impl Drawable + 'static) -> Self {
+        self.add_draw(drawable);
+        self
+    }
+
+    /// Add a Drawable item into the draw command
     pub fn add_draw(&mut self, drawable: impl Drawable + 'static) {
         self.draws.push(Box::new(drawable));
     }

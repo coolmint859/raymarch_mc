@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
+use uuid::Uuid;
+
 use crate::{graphics::{BufferId, DrawCommand, Graphics, RenderingState, SequentialExecutor}, utils::{Camera, FontReadResult, FontReaderType, ResourceHandler, ScreenSpace, Task, Transform, font::font::{Font, FontId, FontPrimitive}}};
 
 /// Options for text display
@@ -36,16 +38,9 @@ impl FontManager {
 
     /// Registers a new font. If the font already exists, it's matching handle is returned.
     pub fn request_font(&mut self, font_path: &str, reader: impl FontReaderType) -> FontId {
-        let font_id = FontId { 
-            path: font_path.to_string(), 
-            pip: reader.font_pip() 
-        };
+        let font_id = FontId(Uuid::new_v4());
 
-        if self.pending_fonts.contains(&font_id) || self.ready_fonts.contains_key(&font_id) { 
-            return font_id; 
-        }
-
-        let path_copy = font_id.path.clone();
+        let path_copy = font_path.to_string().clone();
         let font_parse_task = Task::cpu_bound(async move {
             reader.parse(&path_copy)
         });
@@ -80,11 +75,11 @@ impl FontManager {
 
         for font_id in ids {
             if let Some(raw_font) = self.pending_fonts.remove(&font_id) {
-                let mut font_primitive = FontPrimitive::new(font_id.clone());
-                font_primitive.init(
+                let font_primitive = FontPrimitive::init(
                     &cam_buf_id,
                     (raw_font.atlas_data, raw_font.atlas_size), 
-                    &mut graphics.context
+                    &mut graphics.context,
+                    &raw_font.shader
                 );
 
                 let font = Font {

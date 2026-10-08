@@ -1,6 +1,6 @@
-use std::{collections::HashMap, fs::File, io::Read, sync::atomic::{AtomicU32, Ordering}};
+use std::{collections::HashMap, fs::File, io::Read};
 
-use crate::{graphics::PipelineId, utils::gen_sdf_atlas};
+use crate::utils::gen_sdf_atlas;
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
 pub struct FontReaderId(pub &'static str);
@@ -19,6 +19,8 @@ pub struct CharacterGlyph {
 /// The result of a font reader.
 #[derive(Debug)]
 pub struct FontReadResult {
+    /// the path to the shader used to render fonts
+    pub shader: String,
     /// The raw byte data for the parsed font atlas
     pub atlas_data: Vec<u8>,
     /// the width/height of the font atlas
@@ -41,14 +43,7 @@ pub trait FontReaderType: Send + 'static {
     fn id(&self) -> FontReaderId;
 
     /// Get the pipeline information best used to render the font
-    fn font_pip(&self) -> FontPipeline;
-}
-
-/// Represents the pipeline used to render a font
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct FontPipeline {
-    pub id: PipelineId,
-    pub shader: String,
+    fn font_shader(&self) -> String;
 }
 
 /// Reads in font files and creates a texture atlas and glyph map from them
@@ -60,9 +55,6 @@ pub struct FontReader<P> {
     /// A parser implementation
     parser: P,
 }
-
-
-static PIPELINE_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 /// A font reader type for sdf rendered fonts
 pub struct SDF {
@@ -86,14 +78,8 @@ impl FontReaderType for FontReader<SDF> {
         FontReaderId("sdf_reader")
     }
 
-    fn font_pip(&self) -> FontPipeline {
-        let count = PIPELINE_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let pip_id = Box::leak(Box::new(format!("sdf_font_pipeline_{count}")));
-        
-        FontPipeline {
-            id: PipelineId(pip_id),
-            shader: "./shaders/sdf_font.wgsl".to_string()
-        }
+    fn font_shader(&self) -> String {
+        return "./shaders/sdf_font.wgsl".to_string()
     }
 
     fn parse(&self, path: &str) -> Result<FontReadResult, String> {
@@ -114,6 +100,7 @@ impl FontReaderType for FontReader<SDF> {
         );
 
         let read_result = FontReadResult {
+            shader: self.font_shader(),
             glyphs,
             atlas_data,
             atlas_size: self.atlas_size,

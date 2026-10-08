@@ -1,5 +1,9 @@
 use std::{marker::PhantomData, num::NonZero};
 
+use uuid::Uuid;
+
+use crate::graphics::{ResourceId, SamplerId};
+
 pub struct SamplerPayload {
     pub desc: wgpu::SamplerDescriptor<'static>,
 }
@@ -36,6 +40,14 @@ impl<T> Sampler<T> {
         self.desc.lod_min_clamp = min;
         self.desc.lod_max_clamp = max;
         self
+    }
+}
+
+impl<T> ResourceId for Sampler<T> {
+    type Id = SamplerId;
+
+    fn create_id(&self) -> Self::Id {
+        SamplerId(Uuid::new_v4())
     }
 }
 

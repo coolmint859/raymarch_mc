@@ -1,7 +1,10 @@
 use std::{ops::Deref};
 
 use image::GenericImageView;
+use uuid::Uuid;
 use wgpu::Extent3d;
+
+use crate::graphics::{ResourceId, TextureId};
 
 /// A lightweight handle to a gpu texture
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -112,6 +115,14 @@ impl<T> Texture<T> {
     pub fn storage_bindable(mut self) -> Self {
         self.usage |= wgpu::TextureUsages::STORAGE_BINDING;
         self
+    }
+}
+
+impl<T> ResourceId for Texture<T> {
+    type Id = TextureId;
+
+    fn create_id(&self) -> Self::Id {
+        TextureId(Uuid::new_v4())
     }
 }
 

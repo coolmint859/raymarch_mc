@@ -10,45 +10,81 @@ impl BufferId {
     pub const UNINIT: Self = BufferId(Uuid::nil());
 
     /// Returns a copy of the inner `Uuid`
-    pub fn get(&self) -> Uuid {
-        self.0
-    }
+    pub fn get(&self) -> Uuid { self.0 }
 }
 
 /// unique identifier for a texture
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] 
-pub struct TextureId(pub &'static str);
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct TextureId(pub Uuid);
+
+impl TextureId {
+    /// A uninitialized `BufferId` (points to nothing). 
+    pub const UNINIT: Self = TextureId(Uuid::nil());
+
+    /// Returns a copy of the inner `Uuid`
+    pub fn get(&self) -> Uuid { self.0 }
+}
 
 /// unique identifier for a sampler
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] 
-pub struct SamplerId(pub &'static str);
+pub struct SamplerId(pub Uuid);
 
-/// unique identifier for a pipeline
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] 
-pub struct PipelineId(pub &'static str);
+impl SamplerId {
+    /// A uninitialized `BufferId` (points to nothing). 
+    pub const UNINIT: Self = SamplerId(Uuid::nil());
+
+    /// Returns a copy of the inner `Uuid`
+    pub fn get(&self) -> Uuid { self.0 }
+}
 
 /// unique identifier for a bind group
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] 
-pub struct BindGroupId(pub &'static str);
+pub struct BindGroupId(pub Uuid);
+
+impl BindGroupId {
+    /// A uninitialized `BufferId` (points to nothing). 
+    pub const UNINIT: Self = BindGroupId(Uuid::nil());
+
+    /// Returns a copy of the inner `Uuid`
+    pub fn get(&self) -> Uuid { self.0 }
+}
 
 /// unique identifier for a bind group layout
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] 
-pub struct LayoutId(pub &'static str);
+pub struct LayoutId(pub Uuid);
 
-/// Helper struct encapsulating the id of a bind group and it's associated layout
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct NamedBindGroup {
-    pub layout_id: LayoutId,
-    pub id: BindGroupId
+impl LayoutId {
+    /// A uninitialized `BufferId` (points to nothing). 
+    pub const UNINIT: Self = LayoutId(Uuid::nil());
+    
+    /// Returns a copy of the inner `Uuid`
+    pub fn get(&self) -> Uuid { self.0 }
 }
 
-impl NamedBindGroup {
-    pub fn new(name: &'static str) -> Self {
-        Self {
-            id: BindGroupId(name),
-            layout_id: LayoutId(
-                Box::leak(Box::new(format!("{name}_layout")))
-            )
-        }
-    }
+/// unique identifiers for a bind group and it's layout
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] 
+pub struct BindGroupIdPair {
+    pub id: BindGroupId,
+    pub layout_id: LayoutId,
+}
+
+impl BindGroupIdPair {
+    /// A uninitialized `BufferId` (points to nothing). 
+    pub const UNINIT: Self = BindGroupIdPair {
+        id: BindGroupId::UNINIT,
+        layout_id: LayoutId::UNINIT
+    };
+}
+
+/// unique identifier for a pipeline
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] 
+pub struct PipelineId(pub Uuid);
+
+impl PipelineId {
+    /// A uninitialized `BufferId` (points to nothing). 
+    pub const UNINIT: Self = PipelineId(Uuid::nil());
+    
+    /// Returns a copy of the inner `Uuid`
+    pub fn get(&self) -> Uuid { self.0 }
 }

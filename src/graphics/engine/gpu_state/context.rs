@@ -2,12 +2,12 @@ use std::{collections::HashSet};
 use crate::{graphics::{pip_registry::PipelineRegistry, *}, utils::{ResourceHandler, Task}};
 
 /// Represents structs that can be identified as a gpu resource
-pub trait IntoResourceId {
+pub trait ResourceId {
     /// The type that the struct instance returns as it's id
-    type ResourceId;
+    type Id;
 
     /// Create a new id as the associated type `Self::ResourceId`
-    fn create_id(&self) -> Self::ResourceId;
+    fn create_id(&self) -> Self::Id;
 }
 
 /// The low level gpu resources as used in bind groups.
@@ -60,15 +60,15 @@ impl GpuContext {
     /// Request a buffer to be created from the provided blueprint.
     /// 
     /// Returns an associated `BufferId` that is uniquely associated with the resultant buffer.
-    pub fn request_buffer<B>(&mut self, buffer_bp: B) -> BufferId 
+    pub fn request_buffer<B>(&mut self, blueprint: B) -> BufferId 
     where 
-        B: BufferType + IntoResourceId<ResourceId = BufferId>
+        B: BufferType + ResourceId<Id = BufferId>
     {
-        let id = buffer_bp.create_id();
+        let id = blueprint.create_id();
 
         let gpu = self.gpu.clone();
         let buffer_task = Task::io_bound( async move {
-            gpu.create_buffer(buffer_bp)
+            gpu.create_buffer(blueprint)
         });
         self.resources.buffers.request_new(&id, buffer_task);
 
@@ -76,35 +76,44 @@ impl GpuContext {
     }
 
     /// Request a texture to be created from the provided definition and mapped to the provided id.
-    pub fn request_texture(&mut self, id: &TextureId, texture_def: impl TextureType)  {
-        if self.resources.textures.contains(id) { return; }
+    pub fn request_texture<B>(&mut self, blueprint: B) -> TextureId 
+    where
+        B: TextureType + ResourceId<Id = TextureId>
+    {
+        let id = blueprint.create_id();
 
         let gpu = self.gpu.clone();
         let texture_task = Task::io_bound(async move {
-            gpu.create_texture(texture_def)
+            gpu.create_texture(blueprint)
         });
-        self.resources.textures.request_new(id, texture_task);
+        self.resources.textures.request_new(&id, texture_task);
+
+        id
     }
 
     /// Request a sampler to be created from the provided definition and mapped to the provided id.
-    pub fn request_sampler(&mut self, id: &SamplerId, sampler_def: impl SamplerType) {
-        if self.resources.samplers.contains(id) { return; }
+    pub fn request_sampler<B>(&mut self, blueprint: B) -> SamplerId 
+    where B: SamplerType + ResourceId<Id = SamplerId>
+    {
+        let id = blueprint.create_id();
 
         let gpu = self.gpu.clone();
         let sampler_task = Task::io_bound(async move {
-            gpu.create_sampler(sampler_def)
+            gpu.create_sampler(blueprint)
         });
-        self.resources.samplers.request_new(id, sampler_task);
+        self.resources.samplers.request_new(&id, sampler_task);
+
+        id
     }
 
     /// Request a bind group to be created from the provided definition and mapped to the provided id.
-    pub fn request_bind_group(&mut self, bg_id: &BindGroupId, bgl_id: &LayoutId, bg_def: BindGroup) {
-        self.bg_registry.request_bg(bg_id, bgl_id, bg_def, &self.resources);
+    pub fn request_bind_group(&mut self, blueprint: BindGroup) -> BindGroupIdPair {
+        return self.bg_registry.request_bg(blueprint, &self.resources);
     }
 
     /// Request a pipeline to be created from the provided definition and mapped to the provided id.
-    pub fn request_pipeline(&mut self, id: &PipelineId, pip_def: impl Into<PipelineType>) {
-        self.pip_registry.request(id, pip_def.into(), &self.bg_registry);
+    pub fn request_pipeline(&mut self, blueprint: impl Into<PipelineType>) -> PipelineId {
+        return self.pip_registry.request(blueprint.into(), &self.bg_registry);
     }
 
     /// Sync pending resources with the main thread. This should be called regularly in frame-based applications

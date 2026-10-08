@@ -1,6 +1,8 @@
 use std::marker::PhantomData;
 
-use crate::graphics::{BufferId, IntoResourceId};
+use uuid::Uuid;
+
+use crate::graphics::{BufferId, ResourceId};
 
 /// Represents structs that can be serialized into raw bytes.
 /// 
@@ -140,11 +142,11 @@ impl<T> Buffer<T> {
     }
 }
 
-impl<T> IntoResourceId for Buffer<T> {
-    type ResourceId = BufferId;
+impl<T> ResourceId for Buffer<T> {
+    type Id = BufferId;
 
-    fn create_id(&self) -> Self::ResourceId {
-        BufferId(uuid::Uuid::new_v4())
+    fn create_id(&self) -> Self::Id {
+        BufferId(Uuid::new_v4())
     }
 }
 

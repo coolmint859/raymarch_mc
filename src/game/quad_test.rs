@@ -1,6 +1,6 @@
 use winit::event::MouseButton;
 
-use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{BindGroup, BindGroupId, BufferBinding, BufferId, DrawCommand, GpuContext, IndexedDraw, LayoutId, MultiBufferExecutor, NamedBindGroup, OnDisk, Pipeline, PipelineId, RenderingState, SequentialExecutor, VertexBufferLayout}, utils::{Camera, FontReader, GeoInit, GeometryData, MatInit, Material, MouseHandler, SamplerComponent, ScreenSpace, TextOptions, FontManager, TextureComponent, Transform, TransformAttribute, font::font::{FontId, Quad}}};
+use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{BindGroup, BindGroupId, BindGroupIdPair, BufferBinding, BufferId, DrawCommand, GpuContext, IndexedDraw, LayoutId, MultiBufferExecutor, OnDisk, Pipeline, PipelineId, RenderingState, SequentialExecutor, VertexBufferLayout}, utils::{Camera, FontManager, FontReader, GeoInit, GeometryData, MatInit, Material, MouseHandler, SamplerComponent, ScreenSpace, TextOptions, TextureComponent, Transform, TransformAttribute, font::font::{FontId, Quad}}};
 
 pub struct QuadPrimitive {
     pub quad: Quad,
@@ -57,7 +57,7 @@ pub struct QuadTest {
     mono: FontId,
 
     camera: Camera<ScreenSpace>,
-    cam_bg: NamedBindGroup,
+    cam_bg: BindGroupIdPair,
 
     quad1: QuadPrimitive,
     quad2: QuadPrimitive,
@@ -72,16 +72,16 @@ impl QuadTest {
             executor: MultiBufferExecutor::new(),
 
             text_renderer: FontManager::new(),
-            arial: FontId::uninit(),
-            mono: FontId::uninit(),
+            arial: FontId::UNINIT,
+            mono: FontId::UNINIT,
 
             camera: Camera::new(ScreenSpace),
-            cam_bg: NamedBindGroup::new("camera_bg"),
+            cam_bg: BindGroupIdPair::UNINIT,
 
             quad1: QuadPrimitive::uninit(),
             quad2: QuadPrimitive::uninit(),
 
-            qpip: PipelineId("qpip"),
+            qpip: PipelineId::UNINIT,
         }
     }
 
@@ -152,16 +152,13 @@ impl Screen for QuadTest {
             material: q2_material 
         };
 
-        graphics.context.request_bind_group(
-            &self.cam_bg.id, 
-            &self.cam_bg.layout_id, 
+        self.cam_bg = graphics.context.request_bind_group(
             BindGroup::new()
                 .with_label("Camera Bind Group")
                 .with_entry(BufferBinding::as_uniform(*self.camera.buf_id()))
         );
 
-        graphics.context.request_pipeline(
-            &self.qpip, 
+        self.qpip = graphics.context.request_pipeline(
             Pipeline::as_render()
                 .with_label("Quad Pipeline")
                 .with_bg_layouts(&[self.cam_bg.layout_id, self.quad1.mat_layout_id()])

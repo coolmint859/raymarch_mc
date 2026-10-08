@@ -1,4 +1,8 @@
-use crate::graphics::{LayoutId, VertexBufferLayout};
+use std::hash::{DefaultHasher, Hash, Hasher};
+
+use uuid::Uuid;
+
+use crate::graphics::{LayoutId, PipelineId, ResourceId, VertexBufferLayout};
 
 /// Represents a handle to a render/compute pipeline
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -26,15 +30,15 @@ impl PipelineHandle {
 }
 
 /// Holds configuration state for a render pipeline blueprint
-#[derive(Clone, Debug)]
-pub struct RenderType {
+#[derive(Clone, Debug, Hash)]
+pub struct Render {
     pub vs_main: &'static str, 
     pub fs_main: &'static str, 
     pub format: wgpu::TextureFormat,
     pub vertex_layouts: Vec<VertexBufferLayout>,
 }
 
-impl RenderType {
+impl Render {
     pub fn new(vs_main: &'static str, fs_main: &'static str) -> Self {
         Self {
             vs_main,
@@ -46,12 +50,12 @@ impl RenderType {
 }
 
 /// Holds configurations state for a compute pipeline creation
-#[derive(Clone, Copy, Debug)]
-pub struct ComputeType {
+#[derive(Clone, Copy, Debug, Hash)]
+pub struct Compute {
     pub main: &'static str
 }
 
-impl ComputeType {
+impl Compute {
     pub fn new(main: &'static str) -> Self {
         Self { main }
     }
@@ -60,8 +64,8 @@ impl ComputeType {
 /// The type of gpu pipeline. This is used internally by the context to create the underlying wgpu pipelines
 #[derive(Clone, Debug)]
 pub enum PipelineType {
-    Render(Pipeline<RenderType>),
-    Compute(Pipeline<ComputeType>)
+    Render(Pipeline<Render>),
+    Compute(Pipeline<Compute>)
 }
 
 impl PipelineType {
@@ -78,28 +82,39 @@ impl PipelineType {
     }
 }
 
-impl From<Pipeline<RenderType>> for PipelineType {
-    fn from(pip: Pipeline<RenderType>) -> Self {
+impl From<Pipeline<Render>> for PipelineType {
+    fn from(pip: Pipeline<Render>) -> Self {
         Self::Render(pip)
     }
 }
 
-impl From<Pipeline<ComputeType>> for PipelineType {
-    fn from(pip: Pipeline<ComputeType>) -> Self {
+impl From<Pipeline<Compute>> for PipelineType {
+    fn from(pip: Pipeline<Compute>) -> Self {
         Self::Compute(pip)
     }
 }
 
+impl ResourceId for PipelineType {
+    type Id = PipelineId;
+
+    fn create_id(&self) -> Self::Id {
+        return match self {
+            PipelineType::Compute(pip) => pip.create_id(),
+            PipelineType::Render(pip) => pip.create_id(),
+        }
+    }
+}
+
 /// A blueprint for constructing render and compute pipelines
-#[derive(Clone, Debug)]
-pub struct Pipeline<T> {
+#[derive(Clone, Debug, Hash)]
+pub struct Pipeline<T: Hash> {
     pub label: String,
     pub bg_layouts: Vec<LayoutId>,
     pub shader_path: Option<String>,
     pub ty: T,
 }
 
-impl<T> Pipeline<T> {
+impl<T: Hash> Pipeline<T> {
     /// Set the label for gpu profiling of the resultant render pipeline
     pub fn with_label(mut self, label: &str) -> Self {
         self.label = label.to_string();
@@ -119,14 +134,24 @@ impl<T> Pipeline<T> {
     }
 }
 
-impl Pipeline<RenderType> {
+impl<T: Hash> ResourceId for Pipeline<T> {
+    type Id = PipelineId;
+
+    fn create_id(&self) -> Self::Id {
+        let mut hasher = DefaultHasher::new();
+        self.hash(&mut hasher);
+        return PipelineId(Uuid::from_u128(hasher.finish() as u128));
+    }
+}
+
+impl Pipeline<Render> {
     /// Create a new render pipeline.
     pub fn as_render() -> Self {
         Self {
             label: "render_pipeline".to_string(),
             bg_layouts: Vec::new(),
             shader_path: None,
-            ty: RenderType::new("vs_main", "fs_main")
+            ty: Render::new("vs_main", "fs_main")
         }
     }
 
@@ -150,14 +175,14 @@ impl Pipeline<RenderType> {
     }
 }
 
-impl Pipeline<ComputeType> {
+impl Pipeline<Compute> {
     /// Create a new compute pipeline
     pub fn as_compute() -> Self {
         Self {
             label: "compute_pipeline".to_string(),
             bg_layouts: Vec::new(),
             shader_path: None,
-            ty: ComputeType::new("cs_main")
+            ty: Compute::new("cs_main")
         }
     }
 

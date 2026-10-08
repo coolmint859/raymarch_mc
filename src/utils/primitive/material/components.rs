@@ -1,9 +1,6 @@
-use std::{any::Any, marker::PhantomData, num::NonZero, sync::atomic::{AtomicU32, Ordering}};
+use std::{any::Any, marker::PhantomData, num::NonZero};
 
 use crate::graphics::{Anisotropic, Bindable, BindingTarget, Bordered, Buffer, BufferBinding, BufferId, Comparison, Computed, GpuContext, Linear, Nearest, OnDisk, Procedural, Sampler, SamplerBinding, SamplerId, Serializable, StructuredUpdate, Texture, TextureBinding, TextureId, TextureTypeSampled};
-
-static TEXTURE_COUNTER: AtomicU32 = AtomicU32::new(0);
-static SAMPLER_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 /// A high level wrapper over Bindings in a `BindGroup`, for use by a `MaterialComponent`
 pub enum MaterialBinding {
@@ -138,11 +135,8 @@ pub struct TextureComponent<T> {
 
 impl TextureComponent<OnDisk> {
     pub fn on_disk(ty: OnDisk) -> Self {
-        let id_num = TEXTURE_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let id = Box::new(format!("texture_{}", id_num));
-
         Self {
-            tex_id: TextureId(Box::leak(id)),
+            tex_id: TextureId::UNINIT,
             label: "texture_comp".to_string(),
             sample_state: TextureTypeSampled::default(),
             format: OnDisk::default_fmt(),
@@ -174,8 +168,7 @@ impl MaterialComponent for TextureComponent<OnDisk> {
     fn as_any_mut(&mut self) -> &mut dyn Any { self }
 
     fn init(&mut self, context: &mut GpuContext) {
-        context.request_texture(
-            &self.tex_id, 
+        self.tex_id =context.request_texture(
             Texture::on_disk(self.ty.path.clone())
                 .with_label(&self.label)
                 .with_format(self.format)
@@ -193,11 +186,8 @@ impl MaterialComponent for TextureComponent<OnDisk> {
 
 impl TextureComponent<Procedural> {
     pub fn procedural(ty: Procedural) -> Self {
-        let id_num = TEXTURE_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let id = Box::new(format!("texture_{}", id_num));
-
         Self {
-            tex_id: TextureId(Box::leak(id)),
+            tex_id: TextureId::UNINIT,
             label: "texture_comp".to_string(),
             sample_state: TextureTypeSampled::default(),
             format: Procedural::default_fmt(),
@@ -231,8 +221,7 @@ impl MaterialComponent for TextureComponent<Procedural> {
     fn init(&mut self, context: &mut GpuContext) {
         // NOTE: texture data will eventually not be cloned on upload, but instead be copy-on-write
         // This requires a significant refactor the context, so I'm not worrying about it for now
-        context.request_texture(
-            &self.tex_id, 
+        self.tex_id = context.request_texture(
             Texture::procedural(self.ty.data.clone(), self.ty.dim)
                 .with_label(&self.label)
                 .with_format(self.format)
@@ -250,11 +239,8 @@ impl MaterialComponent for TextureComponent<Procedural> {
 
 impl TextureComponent<Computed> {
     pub fn procedural(ty: Computed) -> Self {
-        let id_num = TEXTURE_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let id = Box::new(format!("texture_{}", id_num));
-
         Self {
-            tex_id: TextureId(Box::leak(id)),
+            tex_id: TextureId::UNINIT,
             label: "texture_comp".to_string(),
             sample_state: TextureTypeSampled::default(),
             format: Computed::default_fmt(),
@@ -288,8 +274,7 @@ impl MaterialComponent for TextureComponent<Computed> {
     fn init(&mut self, context: &mut GpuContext) {
         // NOTE: texture data will eventually not be cloned on upload, but instead be copy-on-write
         // This requires a significant refactor the context, so I'm not worrying about it for now
-        context.request_texture(
-            &self.tex_id, 
+        self.tex_id =context.request_texture(
             Texture::computed(self.ty.dim)
                 .with_label(&self.label)
                 .with_format(self.format)
@@ -314,11 +299,8 @@ pub struct SamplerComponent<T> {
 
 impl SamplerComponent<Linear> {
     pub fn linear() -> Self {
-        let id_num = SAMPLER_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let id = Box::new(format!("sampler_{}", id_num));
-
         Self {
-            samp_id: SamplerId(Box::leak(id)),
+            samp_id: SamplerId::UNINIT,
             anisotrophic_level: NonZero::new(1).unwrap(),
             compare_fn: None,
             _ty: std::marker::PhantomData
@@ -331,7 +313,7 @@ impl MaterialComponent for SamplerComponent<Linear> {
     fn as_any_mut(&mut self) -> &mut dyn Any { self }
 
     fn init(&mut self, context: &mut GpuContext) {
-        context.request_sampler(&self.samp_id, Sampler::linear());
+        self.samp_id = context.request_sampler(Sampler::linear());
     }
 
     fn binding(&self) -> MaterialBinding {
@@ -344,11 +326,8 @@ impl MaterialComponent for SamplerComponent<Linear> {
 
 impl SamplerComponent<Nearest> {
     pub fn nearest() -> Self {
-        let id_num = SAMPLER_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let id = Box::new(format!("sampler_{}", id_num));
-
         Self {
-            samp_id: SamplerId(Box::leak(id)),
+            samp_id: SamplerId::UNINIT,
             anisotrophic_level: NonZero::new(1).unwrap(),
             compare_fn: None,
             _ty: std::marker::PhantomData
@@ -361,7 +340,7 @@ impl MaterialComponent for SamplerComponent<Nearest> {
     fn as_any_mut(&mut self) -> &mut dyn Any { self }
 
     fn init(&mut self, context: &mut GpuContext) {
-        context.request_sampler(&self.samp_id, Sampler::nearest());
+        self.samp_id = context.request_sampler(Sampler::nearest());
     }
 
     fn binding(&self) -> MaterialBinding {
@@ -374,11 +353,8 @@ impl MaterialComponent for SamplerComponent<Nearest> {
 
 impl SamplerComponent<Anisotropic> {
     pub fn anisotropic(level: NonZero<u16>) -> Self {
-        let id_num = SAMPLER_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let id = Box::new(format!("sampler_{}", id_num));
-
         Self {
-            samp_id: SamplerId(Box::leak(id)),
+            samp_id: SamplerId::UNINIT,
             anisotrophic_level: level,
             compare_fn: None,
             _ty: std::marker::PhantomData
@@ -391,8 +367,7 @@ impl MaterialComponent for SamplerComponent<Anisotropic> {
     fn as_any_mut(&mut self) -> &mut dyn Any { self }
 
     fn init(&mut self, context: &mut GpuContext) {
-        context.request_sampler(
-            &self.samp_id, 
+        self.samp_id = context.request_sampler(
             Sampler::anisotropic(self.anisotrophic_level)
         );
     }
@@ -407,11 +382,8 @@ impl MaterialComponent for SamplerComponent<Anisotropic> {
 
 impl SamplerComponent<Bordered> {
     pub fn bordered() -> Self {
-        let id_num = SAMPLER_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let id = Box::new(format!("sampler_{}", id_num));
-
         Self {
-            samp_id: SamplerId(Box::leak(id)),
+            samp_id: SamplerId::UNINIT,
             anisotrophic_level: NonZero::new(1).unwrap(),
             compare_fn: None,
             _ty: std::marker::PhantomData
@@ -424,7 +396,7 @@ impl MaterialComponent for SamplerComponent<Bordered> {
     fn as_any_mut(&mut self) -> &mut dyn Any { self }
 
     fn init(&mut self, context: &mut GpuContext) {
-        context.request_sampler(&self.samp_id, Sampler::bordered());
+        self.samp_id = context.request_sampler(Sampler::bordered());
     }
 
     fn binding(&self) -> MaterialBinding {
@@ -437,11 +409,8 @@ impl MaterialComponent for SamplerComponent<Bordered> {
 
 impl SamplerComponent<Comparison> {
     pub fn comparison() -> Self {
-        let id_num = SAMPLER_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let id = Box::new(format!("sampler_{}", id_num));
-
         Self {
-            samp_id: SamplerId(Box::leak(id)),
+            samp_id: SamplerId::UNINIT,
             anisotrophic_level: NonZero::new(1).unwrap(),
             compare_fn: Some(wgpu::CompareFunction::Greater),
             _ty: std::marker::PhantomData
@@ -454,7 +423,7 @@ impl MaterialComponent for SamplerComponent<Comparison> {
     fn as_any_mut(&mut self) -> &mut dyn Any { self }
 
     fn init(&mut self, context: &mut GpuContext) {
-        context.request_sampler(&self.samp_id, Sampler::comparison(self.compare_fn.unwrap()));
+        self.samp_id = context.request_sampler(Sampler::comparison(self.compare_fn.unwrap()));
     }
 
     fn binding(&self) -> MaterialBinding {

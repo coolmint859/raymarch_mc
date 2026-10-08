@@ -27,45 +27,12 @@ impl PipelineRegistry {
     }
 
     /// request a new pipeline
-    pub fn request<'a>(
-        &mut self,
-        id: &PipelineId,
-        pip_def: PipelineType,
-        bgs: &'a BindGroupRegistry,
-    ) {
-        if self.handles.contains(id) { return; }
+    pub fn request<'a>(&mut self, blueprint: PipelineType, bgs: &'a BindGroupRegistry) -> PipelineId {
+        let id = blueprint.create_id();
 
-        if let Some(deps) = self.resolve_dependencies(&pip_def, bgs) {
-            self.deferred.remove(id);
+        self.try_request(&id, blueprint, bgs);
 
-            if !self.pip_defs.contains_key(id) {
-                self.pip_defs.insert(*id, pip_def.clone());
-            }
-
-            for layout_id in pip_def.bg_layouts().iter() {
-                bgs.check_inc_bgl(layout_id);
-            }
-
-            let gpu = self.gpu.clone();
-            match pip_def {
-                PipelineType::Render(pip_def) => {
-                    let r_pip_task = Task::io_bound(async move {
-                        gpu.create_render_pipeline(pip_def, deps.bg_layouts)
-                    });
-
-                    self.handles.request_new(id, r_pip_task);
-                },
-                PipelineType::Compute(pip_def) => {
-                    let c_pip_task = Task::io_bound(async move {
-                        gpu.create_compute_pipeline(pip_def, deps.bg_layouts)
-                    });
-
-                    self.handles.request_new(id, c_pip_task);
-                }
-            };
-        } else {
-            self.deferred.insert(*id, pip_def);
-        }
+        id
     }
 
     /// sync the registry and process defferred groups
@@ -74,7 +41,7 @@ impl PipelineRegistry {
 
         let pending_bgs = std::mem::take(&mut self.deferred);
         for (id, pip_def) in &pending_bgs {
-            self.request(id, pip_def.clone(), bgs);
+            self.try_request(id, pip_def.clone(), bgs);
         }
     }
 
@@ -107,6 +74,46 @@ impl PipelineRegistry {
     /// Invalidate a pipeline. This prevents it from being used in subsequent gpu commands
     pub fn invalidate(&self, pip_id: &PipelineId) {
         self.valid_pips.borrow_mut().remove(pip_id);
+    }
+
+    // Try requesting a new pipeline tied to the provided id.
+    fn try_request<'a>(
+        &mut self,
+        pip_id: &PipelineId,
+        blueprint: PipelineType, 
+        bgs: &'a BindGroupRegistry
+    ) {
+        if let Some(deps) = self.resolve_dependencies(&blueprint, bgs) {
+            self.deferred.remove(pip_id);
+
+            if !self.pip_defs.contains_key(pip_id) {
+                self.pip_defs.insert(*pip_id, blueprint.clone());
+            }
+
+            for layout_id in blueprint.bg_layouts().iter() {
+                bgs.check_inc_bgl(layout_id);
+            }
+
+            let gpu = self.gpu.clone();
+            match blueprint {
+                PipelineType::Render(pip_def) => {
+                    let r_pip_task = Task::io_bound(async move {
+                        gpu.create_render_pipeline(pip_def, deps.bg_layouts)
+                    });
+
+                    self.handles.request_new(pip_id, r_pip_task);
+                },
+                PipelineType::Compute(pip_def) => {
+                    let c_pip_task = Task::io_bound(async move {
+                        gpu.create_compute_pipeline(pip_def, deps.bg_layouts)
+                    });
+
+                    self.handles.request_new(pip_id, c_pip_task);
+                }
+            };
+        } else {
+            self.deferred.insert(*pip_id, blueprint);
+        }
     }
 
     fn resolve_dependencies<'a>(

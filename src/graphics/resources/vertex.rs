@@ -1,6 +1,6 @@
 /// Blueprint for constructing vertex buffer layouts. Does automatic offset and
 /// and location calculations.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct VertexBufferLayout {
     attributes: Vec<wgpu::VertexAttribute>,
     step_mode: wgpu::VertexStepMode,
