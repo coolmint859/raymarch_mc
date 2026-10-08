@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{graphics::{DrawCommand, GpuContext, RenderingState, SequentialExecutor}, utils::{Camera, CameraSpace, FontReadResult, FontReaderType, ResourceHandler, Task, Transform, font::font::{Font, FontId, FontPrimitive}}};
+use crate::{graphics::{BufferId, DrawCommand, Graphics, RenderingState, SequentialExecutor}, utils::{Camera, FontReadResult, FontReaderType, ResourceHandler, ScreenSpace, Task, Transform, font::font::{Font, FontId, FontPrimitive}}};
 
 /// Options for text display
 pub struct TextOptions {
@@ -13,21 +13,24 @@ pub struct TextOptions {
 /// Creates `Font` resources, and allows text to be staged for rendering using known `Font`s. 
 /// 
 /// Font resources are loaded asynchronously using an internal `ResourceHandler`
-pub struct TextRenderer {
+pub struct FontManager {
     /// The set of fonts currently parsing
     pending_fonts: ResourceHandler<FontId, FontReadResult>,
     /// The set of fonts ready to be used
     ready_fonts: HashMap<FontId, Font>,
     /// The set of active fonts (fonts with staged text)
     active_fonts: HashSet<FontId>,
+    /// The id to the camera the `TextRenderer` renders with
+    cam_buf_id: Option<BufferId>
 }
 
-impl TextRenderer {
+impl FontManager {
     pub fn new() -> Self {
         Self {
             pending_fonts: ResourceHandler::new(),
             ready_fonts: HashMap::new(),
             active_fonts: HashSet::new(),
+            cam_buf_id: None
         }
     }
 
@@ -61,9 +64,14 @@ impl TextRenderer {
         }
     }
 
-    /// sync the font resources with the main thread.
-    pub fn sync<S: CameraSpace>(&mut self, camera: &Camera<S>, context: &mut GpuContext) {
+    /// update the `FontManager`, syncing `Font` resources with the main thread.
+    pub fn update(&mut self, graphics: &mut Graphics) {
         self.pending_fonts.sync();
+
+        let cam_buf_id = match self.cam_buf_id {
+            Some(id) => id,
+            None => self.init_camera(graphics),
+        };
 
         let ids: Vec<FontId> = self.pending_fonts.keys()
             .into_iter()
@@ -74,9 +82,9 @@ impl TextRenderer {
             if let Some(raw_font) = self.pending_fonts.remove(&font_id) {
                 let mut font_primitive = FontPrimitive::new(font_id.clone());
                 font_primitive.init(
-                    camera,
+                    &cam_buf_id,
                     (raw_font.atlas_data, raw_font.atlas_size), 
-                    context
+                    &mut graphics.context
                 );
 
                 let font = Font {
@@ -92,7 +100,7 @@ impl TextRenderer {
 
         for font_id in &self.active_fonts {
             if let Some(font) = self.ready_fonts.get_mut(font_id) {
-                font.update(context);
+                font.update(&mut graphics.context);
             }
         }
     }
@@ -110,5 +118,13 @@ impl TextRenderer {
         if draw_cmd.has_draws() {
             executor.add_command(draw_cmd);
         }
+    }
+
+    fn init_camera(&mut self, graphics: &mut Graphics) -> BufferId {
+        let mut camera = Camera::new(ScreenSpace);
+        camera.init(graphics);
+        
+        self.cam_buf_id = Some(*camera.buf_id());
+        return *camera.buf_id()
     }
 }

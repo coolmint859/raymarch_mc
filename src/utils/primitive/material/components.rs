@@ -2,7 +2,6 @@ use std::{any::Any, marker::PhantomData, num::NonZero, sync::atomic::{AtomicU32,
 
 use crate::graphics::{Anisotropic, Bindable, BindingTarget, Bordered, Buffer, BufferBinding, BufferId, Comparison, Computed, GpuContext, Linear, Nearest, OnDisk, Procedural, Sampler, SamplerBinding, SamplerId, Serializable, StructuredUpdate, Texture, TextureBinding, TextureId, TextureTypeSampled};
 
-static BUFFER_COUNTER: AtomicU32 = AtomicU32::new(0);
 static TEXTURE_COUNTER: AtomicU32 = AtomicU32::new(0);
 static SAMPLER_COUNTER: AtomicU32 = AtomicU32::new(0);
 
@@ -75,11 +74,8 @@ pub struct UniformComponent<T: Serializable> {
 
 impl<T: Serializable> UniformComponent<T> {
     pub fn new(uniform: T) -> Self {
-        let id_num = BUFFER_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let id = Box::new(format!("uniform_buffer_{}", id_num));
-        
         Self {
-            buf_id: BufferId(Box::leak(id)),
+            buf_id: BufferId::UNINIT,
             label: "uniform_buffer".to_string(),
             data: uniform,
             is_dirty: true,
@@ -105,8 +101,7 @@ impl<T: Serializable + 'static> MaterialComponent for UniformComponent<T> {
     fn as_any_mut(&mut self) -> &mut dyn Any { self }
 
     fn init(&mut self, context: &mut GpuContext) {
-        context.request_buffer(
-            &self.buf_id, 
+        self.buf_id = context.request_buffer(
             Buffer::as_uniform()
                 .with_label(&self.label)
                 .with_byte_data(self.data.to_bytes())

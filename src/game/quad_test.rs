@@ -1,6 +1,6 @@
 use winit::event::MouseButton;
 
-use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{BindGroup, BindGroupId, BufferBinding, BufferId, DrawCommand, GpuContext, IndexedDraw, LayoutId, MultiBufferExecutor, NamedBindGroup, OnDisk, Pipeline, PipelineId, RenderingState, SequentialExecutor, VertexBufferLayout}, utils::{Camera, FontReader, GeoInit, GeometryData, MatInit, Material, MouseHandler, SamplerComponent, ScreenSpace, TextOptions, TextRenderer, TextureComponent, Transform, TransformAttribute, font::font::{FontId, Quad}}};
+use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{BindGroup, BindGroupId, BufferBinding, BufferId, DrawCommand, GpuContext, IndexedDraw, LayoutId, MultiBufferExecutor, NamedBindGroup, OnDisk, Pipeline, PipelineId, RenderingState, SequentialExecutor, VertexBufferLayout}, utils::{Camera, FontReader, GeoInit, GeometryData, MatInit, Material, MouseHandler, SamplerComponent, ScreenSpace, TextOptions, FontManager, TextureComponent, Transform, TransformAttribute, font::font::{FontId, Quad}}};
 
 pub struct QuadPrimitive {
     pub quad: Quad,
@@ -52,7 +52,7 @@ pub struct QuadTest {
     mouse: MouseHandler<PlayerMouseAction>,
     executor: MultiBufferExecutor,
 
-    text_renderer: TextRenderer,
+    text_renderer: FontManager,
     arial: FontId,
     mono: FontId,
 
@@ -71,7 +71,7 @@ impl QuadTest {
             mouse: MouseHandler::new(),
             executor: MultiBufferExecutor::new(),
 
-            text_renderer: TextRenderer::new(),
+            text_renderer: FontManager::new(),
             arial: FontId::uninit(),
             mono: FontId::uninit(),
 
@@ -94,6 +94,7 @@ impl QuadTest {
 impl Screen for QuadTest {
     fn init(&mut self, graphics: &mut Graphics) {
         self.init_input();
+        self.camera.init(graphics);
 
         let mut q1_geometry = Quad::new();
         q1_geometry.init(&mut graphics.context);
@@ -110,6 +111,7 @@ impl Screen for QuadTest {
             .init(&mut graphics.context, 4);
 
         let q1_material = Material::new()
+            .with_label("Quad1 Material")
             .with_component("blue_devils", TextureComponent::on_disk(
                 OnDisk { path: "./assets/BlueDevilsLogo.png".to_string() }
             ))
@@ -137,6 +139,7 @@ impl Screen for QuadTest {
             .init(&mut graphics.context, 4);
 
         let q2_material = Material::new()
+            .with_label("Quad2 Material")
             .with_component("vanguard", TextureComponent::on_disk(
                 OnDisk { path: "./assets/vanguard.jpg".to_string() }
             ))
@@ -176,8 +179,6 @@ impl Screen for QuadTest {
             "./assets/Monopack.ttf", 
             FontReader::as_sdf(16.0)
         );
-
-        self.camera.init(graphics);
     }
 
     fn input_event(&mut self, event: InputEvent) {
@@ -242,7 +243,7 @@ impl Screen for QuadTest {
 
         self.quad1.update(&mut graphics.context);
         self.quad2.update(&mut graphics.context);
-        self.text_renderer.sync(&self.camera, &mut graphics.context);
+        self.text_renderer.update(graphics);
     }
 
     fn render(&mut self, graphics: &mut Graphics) -> Result<(), wgpu::SurfaceError> {

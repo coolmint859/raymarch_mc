@@ -1,5 +1,7 @@
 use std::marker::PhantomData;
 
+use crate::graphics::{BufferId, IntoResourceId};
+
 /// Represents structs that can be serialized into raw bytes.
 /// 
 /// All structs that implement bytemuck::Pod and bytemuck::Zeroable 
@@ -135,6 +137,14 @@ impl<T> Buffer<T> {
     pub fn read_write(mut self) -> Self {
         self.usage |= wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC;
         self
+    }
+}
+
+impl<T> IntoResourceId for Buffer<T> {
+    type ResourceId = BufferId;
+
+    fn create_id(&self) -> Self::ResourceId {
+        BufferId(uuid::Uuid::new_v4())
     }
 }
 

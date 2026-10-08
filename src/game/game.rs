@@ -2,7 +2,7 @@ use glam::{Quat, Vec3};
 use winit::{event::MouseButton, keyboard::KeyCode};
 
 use crate::{
-    Graphics, InputEvent, game::{BlitPass, CoarsePass, GlobalResources, RayMarchFinePass, RayMarchResources, Screen, ScreenTransition, TaaPass, VoxelWorld}, graphics::*, utils::{Camera, Controllable, EntityController, KeyboardHandler, MouseHandler, RelativePerspective},
+    Graphics, InputEvent, game::{Screen, ScreenTransition, VoxelRenderer, VoxelWorld}, graphics::*, utils::{Camera, Controllable, EntityController, KeyboardHandler, MouseHandler, RelativePerspective},
 };
 
 #[derive(Clone, Copy)]
@@ -33,13 +33,7 @@ pub struct Game {
 
     default_cam_pos: Vec3,
     world: VoxelWorld,
-    globals: GlobalResources,
-    rm_rscs: RayMarchResources,
-
-    rm_coarse_pass: CoarsePass,
-    rm_fine_pass: RayMarchFinePass,
-    taa_pass: TaaPass,
-    blit_pass: BlitPass,
+    renderer: Option<VoxelRenderer>
 }
 
 impl Game {
@@ -49,9 +43,6 @@ impl Game {
         let mut camera = Camera::new(RelativePerspective::default());
         camera.transform_mut().move_to(default_cam_pos);
 
-        let globals = GlobalResources::new(*camera.buf_id());
-        let rm_rscs = RayMarchResources::new();
-
         Self {
             camera,
             controller: EntityController::new(10.0, 0.003),
@@ -59,12 +50,7 @@ impl Game {
             mouse: MouseHandler::new(),
             default_cam_pos,
             world: VoxelWorld::new(),
-            rm_coarse_pass: CoarsePass::new(globals.ids.clone(), rm_rscs.ids.clone()),
-            rm_fine_pass: RayMarchFinePass::new(globals.ids.clone(), rm_rscs.ids.clone()),
-            taa_pass: TaaPass::new(globals.ids.clone()),
-            blit_pass: BlitPass::new(globals.ids.clone()),
-            globals,
-            rm_rscs,
+            renderer: None,
         }
     }
 
@@ -89,25 +75,21 @@ impl Screen for Game {
     fn init(&mut self, graphics: &mut Graphics) {
         self.camera.init(graphics);
 
-        self.globals.init(graphics);
-        self.rm_rscs.init(graphics, &self.world);
-
-        self.rm_coarse_pass.init(graphics);
-        self.rm_fine_pass.init(graphics, &self.world);
-        self.taa_pass.init(graphics);
-        self.blit_pass.init(graphics);
+        let renderer = VoxelRenderer::init(
+            graphics, 
+            &self.world, 
+        *self.camera.buf_id()
+        );
+        self.renderer = Some(renderer);
 
         self.world.toggle_pause();
         self.init_input();
     }
 
     fn on_resize(&mut self, graphics: &mut Graphics) {
-        self.globals.on_resize(graphics);
-        self.rm_rscs.on_resize(graphics);
-
-        self.rm_fine_pass.on_resize(graphics);
-        self.taa_pass.on_resize(graphics);
-        self.blit_pass.on_resize(graphics);
+        if let Some(renderer) = &mut self.renderer {
+            renderer.on_resize(graphics);
+        }
     }
 
     fn input_event(&mut self, event: crate::InputEvent) {
@@ -183,29 +165,32 @@ impl Screen for Game {
         self.world.update(dt, false);
         self.camera.update(graphics, dt);
 
-        let _ = graphics.context.update_buffer(&self.globals.ids.env_id, StructuredUpdate { 
-            data: &self.world.env_uniform(),
-            offset: 0
-        });
+        if let Some(renderer) = &self.renderer {
+            let env_buffer_id = renderer.resources.world.env;
+
+            let _ = graphics.context.update_buffer(&env_buffer_id, StructuredUpdate { 
+                data: &self.world.env_uniform(),
+                offset: 0
+            });
+        }
     }
 
     fn render(&mut self, graphics: &mut Graphics) -> Result<(), wgpu::SurfaceError> {
-        let (cw, ch) = graphics.canvas.dimensions();
-
-        let fwx = (cw + 15) / 16;
-        let fwy = (ch + 15) / 16;
-
-        let hwx = ((cw/2) + 15) / 16;
-        let hwy = ((ch/2) + 15) / 16;
-
         let frame = graphics.canvas.next_frame()?;
 
-        let mut executor = MultiBufferExecutor::new();
-        executor.add_command(self.rm_coarse_pass.get(hwx, hwy));
-        executor.add_command(self.rm_fine_pass.get(fwx,fwy));
-        executor.add_command(self.taa_pass.get(fwx, fwy));
-        executor.add_command(self.blit_pass.get(frame.view.clone()));
-        executor.record_and_submit(&graphics.context);
+        if let Some(renderer) = &mut self.renderer {
+            let mut executor = MultiBufferExecutor::new();
+            renderer.record(
+                &mut executor, 
+                RenderingState { 
+                    output_view: frame.view.clone(), 
+                    clear_color: Some(wgpu::Color::BLACK) 
+                }, 
+                graphics.canvas.dimensions()
+            );
+
+            executor.record_and_submit(&graphics.context);
+        };
 
         frame.present();
 

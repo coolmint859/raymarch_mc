@@ -2,7 +2,7 @@ use std::{collections::HashMap, format};
 
 use glam::{Quat, Vec3};
 
-use crate::{graphics::{BindGroup, Buffer, BufferBinding, BufferId, DrawCommand, GpuContext, IndexedDraw, NamedBindGroup, Pipeline, PipelineId, Sampler, SamplerBinding, SamplerId, Serializable, TexDimensions, Texture, TextureBinding, TextureId, TextureTypeSampled}, utils::{Camera, CameraSpace, CharacterGlyph, FontPipeline, GeoInit, GeometryData, TextOptions, Transform, TransformAttribute, Vec2Attribute, Vec3Attribute, Vec4Attribute}};
+use crate::{graphics::{BindGroup, Buffer, BufferBinding, BufferId, DrawCommand, GpuContext, IndexedDraw, NamedBindGroup, Pipeline, PipelineId, Sampler, SamplerBinding, SamplerId, Serializable, TexDimensions, Texture, TextureBinding, TextureId, TextureTypeSampled}, utils::{CharacterGlyph, FontPipeline, GeoInit, GeometryData, TextOptions, Transform, TransformAttribute, Vec2Attribute, Vec3Attribute, Vec4Attribute}};
 
 /// The maximum number of renderable characters per font
 const CHAR_LIMIT: u64 = 500;
@@ -42,7 +42,7 @@ impl Quad {
     pub fn new() -> Self {
         Self {
             vertices: GeometryData::placeholder(),
-            idx_buf_id: BufferId("quad_index_buffer"),
+            idx_buf_id: BufferId::UNINIT,
         }
     }
 
@@ -64,8 +64,7 @@ impl Quad {
             .with_attribute(Vec2Attribute("uvs"), vert_uvs)
             .init(context, 4);
 
-        context.request_buffer(
-            &self.idx_buf_id, 
+        self.idx_buf_id = context.request_buffer(
             Buffer::as_index()
                 .with_label("Quad Index Buffer")
                 .with_byte_data(&indices.to_bytes())
@@ -110,9 +109,9 @@ impl FontPrimitive {
     }
 
     /// create the gpu assets that this font uses
-    pub fn init<S: CameraSpace>(
+    pub fn init(
         &mut self,
-        camera: &Camera<S>,
+        cam_buf_id: &BufferId,
         atlas: (Vec<u8>, u32),
         context: &mut GpuContext
     ) {
@@ -145,7 +144,7 @@ impl FontPrimitive {
             &self.bg.id, &self.bg.layout_id, 
             BindGroup::new()
                 .with_label(&format!("Font Bind Group @{:?}", self.id))
-                .with_entry(BufferBinding::as_uniform(*camera.buf_id()))
+                .with_entry(BufferBinding::as_uniform(*cam_buf_id))
                 .with_entry(TextureBinding::as_sampled(self.atlas_tex_id, TextureTypeSampled { filterable: true, multisampled: false }))
                 .with_entry(SamplerBinding::new(self.atlas_samp_id).with_binding_type(wgpu::SamplerBindingType::Filtering))
         );

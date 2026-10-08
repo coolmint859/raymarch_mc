@@ -70,17 +70,16 @@ pub struct Camera<S: CameraSpace> {
 impl<S: CameraSpace> Camera<S> {
     pub fn new(space: S) -> Self {
         Self {
-            buf_id: BufferId(space.label()),
+            buf_id: BufferId::UNINIT,
             space,
         }
     }
 
     /// Initialize the uniform buffer this camera uses on the gpu
     pub fn init(&mut self, graphics: &mut Graphics) {
-        graphics.context.request_buffer(
-            &self.buf_id, 
+        self.buf_id = graphics.context.request_buffer(
             Buffer::as_uniform()
-                .with_label("camera_uniform_buffer")
+                .with_label("Camera Uniform Buffer")
                 .with_struct_data(self.to_uniform(graphics, 0.0))
                 .writable()
         );

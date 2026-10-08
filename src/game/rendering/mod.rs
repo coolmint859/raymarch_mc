@@ -1,9 +1,7 @@
-pub mod globals;
-pub mod raymarch;
-pub mod taa;
-pub mod blit;
+pub mod rscs;
+pub mod passes;
+pub mod vox_renderer;
 
-pub use globals::*;
-pub use raymarch::*;
-pub use taa::*;
-pub use blit::*;
+pub use rscs::*;
+pub use passes::*;
+pub use vox_renderer::*;

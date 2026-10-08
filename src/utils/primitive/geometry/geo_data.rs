@@ -1,8 +1,6 @@
-use std::{cell::RefCell, collections::{HashMap, HashSet}, fmt::Debug, sync::atomic::{AtomicU32, Ordering}};
+use std::{cell::RefCell, collections::{HashMap, HashSet}, fmt::Debug};
 
 use crate::{graphics::{Buffer, BufferId, GpuContext, RawBytesUpdate, Serializable, VertexBufferLayout}, utils::{ColumnVec, VecMut, VecRef, VertexAttribute}};
-
-static GROUP_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 /// Represents geometry that have no attributes or data
 #[derive(Debug)]
@@ -197,10 +195,6 @@ impl GeometryData<Building> {
     /// 
     /// Any attribute data previously added is uploaded to the buffer.
     pub fn init(self, context: &mut GpuContext, capacity: u64) -> GeometryData<GeoInit> {
-        let id_num = GROUP_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let id = Box::new(format!("geometry_data_{id_num}"));
-        let buf_id = BufferId(Box::leak(id));
-        
         let mut target_len = 0_u64;
         for attr in self.attributes.values() {
             target_len = attr.borrow().len().max(target_len as usize) as u64;
@@ -214,21 +208,21 @@ impl GeometryData<Building> {
         let state = GeoInit {
             capacity,
             len: target_len,
-            buf_id,
+            buf_id: BufferId::UNINIT,
         };
 
-        let initialized = GeometryData::<GeoInit>::from_uninit(self, state);
+        let mut initialized = GeometryData::<GeoInit>::from_uninit(self, state);
         let packed = initialized.to_packed();
-
         let total_bytes = initialized.layout.stride() * capacity;
-        context.request_buffer(
-            &initialized.buf_id(), 
+        
+        let buf_id = context.request_buffer(
             Buffer::as_vertex()
                 .with_label(&initialized.label)
-                .with_capacity(total_bytes)
                 .with_byte_data(&packed)
+                .with_capacity(total_bytes)
                 .writable()
         );
+        initialized.state.buf_id = buf_id;
 
         initialized
     }
@@ -261,7 +255,7 @@ impl GeometryData<GeoInit> {
             layout: VertexBufferLayout::as_instance_step(0),
             attributes: HashMap::new(),
             gpu_attrs: Vec::new(),
-            state: GeoInit { capacity: 0, len: 0, buf_id: BufferId("placeholder") }
+            state: GeoInit { capacity: 0, len: 0, buf_id: BufferId::UNINIT }
         }
     }
 

@@ -68,14 +68,14 @@ impl IndexedDraw {
 impl Drawable for IndexedDraw {
     fn draw(&mut self, pass: &mut wgpu::RenderPass, context: &GpuContext) {
         let Some(pipeline) = context.validate_pipeline(&self.pip_id).and_then(|pip| pip.to_render()) else { 
-            // println!("[DrawCommand] Failed to validate render pipeline @{:?}", info.pipeline_id);
+            // println!("[DrawCommand] Failed to validate render pipeline @{:?}", self.pip_id);
             return; 
         };
         pass.set_pipeline(&pipeline);
 
         for (idx, bg_id) in self.bind_groups.iter().enumerate() {
             let Some(bg) = context.validate_bind_group(bg_id) else { 
-                // println!("[DrawCommand] Failed to validate bind group @{:?} for render pipeline @{:?}", bg_id, info.pipeline_id);
+                // println!("[DrawCommand] Failed to validate bind group @{:?} for render pipeline @{:?}", bg_id, self.pip_id);
                 return; 
             };
             pass.set_bind_group(idx as u32, &bg.bind_group, &[]);
@@ -83,18 +83,23 @@ impl Drawable for IndexedDraw {
 
         for (idx, vtx_id) in self.vertex_buffers.iter().enumerate() {
             let Some(buffer) = context.resources.buffers.get(vtx_id) else {
+                // println!("[DrawCommand] Failed to validate vertex buffer @{:?} for render pipeline @{:?}", vtx_id, self.pip_id);
                 return;
             };
             pass.set_vertex_buffer(idx as u32, buffer.slice(..));
         }
 
-        if let Some(idx_id) = self.index_buffer {
+        if let (Some(idx_id), Some(idx_fmt)) = (self.index_buffer, self.index_format) {
             let Some(buffer) = context.resources.buffers.get(&idx_id) else {
+                // println!("[DrawCommand] Failed to validate index buffer @{:?} for render pipeline @{:?}", idx_id, self.pip_id);
                 return;
             };
-            pass.set_index_buffer(buffer.slice(..), wgpu::IndexFormat::Uint16);
+            // println!("Executing indexed draw call for pipeline #{:?}", self.pip_id);
+
+            pass.set_index_buffer(buffer.slice(..), idx_fmt);
             pass.draw_indexed(self.element_range.clone(), 0, self.instance_range.clone());
         } else {
+            // println!("Executing draw call for pipeline @{:?}", self.pip_id);
             pass.draw(self.element_range.clone(), self.instance_range.clone());
         }
     }

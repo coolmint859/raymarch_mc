@@ -1,40 +1,13 @@
-use std::{collections::HashSet, println};
+use std::{collections::HashSet};
 use crate::{graphics::{pip_registry::PipelineRegistry, *}, utils::{ResourceHandler, Task}};
 
-/// unique identifier to a buffer
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] pub struct BufferId(pub &'static str);
+/// Represents structs that can be identified as a gpu resource
+pub trait IntoResourceId {
+    /// The type that the struct instance returns as it's id
+    type ResourceId;
 
-/// unique identifier for a texture
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] pub struct TextureId(pub &'static str);
-
-/// unique identifier for a sampler
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] pub struct SamplerId(pub &'static str);
-
-/// unique identifier for a pipeline
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] pub struct PipelineId(pub &'static str);
-
-/// unique identifier for a bind group
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] pub struct BindGroupId(pub &'static str);
-
-/// unique identifier for a bind group layout
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] pub struct LayoutId(pub &'static str);
-
-/// Helper struct encapsulating the id of a bind group and it's associated layout
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct NamedBindGroup {
-    pub layout_id: LayoutId,
-    pub id: BindGroupId
-}
-
-impl NamedBindGroup {
-    pub fn new(name: &'static str) -> Self {
-        Self {
-            id: BindGroupId(name),
-            layout_id: LayoutId(
-                Box::leak(Box::new(format!("{name}_layout")))
-            )
-        }
-    }
+    /// Create a new id as the associated type `Self::ResourceId`
+    fn create_id(&self) -> Self::ResourceId;
 }
 
 /// The low level gpu resources as used in bind groups.
@@ -84,15 +57,22 @@ impl GpuContext {
         &self.gpu
     }
 
-    /// Request a buffer to be created from the provided definition and mapped to the provided id.
-    pub fn request_buffer(&mut self, id: &BufferId, buffer_def: impl BufferType) {
-        if self.resources.buffers.contains(id) { return; }
+    /// Request a buffer to be created from the provided blueprint.
+    /// 
+    /// Returns an associated `BufferId` that is uniquely associated with the resultant buffer.
+    pub fn request_buffer<B>(&mut self, buffer_bp: B) -> BufferId 
+    where 
+        B: BufferType + IntoResourceId<ResourceId = BufferId>
+    {
+        let id = buffer_bp.create_id();
 
         let gpu = self.gpu.clone();
         let buffer_task = Task::io_bound( async move {
-            gpu.create_buffer(buffer_def)
+            gpu.create_buffer(buffer_bp)
         });
-        self.resources.buffers.request_new(id, buffer_task);
+        self.resources.buffers.request_new(&id, buffer_task);
+
+        id
     }
 
     /// Request a texture to be created from the provided definition and mapped to the provided id.
@@ -139,6 +119,8 @@ impl GpuContext {
         if let Some(buffer) = self.resources.buffers.get(id) {
             let data = update.bytes();
             let offset = update.offset();
+
+            // println!("Updating buffer with id: {:?}", id);
 
             let update_size = offset + data.len() as u64;
             if update_size > buffer.size() {
