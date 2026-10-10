@@ -1,5 +1,3 @@
-use std::println;
-
 use crate::{game::{EnvironmentUniform, VoxelPalette, VoxelWorld}, graphics::{Buffer, BufferId, Graphics, Sampler, SamplerId, TexDimensions, Texture, TextureId}, utils::{BufferInit, StorageBuffer, UniformBuffer}};
 
 pub struct ResourceIds {
