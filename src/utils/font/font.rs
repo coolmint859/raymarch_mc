@@ -3,10 +3,10 @@ use std::{collections::HashMap, format};
 use glam::{Quat, Vec3};
 use uuid::Uuid;
 
-use crate::{graphics::{BindGroup, BindGroupIdPair, Buffer, BufferBinding, BufferId, DrawCommand, GpuContext, IndexedDraw, Pipeline, PipelineId, Sampler, SamplerBinding, SamplerId, Serializable, TexDimensions, Texture, TextureBinding, TextureId, TextureTypeSampled}, utils::{CharacterGlyph, GeoInit, GeometryData, TextOptions, Transform, TransformAttribute, Vec2Attribute, Vec3Attribute, Vec4Attribute}};
+use crate::{graphics::{BindGroup, BindGroupIdPair, BufferBinding, BufferId, DrawCommand, GpuContext, IndexedDraw, Pipeline, PipelineId, Procedural, TexDimensions}, utils::{BufferInit, CharacterGlyph, GeometryData, IndexBuffer, MatInit, Material, SamplerComponent, TextOptions, TextureComponent, Transform, TransformAttribute, Vec2Attribute, Vec3Attribute, Vec4Attribute}};
 
 /// The maximum number of renderable characters per font
-const CHAR_LIMIT: u64 = 500;
+const CHAR_LIMIT: usize = 500;
 
 /// A handle to a font read through a specific font reader. 
 /// 
@@ -24,15 +24,15 @@ impl FontId {
 /// Geometry for a quad
 #[derive(Debug)]
 pub struct Quad {
-    pub vertices: GeometryData<GeoInit>,
-    pub idx_buf_id: BufferId,
+    pub vertices: GeometryData<BufferInit>,
+    pub indices: IndexBuffer,
 }
 
 impl Quad {
     pub fn new() -> Self {
         Self {
             vertices: GeometryData::placeholder(),
-            idx_buf_id: BufferId::UNINIT,
+            indices: IndexBuffer::new_u16(vec![0, 1, 2, 2, 3, 0]).with_label("Quad Index Buffer"),
         }
     }
 
@@ -45,8 +45,6 @@ impl Quad {
         let vert_uvs: Vec<[f32; 2]> = vec![
             [1.0, 0.0], [0.0, 0.0], [0.0, 1.0], [1.0, 1.0]
         ];
-
-        let indices: [u16; 6] = [0, 1, 2, 2, 3, 0];
         
         self.vertices = GeometryData::as_vertex_group(0)
             .with_label("Quad Vertices")
@@ -54,12 +52,7 @@ impl Quad {
             .with_attribute(Vec2Attribute("uvs"), vert_uvs)
             .init(context, 4);
 
-        self.idx_buf_id = context.request_buffer(
-            Buffer::as_index()
-                .with_label("Quad Index Buffer")
-                .with_byte_data(&indices.to_bytes())
-                .writable()
-        );
+        self.indices.init(context);
     }
 
     /// Get the next available vertex location
@@ -74,15 +67,13 @@ pub(crate) struct FontPrimitive {
     /// the quad that font characters will be rendered on
     pub(crate) quad: Quad,
     /// the individual characters staged to be rendered using this font
-    pub(crate) instances: GeometryData<GeoInit>,
-    /// the id of the atlas texture
-    pub(crate) atlas_tex_id: TextureId,
-    /// the id of the atlas sampler
-    pub(crate) atlas_samp_id: SamplerId,
-    /// the ids of the bind group and layout
-    pub(crate) font_bg: BindGroupIdPair,
+    pub(crate) instances: GeometryData<BufferInit>,
+    /// global bind group
+    pub(crate) global_bg: BindGroupIdPair,
+    /// font material
+    pub(crate) material: Material<MatInit>,
     /// the id to the font pipeline
-    pub(crate) font_pip: PipelineId,
+    pub(crate) pipeline: PipelineId,
 }
 
 impl FontPrimitive {
@@ -106,27 +97,22 @@ impl FontPrimitive {
             .init(context, CHAR_LIMIT);
 
         let atlas_dim = TexDimensions::size_2d(atlas_size, atlas_size);
-        let atlas_tex_id = context.request_texture(
-            Texture::procedural(atlas_data, atlas_dim)
-                .with_label(&format!("Font Atlas Texture shader@{:?}", shader_path))
-                .with_format(wgpu::TextureFormat::R8Unorm)
-                .writable()
-        );
-
-        let atlas_samp_id = context.request_sampler(Sampler::linear());
-
-        let font_bg = context.request_bind_group(
+        let global_bg = context.request_bind_group(
             BindGroup::new()
                 .with_label(&format!("Font Bind Group shader@{:?}", shader_path))
                 .with_entry(BufferBinding::as_uniform(*cam_buf_id))
-                .with_entry(TextureBinding::as_sampled(atlas_tex_id, TextureTypeSampled { filterable: true, multisampled: false }))
-                .with_entry(SamplerBinding::new(atlas_samp_id).with_binding_type(wgpu::SamplerBindingType::Filtering))
         );
 
-        let font_pip = context.request_pipeline(
+        let material = Material::new()
+            .with_label("Font Material")
+            .with_component("atlas", TextureComponent::procedural(Procedural { data: atlas_data, dim: atlas_dim }).with_format(wgpu::TextureFormat::R8Unorm))
+            .with_component("samp", SamplerComponent::nearest())
+            .init(context);
+
+        let pipeline = context.request_pipeline(
             Pipeline::as_render()
                 .with_label(&format!("Font Render Pipeline shader@{:?}", shader_path))
-                .with_bg_layouts(&[font_bg.layout_id])
+                .with_bg_layouts(&[global_bg.layout_id, material.layout_id()])
                 .with_vertex_layout(quad.vertices.layout().clone())
                 .with_vertex_layout(instances.layout().clone())
                 .with_shader(shader_path)
@@ -135,10 +121,9 @@ impl FontPrimitive {
         Self {
             quad,
             instances,
-            atlas_tex_id,
-            atlas_samp_id,
-            font_bg,
-            font_pip
+            global_bg,
+            material,
+            pipeline
         }
     }
 
@@ -149,7 +134,7 @@ impl FontPrimitive {
 
     /// Get the index buffer id of this `FontPrimitive`
     pub fn idx_buf_id(&self) -> BufferId {
-        self.quad.idx_buf_id
+        *self.quad.indices.id()
     }
 }
 
@@ -218,11 +203,13 @@ impl Font {
 
     /// Issue a draw call of this font to a `DrawCommand`
     pub fn render(&self, draw_cmd: &mut DrawCommand) {
-        let draw_call = IndexedDraw::new(self.primitive.font_pip, 0..6)
-            .with_bind_groups(&[self.primitive.font_bg.id])
+        // println!("font instance count: {}", self.primitive.instances.elem_count());
+
+        let draw_call = IndexedDraw::new(self.primitive.pipeline, 0..6)
+            .with_bind_groups(&[self.primitive.global_bg.id, self.primitive.material.bg_id()])
             .with_vertex_buffers(&self.primitive.geo_buf_ids())
             .with_index_buffer(self.primitive.idx_buf_id(), wgpu::IndexFormat::Uint16)
-            .with_instances(0..self.primitive.instances.len() as u32);
+            .with_instances(0..self.primitive.instances.elem_count() as u32);
         
         draw_cmd.add_draw(draw_call);
     }

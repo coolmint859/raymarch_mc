@@ -19,7 +19,7 @@ impl BufferId {
 pub struct TextureId(pub Uuid);
 
 impl TextureId {
-    /// A uninitialized `BufferId` (points to nothing). 
+    /// A uninitialized `TextureId` (points to nothing). 
     pub const UNINIT: Self = TextureId(Uuid::nil());
 
     /// Returns a copy of the inner `Uuid`
@@ -31,7 +31,7 @@ impl TextureId {
 pub struct SamplerId(pub Uuid);
 
 impl SamplerId {
-    /// A uninitialized `BufferId` (points to nothing). 
+    /// A uninitialized `SamplerId` (points to nothing). 
     pub const UNINIT: Self = SamplerId(Uuid::nil());
 
     /// Returns a copy of the inner `Uuid`
@@ -43,7 +43,7 @@ impl SamplerId {
 pub struct BindGroupId(pub Uuid);
 
 impl BindGroupId {
-    /// A uninitialized `BufferId` (points to nothing). 
+    /// A uninitialized `BindGroupId` (points to nothing). 
     pub const UNINIT: Self = BindGroupId(Uuid::nil());
 
     /// Returns a copy of the inner `Uuid`
@@ -55,7 +55,7 @@ impl BindGroupId {
 pub struct LayoutId(pub Uuid);
 
 impl LayoutId {
-    /// A uninitialized `BufferId` (points to nothing). 
+    /// A uninitialized `LayoutId` (points to nothing). 
     pub const UNINIT: Self = LayoutId(Uuid::nil());
     
     /// Returns a copy of the inner `Uuid`
@@ -70,7 +70,7 @@ pub struct BindGroupIdPair {
 }
 
 impl BindGroupIdPair {
-    /// A uninitialized `BufferId` (points to nothing). 
+    /// A uninitialized `BindGroupIdPair` (ids point to nothing). 
     pub const UNINIT: Self = BindGroupIdPair {
         id: BindGroupId::UNINIT,
         layout_id: LayoutId::UNINIT
@@ -82,7 +82,7 @@ impl BindGroupIdPair {
 pub struct PipelineId(pub Uuid);
 
 impl PipelineId {
-    /// A uninitialized `BufferId` (points to nothing). 
+    /// A uninitialized `PipelineId` (points to nothing). 
     pub const UNINIT: Self = PipelineId(Uuid::nil());
     
     /// Returns a copy of the inner `Uuid`

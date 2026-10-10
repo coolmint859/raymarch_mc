@@ -4,19 +4,18 @@ use uuid::Uuid;
 
 use crate::graphics::{BufferId, ResourceId};
 
-/// Represents structs that can be serialized into raw bytes.
+/// Represents types that can be serialized into raw bytes.
 /// 
-/// All structs that implement bytemuck::Pod and bytemuck::Zeroable 
-/// automatically implement Serializable.
+/// All types that implement `bytemuck::Pod` and `bytemuck::Zeroable` 
+/// automatically implement `Serializable`.
 pub trait Serializable {
-    /// Convert this struct into a slice of bytes
+    /// Convert this type into a slice of bytes
     fn to_bytes(&self) -> &[u8];
 }
 
 impl<T> Serializable for T 
 where T: bytemuck::Pod + bytemuck::Zeroable
 {
-    /// Converts the T struct into an array slice of bytes
     fn to_bytes(&self) -> &[u8] { bytemuck::bytes_of(self) }
 }
 
@@ -102,6 +101,8 @@ impl<T> Buffer<T> {
     /// Provide this buffer with initial data from a Serializable struct. 
     /// 
     /// The buffer will always be at least big enough to hold this data, however if a larger capacity was set, the buffer will be that size.
+    /// 
+    /// Buffers of type `Uniform` will always be aligned to 16 bytes of capacity, regardless of the actual size of the data. This is due to `wgpu` uniform buffer alignment restrictions.
     pub fn with_struct_data(mut self, data: impl Serializable) -> Self {
         self.init_data = Some(data.to_bytes().to_vec());
         self
@@ -111,7 +112,7 @@ impl<T> Buffer<T> {
     /// 
     /// If initial data was set, this value is only used if its larger than the size of the data.
     /// 
-    /// If the buffer type is Uniform, this value will be rounded up to the nearest multiple of 16.
+    /// If the buffer type is `Uniform`, this value will be rounded up to the nearest multiple of 16.
     pub fn with_capacity(mut self, capacity: u64) -> Self {
         self.capacity = capacity;
         self
@@ -129,13 +130,13 @@ impl<T> Buffer<T> {
         self
     }
 
-    /// Allow the buffer to be readable from.
+    /// Allow the buffer to be read from.
     pub fn readable(mut self) -> Self {
         self.usage |= wgpu::BufferUsages::COPY_SRC;
         self
     }
 
-    /// Allow the buffer to be readable from and writable to.
+    /// Allow the buffer to be read from and writable to.
     pub fn read_write(mut self) -> Self {
         self.usage |= wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC;
         self

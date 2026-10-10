@@ -1,4 +1,4 @@
-use std::{any::Any, marker::PhantomData, num::NonZero};
+use std::{any::Any, fmt::Debug, marker::PhantomData, num::NonZero};
 
 use crate::graphics::{Anisotropic, Bindable, BindingTarget, Bordered, Buffer, BufferBinding, BufferId, Comparison, Computed, GpuContext, Linear, Nearest, OnDisk, Procedural, Sampler, SamplerBinding, SamplerId, Serializable, StructuredUpdate, Texture, TextureBinding, TextureId, TextureTypeSampled};
 
@@ -36,7 +36,7 @@ impl Bindable for MaterialBinding {
 }
 
 /// Represents bindable entries into a material (bind group)
-pub trait MaterialComponent {
+pub trait MaterialComponent: Debug {
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 
@@ -62,6 +62,7 @@ impl dyn MaterialComponent {
     }
 }
 
+#[derive(Debug)]
 pub struct UniformComponent<T: Serializable> {
     buf_id: BufferId,
     label: String,
@@ -93,7 +94,9 @@ impl<T: Serializable> UniformComponent<T> {
     }
 }
 
-impl<T: Serializable + 'static> MaterialComponent for UniformComponent<T> {
+impl<T> MaterialComponent for UniformComponent<T>
+where T: Serializable + Debug + 'static
+{
     fn as_any(&self) -> &dyn Any { self }
     fn as_any_mut(&mut self) -> &mut dyn Any { self }
 
@@ -125,6 +128,7 @@ impl<T: Serializable + 'static> MaterialComponent for UniformComponent<T> {
     }
 }
 
+#[derive(Debug)]
 pub struct TextureComponent<T> {
     tex_id: TextureId,
     label: String,
@@ -212,6 +216,12 @@ impl TextureComponent<Procedural> {
         self.sample_state.multisampled = true;
         self
     }
+
+    /// Set the format of the texture
+    pub fn with_format(mut self, format: wgpu::TextureFormat) -> Self {
+        self.format = format;
+        self
+    }
 }
 
 impl MaterialComponent for TextureComponent<Procedural> {
@@ -238,7 +248,7 @@ impl MaterialComponent for TextureComponent<Procedural> {
 }
 
 impl TextureComponent<Computed> {
-    pub fn procedural(ty: Computed) -> Self {
+    pub fn computed(ty: Computed) -> Self {
         Self {
             tex_id: TextureId::UNINIT,
             label: "texture_comp".to_string(),
@@ -290,6 +300,7 @@ impl MaterialComponent for TextureComponent<Computed> {
     }
 }
 
+#[derive(Debug)]
 pub struct SamplerComponent<T> {
     samp_id: SamplerId,
     anisotrophic_level: NonZero<u16>,

@@ -79,7 +79,7 @@ impl<'a> Drop for GeometryDataProxy<'a> {
     fn drop(&mut self) {
         let mut max_len = 0;
         for attr in self.attributes.values() {
-            max_len = max_len.max(attr.borrow().len());
+            max_len = max_len.max(attr.borrow().count());
         }
 
         let new_len = max_len.min(self.state.capacity as usize);
@@ -197,7 +197,7 @@ impl GeometryData<Building> {
     pub fn init(self, context: &mut GpuContext, capacity: u64) -> GeometryData<GeoInit> {
         let mut target_len = 0_u64;
         for attr in self.attributes.values() {
-            target_len = attr.borrow().len().max(target_len as usize) as u64;
+            target_len = attr.borrow().count().max(target_len as usize) as u64;
         }
         target_len = target_len.min(capacity);
 
@@ -331,14 +331,10 @@ impl GeometryData<GeoInit> {
 
         for i in 0..self.state.len as usize {
             for name in &self.gpu_attrs {
-                if let Some(cell) = self.attributes.get(name) {
-                    let data = cell.borrow();
-                    let attr_bytes = data.bytes_of(i)
-                        .expect("[GeometryData] Attribute data missing!");
-                    
-                    packed.extend_from_slice(attr_bytes);
+                if let Some(cell) = self.attributes.get(name) {    
+                    cell.borrow().write_idx(i, &mut packed);
                 }
-            } 
+            }
         }
 
         packed

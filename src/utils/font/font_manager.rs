@@ -104,6 +104,7 @@ impl FontManager {
     pub fn record(&mut self, state: RenderingState, executor: &mut impl SequentialExecutor) {
         let mut draw_cmd = DrawCommand::new(state);
 
+        // active font set is reset here
         for font_id in &std::mem::take(&mut self.active_fonts) {
             if let Some(font) = self.ready_fonts.get_mut(font_id) {
                 font.render(&mut draw_cmd);

@@ -1,10 +1,10 @@
 use winit::event::MouseButton;
 
-use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{BindGroup, BindGroupId, BindGroupIdPair, BufferBinding, BufferId, DrawCommand, GpuContext, IndexedDraw, LayoutId, MultiBufferExecutor, OnDisk, Pipeline, PipelineId, RenderingState, SequentialExecutor, VertexBufferLayout}, utils::{Camera, FontManager, FontReader, GeoInit, GeometryData, MatInit, Material, MouseHandler, SamplerComponent, ScreenSpace, TextOptions, TextureComponent, Transform, TransformAttribute, font::font::{FontId, Quad}}};
+use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{BindGroup, BindGroupId, BindGroupIdPair, BufferBinding, BufferId, DrawCommand, GpuContext, IndexedDraw, LayoutId, MultiBufferExecutor, OnDisk, Pipeline, PipelineId, RenderingState, SequentialExecutor, VertexBufferLayout}, utils::{Camera, FontManager, FontReader, BufferInit, GeometryData, MatInit, Material, MouseHandler, SamplerComponent, ScreenSpace, TextOptions, TextureComponent, Transform, TransformAttribute, font::font::{FontId, Quad}}};
 
 pub struct QuadPrimitive {
     pub quad: Quad,
-    pub instances: GeometryData<GeoInit>,
+    pub instances: GeometryData<BufferInit>,
     pub material: Material<MatInit>,
 }
 
@@ -28,7 +28,7 @@ impl QuadPrimitive {
     }
 
     pub fn idx_buf_id(&self) -> BufferId {
-        self.quad.idx_buf_id
+        *self.quad.indices.id()
     }
 
     pub fn vertex_layout(&self) -> VertexBufferLayout {
@@ -203,6 +203,7 @@ impl Screen for QuadTest {
     }
 
     fn update(&mut self, graphics: &mut Graphics, dt: f32) {
+        self.camera.update(graphics, 0.0);
         let screen_height = graphics.canvas.dimensions().1 as f32;
 
         self.text_renderer.stage_text(
@@ -250,13 +251,13 @@ impl Screen for QuadTest {
             .with_bind_groups(&[self.cam_bg.id, self.quad1.mat_bg_id()])
             .with_vertex_buffers(&self.quad1.geo_buf_ids())
             .with_index_buffer(self.quad1.idx_buf_id(), wgpu::IndexFormat::Uint16)
-            .with_instances(0..self.quad1.instances.len() as u32);
+            .with_instances(0..self.quad1.instances.elem_count() as u32);
         
         let draw_q2 = IndexedDraw::new(self.qpip, 0..6)
             .with_bind_groups(&[self.cam_bg.id, self.quad2.mat_bg_id()])
             .with_vertex_buffers(&self.quad2.geo_buf_ids())
             .with_index_buffer(self.quad2.idx_buf_id(), wgpu::IndexFormat::Uint16)
-            .with_instances(0..self.quad2.instances.len() as u32);
+            .with_instances(0..self.quad2.instances.elem_count() as u32);
 
         let draw_cmd = DrawCommand::from_draws(
             RenderingState {

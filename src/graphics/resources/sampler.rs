@@ -52,6 +52,7 @@ impl<T> ResourceId for Sampler<T> {
 }
 
 /// Sampler type for linear filtering
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct Linear;
 
 impl Sampler<Linear> {
@@ -90,6 +91,7 @@ impl SamplerType for Sampler<Linear> {
 }
 
 /// Sampler type for nearest filtering
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct Nearest;
 
 impl Sampler<Nearest> {
@@ -128,6 +130,7 @@ impl SamplerType for Sampler<Nearest> {
 }
 
 /// Sampler type for anisotropic filtering
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct Anisotropic;
 
 impl Sampler<Anisotropic> {
@@ -164,6 +167,7 @@ impl SamplerType for Sampler<Anisotropic> {
 }
 
 /// Sampler type for borders around sampled texture
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct Bordered;
 
 impl Sampler<Bordered> {
@@ -199,6 +203,7 @@ impl SamplerType for Sampler<Bordered> {
 }
 
 /// Sampler type for comparison between values in sampled texture
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct Comparison;
 
 impl Sampler<Comparison> {

@@ -1,6 +1,6 @@
 use glam::*;
 
-use crate::{graphics::{Buffer, BufferId, Graphics, StructuredUpdate}, utils::{Controllable, Transform}};
+use crate::{graphics::{BufferId, Graphics}, utils::{Controllable, Transform, UniformBuffer}};
 
 /// Raw camera uniform data
 #[repr(C)]
@@ -62,7 +62,7 @@ impl<S: CameraSpace + Controllable> Controllable for Camera<S> {
 /// Represents transformations for scene geometry within a space S.
 pub struct Camera<S: CameraSpace> {
     /// the id to this camera's buffer
-    buf_id: BufferId,
+    buffer: UniformBuffer<CameraUniform>,
     /// the space the camera works in (view-projection)
     space: S,
 }
@@ -70,32 +70,27 @@ pub struct Camera<S: CameraSpace> {
 impl<S: CameraSpace> Camera<S> {
     pub fn new(space: S) -> Self {
         Self {
-            buf_id: BufferId::UNINIT,
+            buffer: UniformBuffer::new(CameraUniform::default()),
             space,
         }
     }
 
     /// Initialize the uniform buffer this camera uses on the gpu
     pub fn init(&mut self, graphics: &mut Graphics) {
-        self.buf_id = graphics.context.request_buffer(
-            Buffer::as_uniform()
-                .with_label("Camera Uniform Buffer")
-                .with_struct_data(self.to_uniform(graphics, 0.0))
-                .writable()
-        );
+        self.buffer = UniformBuffer::new(self.to_uniform(graphics, 0.0))
+            .with_label("Camera Uniform Buffer")
+            .init(&mut graphics.context);
     }
 
     /// Update the uniform buffer with the view-projection matrix this camera uses
     pub fn update(&mut self, graphics: &mut Graphics, et: f32) {
-        let _ = graphics.context.update_buffer(&self.buf_id, StructuredUpdate {
-            data: &self.to_uniform(graphics, et),
-            offset: 0
-        });
+        let uniform = self.to_uniform(graphics, et);
+        self.buffer.update_with(&mut graphics.context, uniform);
     }
 
     /// Get the unique buffer id for this camera
     pub fn buf_id(&self) -> &BufferId {
-        &self.buf_id
+        &self.buffer.id()
     }
 
     /// Get a reference to the space this camera works in
@@ -108,8 +103,8 @@ impl<S: CameraSpace> Camera<S> {
         &mut self.space
     }
 
-    /// Get the POD uniform struct this camera represents
-    pub fn to_uniform(&self, graphics: &Graphics, _et: f32) -> CameraUniform {
+    /// Get this camera in it's uniform representation
+    fn to_uniform(&self, graphics: &mut Graphics, _et: f32) -> CameraUniform {
         CameraUniform {
             view_proj_mat: self.space.view_proj_mat(graphics).to_cols_array_2d(),
             cam_position: self.space.position().to_array(),

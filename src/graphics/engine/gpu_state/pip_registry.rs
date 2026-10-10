@@ -30,6 +30,9 @@ impl PipelineRegistry {
     pub fn request<'a>(&mut self, blueprint: PipelineType, bgs: &'a BindGroupRegistry) -> PipelineId {
         let id = blueprint.create_id();
 
+        // pipeline ids are content-addressable, so its possible the same blueprint was used
+        if self.handles.contains(&id) { return id };
+
         self.try_request(&id, blueprint, bgs);
 
         id

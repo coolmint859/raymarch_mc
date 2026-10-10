@@ -38,7 +38,7 @@ impl VoxelRenderer {
         match &self.state {
             RendererState::Uninit => { return; }
             RendererState::Initialized { resources, passes: _ } => {
-                let env_buffer_id = resources.world.env;
+                let env_buffer_id = resources.world.env.id();
                 let _ = graphics.context.update_buffer(&env_buffer_id, update);
             }
         }

@@ -1,4 +1,6 @@
-use crate::{game::{VoxelPalette, VoxelWorld}, graphics::{Buffer, BufferId, Graphics, Sampler, SamplerId, TexDimensions, Texture, TextureId}};
+use std::println;
+
+use crate::{game::{EnvironmentUniform, VoxelPalette, VoxelWorld}, graphics::{Buffer, BufferId, Graphics, Sampler, SamplerId, TexDimensions, Texture, TextureId}, utils::{BufferInit, StorageBuffer, UniformBuffer}};
 
 pub struct ResourceIds {
     pub taa: TaaIds,
@@ -96,49 +98,41 @@ impl TaaIds {
 }
 
 pub struct VoxelWorldIds {
-    pub env: BufferId,
-    pub voxels: BufferId,
+    pub env: UniformBuffer<EnvironmentUniform>,
+    pub voxels: StorageBuffer<BufferInit>,
     pub grid: BufferId,
-    pub palette: BufferId,
+    pub palette: UniformBuffer<VoxelPalette>,
 }
 
 impl VoxelWorldIds {
     pub fn init(graphics: &mut Graphics, world: &VoxelWorld) -> Self {
-        let env_id = graphics.context.request_buffer(
-            Buffer::as_uniform()
-                .with_struct_data(world.env_uniform())
-                .with_label("Environment Buffer")
-                .writable()
-        );
+        let env = UniformBuffer::new(world.env_uniform())
+            .with_label("Environment Uniform")
+            .init(&mut graphics.context);
 
         let region_bytes = world.region_bytes();
-        let vox_id = graphics.context.request_buffer(
-            Buffer::as_storage()
-                .with_label("Voxel Buffer")
-                .with_byte_data(&region_bytes.voxels)
-                .with_additional_usage(wgpu::BufferUsages::COPY_DST)
-        );
+        let voxel_byte_length = region_bytes.voxels.len();
+        let voxels = StorageBuffer::new()
+            .with_label("Voxel Buffer")
+            .with_attribute("voxel_data", region_bytes.voxels)
+            .init(&mut graphics.context, voxel_byte_length);
 
         let grid_id = graphics.context.request_buffer( 
             Buffer::as_storage()
                 .with_label("Grid Buffer")
                 .with_byte_data(&region_bytes.grids)
-                .with_additional_usage(wgpu::BufferUsages::COPY_DST)
-        );
-
-        let palette_data = VoxelPalette::create().colors;
-        let palette_id = graphics.context.request_buffer(
-            Buffer::as_uniform()
-                .with_byte_data(&palette_data)
-                .with_label("Palette Buffer")
                 .writable()
         );
+
+        let palette = UniformBuffer::new(VoxelPalette::create())
+            .with_label("Palette Buffer")
+            .init(&mut graphics.context);
     
         Self {
-            env: env_id,
-            voxels: vox_id,
+            env,
+            voxels,
             grid: grid_id,
-            palette: palette_id
+            palette
         }
     }
 }
@@ -161,32 +155,32 @@ impl GBufferIds {
             Texture::computed(TexDimensions::size_2d(cw_half, ch_half))
                 .with_label("Position Texture")
                 .with_format(wgpu::TextureFormat::Rgba16Float)
-                .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING)
-                .with_additional_usage(wgpu::TextureUsages::COPY_SRC)
+                .storage_bindable()
+                .readable()
         );
 
         let norm_tex_id = graphics.context.request_texture(
             Texture::computed(TexDimensions::size_2d(cw_half, ch_half))
                 .with_label("Normals Texture")
                 .with_format(wgpu::TextureFormat::Rgba8Unorm)
-                .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING)
-                .with_additional_usage(wgpu::TextureUsages::COPY_SRC)
+                .storage_bindable()
+                .readable()
         );
 
         let depth_tex_id = graphics.context.request_texture(
             Texture::computed(TexDimensions::size_2d(cw_half, ch_half))
                 .with_label("Normals Texture")
                 .with_format(wgpu::TextureFormat::R32Float)
-                .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING)
-                .with_additional_usage(wgpu::TextureUsages::COPY_SRC)
+                .storage_bindable()
+                .readable()
         );
 
         let mat_tex_id = graphics.context.request_texture(
             Texture::computed(TexDimensions::size_2d(cw_half, ch_half))
-            .with_label("Normals Texture")
-            .with_format(wgpu::TextureFormat::R32Float)
-            .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING)
-            .with_additional_usage(wgpu::TextureUsages::COPY_SRC)
+                .with_label("Normals Texture")
+                .with_format(wgpu::TextureFormat::R32Float)
+                .storage_bindable()
+                .readable()
         );
 
         Self {
@@ -211,31 +205,31 @@ impl GBufferIds {
             Texture::computed(TexDimensions::size_2d(cw_half, ch_half))
                 .with_label("Position Texture")
                 .with_format(wgpu::TextureFormat::Rgba16Float)
-                .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING)
-                .with_additional_usage(wgpu::TextureUsages::COPY_SRC)
+                .storage_bindable()
+                .readable()
         );
 
         self.norm = graphics.context.request_texture(
             Texture::computed(TexDimensions::size_2d(cw_half, ch_half))
                 .with_label("Normals Texture")
                 .with_format(wgpu::TextureFormat::Rgba8Unorm)
-                .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING)
-                .with_additional_usage(wgpu::TextureUsages::COPY_SRC)
+                .storage_bindable()
+                .readable()
         );
 
         self.depth = graphics.context.request_texture(Texture::computed(TexDimensions::size_2d(cw_half, ch_half))
                 .with_label("Normals Texture")
                 .with_format(wgpu::TextureFormat::R32Float)
-                .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING)
-                .with_additional_usage(wgpu::TextureUsages::COPY_SRC)
+                .storage_bindable()
+                .readable()
         );
 
         self.mat = graphics.context.request_texture(
             Texture::computed(TexDimensions::size_2d(cw_half, ch_half))
                 .with_label("Normals Texture")
                 .with_format(wgpu::TextureFormat::R32Float)
-                .with_additional_usage(wgpu::TextureUsages::STORAGE_BINDING)
-                .with_additional_usage(wgpu::TextureUsages::COPY_SRC)
+                .storage_bindable()
+                .readable()
         );
     }
 }
@@ -256,8 +250,8 @@ impl MaterialIds {
 
         let atlas_id = graphics.context.request_texture(
             Texture::on_disk("./assets/textures.png")
-            .with_label("Block Atlas Texture")
-            .writable()
+                .with_label("Block Atlas Texture")
+                .writable()
         );
 
         let samp_id = graphics.context.request_sampler(

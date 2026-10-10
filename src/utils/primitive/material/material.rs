@@ -1,11 +1,15 @@
+use std::fmt::Debug;
+
 use indexmap::IndexMap;
 
 use crate::{graphics::{BindGroup, BindGroupId, BindGroupIdPair, GpuContext, LayoutId, Serializable}, utils::{Building, Empty, MaterialComponent, UniformComponent}};
 
+#[derive(Debug)]
 pub struct MatInit {
     pub mat_bg: BindGroupIdPair
 }
 
+#[derive(Debug)]
 pub struct Material<State> {
     components: IndexMap<String, Box<dyn MaterialComponent>>,
     label: String,
@@ -100,7 +104,7 @@ impl Material<MatInit> {
     /// Modify a uniform buffer on this `Material`, if exists, using the provided closure `F`.
     pub fn modify_uniform<T, F>(&mut self, name: impl Into<String>, modifer: F) 
     where 
-        T: Serializable + 'static, 
+        T: Serializable + Debug + 'static, 
         F: FnOnce(&mut T)
     {
         if let Some(component) = self.components.get_mut(&name.into()) {

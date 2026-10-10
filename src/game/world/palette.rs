@@ -1,5 +1,7 @@
 use glam::{Vec3, Vec4};
 
+use crate::graphics::Serializable;
+
 pub const DAY_ZENITH: Vec3 =    glam::vec3(0.2,  0.4,  0.8 );
 pub const DUSK_ZENITH: Vec3 =   glam::vec3(0.05, 0.08, 0.15);
 pub const NIGHT_ZENITH: Vec3 =  glam::vec3(0.01,  0.01,  0.01);
@@ -44,5 +46,11 @@ impl VoxelPalette {
         Self {
             colors: bytes
         }
+    }
+}
+
+impl Serializable for VoxelPalette {
+    fn to_bytes(&self) -> &[u8] {
+        &self.colors
     }
 }

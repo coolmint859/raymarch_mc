@@ -50,7 +50,7 @@ impl RayMarchIds {
         let world_bg = graphics.context.request_bind_group(
             BindGroup::new()
                 .with_label("Voxel World Data")
-                .with_entry(BufferBinding::as_storage(rsc_ids.world.voxels, true).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(BufferBinding::as_storage(*rsc_ids.world.voxels.buf_id(), true).with_visibility(wgpu::ShaderStages::COMPUTE))
                 .with_entry(BufferBinding::as_storage(rsc_ids.world.grid, true).with_visibility(wgpu::ShaderStages::COMPUTE))
         );
 
@@ -60,7 +60,7 @@ impl RayMarchIds {
                 .with_entry(TextureBinding::as_sampled(rsc_ids.material.grass_alpha, TextureTypeSampled::filterable()).with_visibility(wgpu::ShaderStages::COMPUTE))
                 .with_entry(TextureBinding::as_sampled(rsc_ids.material.block_atlas, TextureTypeSampled::filterable()).with_visibility(wgpu::ShaderStages::COMPUTE))
                 .with_entry(SamplerBinding::new(rsc_ids.material.sampler).with_visibility(wgpu::ShaderStages::COMPUTE))
-                .with_entry(BufferBinding::as_uniform(rsc_ids.world.palette).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(BufferBinding::as_uniform(*rsc_ids.world.palette.id()).with_visibility(wgpu::ShaderStages::COMPUTE))
         );
 
         // --- Coarse Bind Groups/Pipeline --- //
@@ -91,7 +91,7 @@ impl RayMarchIds {
             BindGroup::new()
                 .with_label("Global Uniforms (Fine)")
                 .with_entry(BufferBinding::as_uniform(cam_id).with_visibility(wgpu::ShaderStages::COMPUTE))
-                .with_entry(BufferBinding::as_uniform(rsc_ids.world.env).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(BufferBinding::as_uniform(*rsc_ids.world.env.id()).with_visibility(wgpu::ShaderStages::COMPUTE))
         );
 
         let fine_gbuffer_bg = graphics.context.request_bind_group(
