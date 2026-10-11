@@ -3,7 +3,7 @@ use std::{collections::HashMap, format};
 use glam::{Quat, Vec3};
 use uuid::Uuid;
 
-use crate::{graphics::{BindGroup, BindGroupIdPair, BufferBinding, BufferId, DrawCommand, GpuContext, IndexedDraw, Pipeline, PipelineId, Procedural, TexDimensions}, utils::{BufferInit, CharacterGlyph, GeometryData, IndexBuffer, MatInit, Material, SamplerComponent, TextOptions, TextureComponent, Transform, TransformAttribute, Vec2Attribute, Vec3Attribute, Vec4Attribute}};
+use crate::{graphics::{BindGroup, BindGroupIdPair, BufferBinding, BufferId, DrawCommand, GpuContext, IndexedDraw, Pipeline, PipelineId, Sampler, TexDimensions, Texture}, utils::{BufferInit, CharacterGlyph, GeometryData, IndexBuffer, MatInit, Material, SamplerComponent, TextOptions, TextureComponent, Transform, TransformAttribute, Vec2Attribute, Vec3Attribute, Vec4Attribute}};
 
 /// The maximum number of renderable characters per font
 const CHAR_LIMIT: usize = 500;
@@ -103,10 +103,14 @@ impl FontPrimitive {
                 .with_entry(BufferBinding::as_uniform(*cam_buf_id))
         );
 
+        let atlas = Texture::procedural(atlas_data, atlas_dim)
+            .with_format(wgpu::TextureFormat::R8Unorm)
+            .writable();
+
         let material = Material::new()
             .with_label("Font Material")
-            .with_component("atlas", TextureComponent::procedural(Procedural { data: atlas_data, dim: atlas_dim }).with_format(wgpu::TextureFormat::R8Unorm))
-            .with_component("samp", SamplerComponent::nearest())
+            .with_component("atlas", TextureComponent::new(atlas))
+            .with_component("samp", SamplerComponent::new(Sampler::nearest()))
             .init(context);
 
         let pipeline = context.request_pipeline(

@@ -75,6 +75,7 @@ pub trait BufferType: Send + 'static {
 }
 
 /// A blueprint for constructing wgpu Buffers, where T is the buffer type.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Buffer<T> {
     pub label: String,
     pub usage: wgpu::BufferUsages,
@@ -152,6 +153,7 @@ impl<T> ResourceId for Buffer<T> {
 }
 
 /// A uniform buffer type
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Uniform;
 
 impl Buffer<Uniform> {
@@ -210,6 +212,7 @@ impl BufferType for Buffer<Uniform> {
 }
 
 /// A storage buffer type
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Storage;
 
 impl Buffer<Storage> {
@@ -237,6 +240,7 @@ impl BufferType for Buffer<Storage> {
 }
 
 /// A vertex buffer type
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Vertex;
 
 impl Buffer<Vertex> {
@@ -264,6 +268,7 @@ impl BufferType for Buffer<Vertex> {
 }
 
 /// An index buffer type
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Index; 
 
 impl Buffer<Index> {

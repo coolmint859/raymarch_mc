@@ -1,6 +1,6 @@
 use winit::event::MouseButton;
 
-use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{BindGroup, BindGroupId, BindGroupIdPair, BufferBinding, BufferId, DrawCommand, GpuContext, IndexedDraw, LayoutId, MultiBufferExecutor, OnDisk, Pipeline, PipelineId, RenderingState, SequentialExecutor, VertexBufferLayout}, utils::{Camera, FontManager, FontReader, BufferInit, GeometryData, MatInit, Material, MouseHandler, SamplerComponent, ScreenSpace, TextOptions, TextureComponent, Transform, TransformAttribute, font::font::{FontId, Quad}}};
+use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{BindGroup, BindGroupId, BindGroupIdPair, BufferBinding, BufferId, DrawCommand, GpuContext, IndexedDraw, LayoutId, MultiBufferExecutor, Pipeline, PipelineId, RenderingState, Sampler, SequentialExecutor, Texture, VertexBufferLayout}, utils::{BufferInit, Camera, FontManager, FontReader, GeometryData, MatInit, Material, MouseHandler, SamplerComponent, ScreenSpace, TextOptions, TextureComponent, Transform, TransformAttribute, font::font::{FontId, Quad}}};
 
 pub struct QuadPrimitive {
     pub quad: Quad,
@@ -112,10 +112,10 @@ impl Screen for QuadTest {
 
         let q1_material = Material::new()
             .with_label("Quad1 Material")
-            .with_component("blue_devils", TextureComponent::on_disk(
-                OnDisk { path: "./assets/BlueDevilsLogo.png".to_string() }
+            .with_component("blue_devils", TextureComponent::new(
+                Texture::on_disk("./assets/BlueDevilsLogo.png").writable()
             ))
-            .with_component("sampler", SamplerComponent::nearest())
+            .with_component("sampler", SamplerComponent::new(Sampler::nearest()))
             .init(&mut graphics.context);
 
         self.quad1 = QuadPrimitive { 
@@ -140,10 +140,10 @@ impl Screen for QuadTest {
 
         let q2_material = Material::new()
             .with_label("Quad2 Material")
-            .with_component("vanguard", TextureComponent::on_disk(
-                OnDisk { path: "./assets/vanguard.jpg".to_string() }
+            .with_component("vanguard", TextureComponent::new(
+                Texture::on_disk("./assets/vanguard.jpg").writable()
             ))
-            .with_component("sampler", SamplerComponent::nearest())
+            .with_component("sampler", SamplerComponent::new(Sampler::nearest()))
             .init(&mut graphics.context);
 
         self.quad2 = QuadPrimitive { 

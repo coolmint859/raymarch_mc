@@ -7,7 +7,7 @@ use wgpu::Extent3d;
 use crate::graphics::{ResourceId, TextureId};
 
 /// A lightweight handle to a gpu texture
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct TextureHandle {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
@@ -29,7 +29,7 @@ pub trait TextureType: Send + 'static {
 }
 
 /// Specifies the dimensions of a texture
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct TexDimensions {
     pub width: u32,
     pub height: u32, 
@@ -60,6 +60,7 @@ impl TexDimensions {
 }
 
 /// A blueprint for constructing wgpu textures. 
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Texture<T> {
     pub label: String,
     format: wgpu::TextureFormat,
@@ -218,7 +219,7 @@ impl TextureType for Texture<Computed> {
 }
 
 /// Description for a procedurally generated texture
-#[derive(Debug)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Procedural { 
     pub data: Vec<u8>,
     pub dim: TexDimensions,
@@ -232,7 +233,7 @@ impl Procedural {
 }
 
 /// Description for a texture loaded from disk
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct OnDisk {
     pub path: String
 }
@@ -245,7 +246,7 @@ impl OnDisk {
 }
 
 /// Description for a texture generated in a compute shader
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Computed {
     pub dim: TexDimensions
 }

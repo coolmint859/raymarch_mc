@@ -15,6 +15,7 @@ pub trait SamplerType: Send + 'static {
 }
 
 /// A blueprint for constructing samplers
+#[derive(Debug, Clone)]
 pub struct Sampler<T> {
     desc: wgpu::SamplerDescriptor<'static>,
     ty: PhantomData<T>

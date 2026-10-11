@@ -4,9 +4,9 @@ use indexmap::IndexMap;
 
 use crate::{graphics::Serializable, utils::{BlockSerializable, ColumnVec, ElementSerializable, VecMut, VecRef}};
 
-/// A proxy struct for `GeometryData` for allowing mutable borrows of one or more attributes.
+/// A proxy struct for `AttributeTable` for allowing mutable borrows of one or more attributes.
 pub struct AttributeTableProxy<'a> {
-    /// Reference to the attribute data held by a `GeometryData`
+    /// Reference to the attribute data held by a `AttributeTable`
     attributes: &'a mut IndexMap<String, RefCell<Box<dyn ColumnVec>>>,
     /// The length of any given attribute
     len: &'a mut usize,
@@ -15,7 +15,7 @@ pub struct AttributeTableProxy<'a> {
 }
 
 impl<'a> AttributeTableProxy<'a> {
-    /// Get a mutable reference to an attribute vector, if exists
+    /// Get a mutable reference to an attribute, if exists
     pub fn get_attribute_mut<T>(&self, name: impl Into<String>) -> Option<VecMut<'_, T>> 
     where T: Serializable + Default + Debug + 'static
     {
@@ -32,7 +32,7 @@ impl<'a> AttributeTableProxy<'a> {
         Some(VecMut { _guard: guard, data})
     }
 
-    /// Get a reference to an attribute vector, if exists
+    /// Get a reference to an attribute, if exists
     pub fn get_attribute<T>(&self, name: impl Into<String>) -> Option<VecRef<'_, T>> 
     where T: Serializable + Default + Debug + 'static
     {
@@ -65,8 +65,6 @@ impl<'a> Drop for AttributeTableProxy<'a> {
             attr_len = attr_len.max(attr.borrow().elem_count());
         }
 
-        // println!("normalized length: {}", attr_len);
-
         for attr in self.attributes.values() {
             attr.borrow_mut().resize_default(attr_len);
         }
@@ -84,7 +82,7 @@ impl<'a> Drop for AttributeTableProxy<'a> {
 pub struct AttributeTable {
     /// The cpu-side attribute data
     attributes: IndexMap<String, RefCell<Box<dyn ColumnVec>>>,
-    /// The normalized length of the attribute
+    /// The normalized length of the attributes
     len: usize,
 }
 
@@ -97,7 +95,7 @@ impl AttributeTable {
         }
     }
 
-    /// Add an attribute to the geometry data
+    /// Add an attribute to the `AttributeTable`
     pub fn with_attribute<T>(mut self, name: impl Into<String>, data: Vec<T>) -> Self
     where
         T: Serializable + Default + Debug + 'static,
@@ -106,20 +104,19 @@ impl AttributeTable {
         self
     }
 
-    /// Add an attribute to the geometry data
+    /// Add an attribute to the `AttributeTable`
     pub fn add_attribute<T>(&mut self, name: impl Into<String>, data: Vec<T>)
     where
         T: Serializable + Default + Debug + 'static,
     {
-        let data_len = data.len();
+        self.len = self.len.max(data.len());
         self.attributes.insert(name.into(), RefCell::new(Box::new(data)));
-        self.len = self.len.max(data_len);
     }
 
-    /// Borrow the `GeometryData` mutably -  returns a `GeometryProxy` which references the inner attribute data.
+    /// Borrow the `AttributeTable` mutably -  returns a `AttributeTableProxy` which references the inner attribute data.
     /// 
-    /// Given that any of the borrowed attribute(s) could be resized during a borrow, the returned `GeometryProxy` will 
-    /// ensure all other attributes match the length of the largest mutated attribute, unless greater than the capacity.
+    /// Given that any of the borrowed attribute(s) could be resized during a borrow, the returned `AttributeTableProxy` will 
+    /// ensure all other attributes match the length of the largest mutated attribute.
     pub fn borrow_mut(&mut self) -> AttributeTableProxy<'_>{
         AttributeTableProxy {
             attributes: &mut self.attributes,
@@ -147,7 +144,7 @@ impl AttributeTable {
         Some(VecRef { _guard: guard, data})
     }
 
-    /// Resize the attribute table to have `new_len` number of elements for each attribute.
+    /// Resize the `AttributeTable` to have `new_len` number of elements for each attribute.
     /// 
     /// If `new_len` is greater than the current length, this appends default elements to the end of the attributes up to `new_len`.
     /// 
@@ -158,7 +155,7 @@ impl AttributeTable {
         }
     }
 
-    /// Resize the table to have at most `capacity` number of elements.
+    /// Resize the `AttributeTable` to have at most `capacity` number of elements.
     /// 
     /// If the largest attribute has less elements than `capacity`, then the table is only resized up to that largest attribute.
     pub fn resize_with_capacity(&mut self, capacity: usize) {
@@ -166,7 +163,7 @@ impl AttributeTable {
         self.resize_default(new_len);
     }
 
-    /// Get the number of attributes defined with this `GeometryData`
+    /// Get the number of attributes defined with this `AttributeTable`
     pub fn attr_count(&self) -> u32 {
         self.attributes.len() as u32
     }
