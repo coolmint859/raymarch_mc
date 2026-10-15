@@ -1,6 +1,6 @@
 use std::{borrow::Cow, println};
 
-use crate::graphics::{BindGroup, BindGroupLayoutHandle, BufferType, Compute, Pipeline, PipelineHandle, Render, SamplerType, TextureHandle, TextureType};
+use crate::graphics::{BindGroup, BindGroupLayoutHandle, Buffer, Compute, Pipeline, PipelineHandle, Render, SamplerType, Texture, TextureHandle, TextureSource};
 
 /// Handle to the gpu device and queue
 #[derive(Clone, Debug)]
@@ -11,29 +11,18 @@ pub struct GpuHandle {
 
 impl GpuHandle {
     /// Create a buffer from the given configuration builder
-    pub fn create_buffer(&self, buffer_def: impl BufferType) -> Result<wgpu::Buffer, String> {
-        let payload = buffer_def.into_payload()?;
-
-        let size = payload.init_data
-            .as_ref()
-            .map_or(payload.capacity, |data| {
-                if data.len() as u64 > payload.capacity {
-                    data.len() as u64
-                } else {
-                    payload.capacity
-                }
-            }
-        );
+    pub fn create_buffer(&self, blueprint: Buffer, init_data: Option<Vec<u8>>, capacity: u64) -> Result<wgpu::Buffer, String> {
+        let payload = blueprint.into_payload(init_data, capacity);
 
         let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(&payload.label),
-            size,
+            size: payload.capacity,
             usage: payload.usage,
             mapped_at_creation: false
         });
 
         if let Some(data) = payload.init_data {
-            self.queue.write_buffer(&buffer, 0, data.as_slice());
+            self.queue.write_buffer(&buffer, 0, &data);
         };
 
         println!("[GpuContext] Created new buffer with label '{}'", payload.label);
@@ -42,8 +31,9 @@ impl GpuHandle {
     }
 
     /// Create a new texture from the given configuration builder
-    pub fn create_texture(&self, texture_def: impl TextureType) -> Result<TextureHandle, String> {
-        let tex_payload = texture_def.into_payload()?;
+    pub fn create_texture(&self, blueprint: Texture, source: impl TextureSource) -> Result<TextureHandle, String> {
+        let (data, dim) = source.into_data(blueprint.format)?;
+        let tex_payload = blueprint.into_payload(data, dim);
 
         let extent = wgpu::Extent3d {
             width: tex_payload.size.width,
@@ -88,20 +78,20 @@ impl GpuHandle {
     }
 
     /// Create a new sampler from the given configuration builder
-    pub fn create_sampler(&self, sampler_def: impl SamplerType) -> Result<wgpu::Sampler, String> {
-        let payload = sampler_def.into_payload()?;
+    pub fn create_sampler(&self, blueprint: impl SamplerType) -> Result<wgpu::Sampler, String> {
+        let payload = blueprint.into_payload()?;
         let sampler = self.device.create_sampler(&payload.desc);
 
         Ok(sampler)
     }
 
-    pub fn create_bg_layout(&self, bg_layout_def: BindGroup ) -> Result<wgpu::BindGroupLayout, String> {
+    pub fn create_bg_layout(&self, blueprint: BindGroup) -> Result<wgpu::BindGroupLayout, String> {
         let layout = self.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor{
-            label: Some(&format!("Layout: {}", bg_layout_def.label)),
-            entries: &bg_layout_def.layout.entries
+            label: Some(&format!("Layout: {}", blueprint.label)),
+            entries: &blueprint.layout.entries
         });
 
-        println!("[GpuContext] Created new bind group layout with label '{}'", bg_layout_def.label);
+        println!("[GpuContext] Created new bind group layout with label '{}'", blueprint.label);
 
         Ok(layout)
     }
@@ -109,17 +99,17 @@ impl GpuHandle {
     /// Create a new bind group from the given configuration builder and resource map
     pub fn create_bind_group(
         &self,
-        bg_def: BindGroup, 
+        blueprint: BindGroup, 
         entries: Vec<wgpu::BindGroupEntry<'_>>,
         layout: BindGroupLayoutHandle,
     ) -> Result<wgpu::BindGroup, String> {
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(&bg_def.label),
+            label: Some(&blueprint.label),
             layout: &layout,
             entries: &entries,
         });
 
-        println!("[GpuContext] Created new bind group with label '{}'", bg_def.label);
+        println!("[GpuContext] Created new bind group with label '{}'", blueprint.label);
 
         Ok(bind_group)
     }
@@ -127,10 +117,10 @@ impl GpuHandle {
     /// Create a new render pipeline from the given configuration builder
     pub fn create_render_pipeline(
         &self,
-        pip_def: Pipeline<Render>,
+        blueprint: Pipeline<Render>,
         bg_layouts: Vec<wgpu::BindGroupLayout>
     ) -> Result<PipelineHandle, String> {
-        let shader_path = pip_def.shader_path
+        let shader_path = blueprint.shader_path
             .as_ref()
             .expect("[Render Pipeline] Expected pipeline to be configured with a path to a shader, but none was found");
 
@@ -143,7 +133,7 @@ impl GpuHandle {
         };
 
         let shader = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some(&pip_def.label),
+            label: Some(&blueprint.label),
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(&shader_source))
         });
 
@@ -153,31 +143,31 @@ impl GpuHandle {
             .collect();
 
         let layout = self.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some(&format!("{}_layout", pip_def.label)),
+            label: Some(&format!("{}_layout", blueprint.label)),
             bind_group_layouts: &bg_layout_refs,
             immediate_size: 0,
         });
 
-        let vertex_layouts: Vec<_> = pip_def.ty.vertex_layouts
+        let vertex_layouts: Vec<_> = blueprint.ty.vertex_layouts
             .iter()
             .map(|l| l.as_wgpu_layout())
             .collect();
 
         let pipeline = self.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some(&pip_def.label),
+            label: Some(&blueprint.label),
             layout: Some(&layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: Some(&pip_def.ty.vs_main),
+                entry_point: Some(&blueprint.ty.vs_main),
                 compilation_options: Default::default(),
                 buffers: &vertex_layouts,
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: Some(&pip_def.ty.fs_main),
+                entry_point: Some(&blueprint.ty.fs_main),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: pip_def.ty.format,
+                    format: blueprint.ty.format,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
@@ -189,17 +179,17 @@ impl GpuHandle {
             cache: None,
         });
 
-        println!("[GpuContext] Created new render pipeline with label '{}'", pip_def.label);
+        println!("[GpuContext] Created new render pipeline with label '{}'", blueprint.label);
 
         Ok(PipelineHandle::Render(pipeline))
     }
 
     pub fn create_compute_pipeline(
         &self, 
-        pip_def: Pipeline<Compute>,
+        blueprint: Pipeline<Compute>,
         bg_layouts: Vec<wgpu::BindGroupLayout>
     ) -> Result<PipelineHandle, String> {
-        let shader_path = pip_def.shader_path
+        let shader_path = blueprint.shader_path
             .as_ref()
             .expect("[Compute Pipeline] Expected pipeline to be configured with a path to a shader, but none was found");
 
@@ -211,7 +201,7 @@ impl GpuHandle {
         };
 
         let shader = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some(&format!("{}_source", pip_def.label)),
+            label: Some(&format!("{}_source", blueprint.label)),
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(&shader_source))
         });
 
@@ -221,21 +211,21 @@ impl GpuHandle {
             .collect();
 
         let layout = self.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some(&format!("{} Layout", pip_def.label)),
+            label: Some(&format!("{} Layout", blueprint.label)),
             bind_group_layouts: &bg_layout_refs,
             immediate_size: 0,
         });
 
         let pipeline = self.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some(&pip_def.label),
+            label: Some(&blueprint.label),
             layout: Some(&layout),
             module: &shader,
-            entry_point: Some(&pip_def.ty.main),
+            entry_point: Some(&blueprint.ty.main),
             compilation_options: Default::default(),
             cache: None
         });
 
-        println!("[GpuContext] Created new compute pipeline with label '{}'", pip_def.label);
+        println!("[GpuContext] Created new compute pipeline with label '{}'", blueprint.label);
 
         Ok(PipelineHandle::Compute(pipeline))
     }

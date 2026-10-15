@@ -1,4 +1,4 @@
-use crate::graphics::{Buffer, BufferId, GpuContext, Serializable, StructuredUpdate};
+use crate::graphics::{Buffer, BufferId, BufferSource, GpuContext, Serializable, StructuredUpdate};
 
 /// Stores uniform data for a buffer used by a `GpuContext`.
 pub struct UniformBuffer<T> {
@@ -8,7 +8,9 @@ pub struct UniformBuffer<T> {
     is_dirty: bool,
 }
 
-impl<T: Serializable> UniformBuffer<T> {
+impl<T> UniformBuffer<T> 
+where T: Serializable + Clone + 'static
+{
     /// Create a new UniformBuffer. This does not create a corresponding gpu buffer. For that, call `init()`
     pub fn new(uniform: T) -> Self {
         Self {
@@ -28,10 +30,8 @@ impl<T: Serializable> UniformBuffer<T> {
     /// Initialize this buffer with a `GpuContext`. 
     pub fn init(mut self, context: &mut GpuContext) -> Self {
         self.id = context.request_buffer(
-            Buffer::as_uniform()
-                .with_label(&self.label)
-                .with_byte_data(self.uniform.to_bytes())
-                .writable()
+            Buffer::as_uniform().with_label(&self.label).writable(),
+            BufferSource::from_pod(self.uniform.clone())
         );
         self.is_dirty = false;
 

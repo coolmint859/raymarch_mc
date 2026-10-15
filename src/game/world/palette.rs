@@ -14,6 +14,7 @@ pub const DAY_SUN: Vec3 =       glam::vec3(1.0, 0.95, 0.85);
 pub const DUSK_SUN: Vec3 =      glam::vec3(1.0, 0.5, 0.2);
 pub const NIGHT_SUN: Vec3 =     glam::vec3(0.0, 0.0, 0.0);
 
+#[derive(Debug, Clone)]
 pub struct VoxelPalette {
     pub colors: Vec<u8>
 }

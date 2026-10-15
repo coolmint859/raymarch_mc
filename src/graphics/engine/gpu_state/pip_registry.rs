@@ -10,7 +10,7 @@ pub(crate) struct PipelineDependencies {
 pub(crate) struct PipelineRegistry {
     gpu: GpuHandle,
     handles: ResourceHandler<PipelineId, PipelineHandle>,
-    pip_defs: HashMap<PipelineId, PipelineType>,
+    pip_bps: HashMap<PipelineId, PipelineType>,
     deferred: HashMap<PipelineId, PipelineType>,
     valid_pips: RefCell<HashSet<PipelineId>>
 }
@@ -20,7 +20,7 @@ impl PipelineRegistry {
         Self {
             gpu,
             handles: ResourceHandler::new(),
-            pip_defs: HashMap::new(),
+            pip_bps: HashMap::new(),
             deferred: HashMap::new(),
             valid_pips: RefCell::new(HashSet::new())
         }
@@ -51,14 +51,14 @@ impl PipelineRegistry {
     /// remove a bind group from the registry
     pub fn remove(&mut self, pip_id: &PipelineId) {
         self.handles.remove(pip_id);
-        self.pip_defs.remove(pip_id);
+        self.pip_bps.remove(pip_id);
         self.deferred.remove(pip_id);
         self.invalidate(pip_id);
     }
 
     /// Get a reference to the blueprint of the pipeline matching the id, if exists
     pub fn get_blueprint(&self, id: &PipelineId) -> Option<&PipelineType> {
-        self.pip_defs.get(id)
+        self.pip_bps.get(id)
     }
 
     /// Validates and returns a pipeline handle corresponding to the id if it passes
@@ -67,7 +67,7 @@ impl PipelineRegistry {
             return self.handles.get(pip_id);
         }
 
-        let pip_def = self.pip_defs.get(pip_id)?;
+        let pip_def = self.pip_bps.get(pip_id)?;
         self.resolve_dependencies(pip_def, bgs)?;
 
         self.valid_pips.borrow_mut().insert(*pip_id);
@@ -79,7 +79,7 @@ impl PipelineRegistry {
         self.valid_pips.borrow_mut().remove(pip_id);
     }
 
-    // Try requesting a new pipeline tied to the provided id.
+    /// Try requesting a new pipeline tied to the provided id.
     fn try_request<'a>(
         &mut self,
         pip_id: &PipelineId,
@@ -89,8 +89,8 @@ impl PipelineRegistry {
         if let Some(deps) = self.resolve_dependencies(&blueprint, bgs) {
             self.deferred.remove(pip_id);
 
-            if !self.pip_defs.contains_key(pip_id) {
-                self.pip_defs.insert(*pip_id, blueprint.clone());
+            if !self.pip_bps.contains_key(pip_id) {
+                self.pip_bps.insert(*pip_id, blueprint.clone());
             }
 
             for layout_id in blueprint.bg_layouts().iter() {
@@ -119,13 +119,14 @@ impl PipelineRegistry {
         }
     }
 
+    /// Resolves the dependencies of a pipeline given it's `blueprint` and a `BindGroupRegistry`
     fn resolve_dependencies<'a>(
         &self,
-        pip_def: &PipelineType, 
+        blueprint: &PipelineType, 
         bgs: &'a BindGroupRegistry
     ) -> Option<PipelineDependencies> {
         let mut bg_layouts = Vec::new();
-        for bgl_id in pip_def.bg_layouts().iter() {
+        for bgl_id in blueprint.bg_layouts().iter() {
             if let Some(layout) =  bgs.layout_handles.get(bgl_id).cloned() {
                 bg_layouts.push((*layout).clone())
             } else {

@@ -1,4 +1,4 @@
-use crate::{game::{EnvironmentUniform, VoxelPalette, VoxelWorld}, graphics::{Buffer, BufferId, Graphics, Sampler, SamplerId, TexDimensions, Texture, TextureId}, utils::{BufferInit, StorageBuffer, UniformBuffer}};
+use crate::{game::{EnvironmentUniform, VoxelPalette, VoxelWorld}, graphics::{Buffer, BufferId, BufferSource, Computed, Graphics, OnDisk, Sampler, SamplerId, TexDimensions, Texture, TextureId}, utils::{BufferInit, StorageBuffer, UniformBuffer}};
 
 pub struct ResourceIds {
     pub taa: TaaIds,
@@ -36,25 +36,28 @@ impl TaaIds {
         let (cw, ch) = graphics.canvas.dimensions();
 
         let rm_tex_id = graphics.context.request_texture( 
-            Texture::computed(TexDimensions::size_2d(cw, ch))
+            Texture::new()
                 .with_label("Raymarch Texture")
                 .with_format(wgpu::TextureFormat::Rgba16Float)
                 .storage_bindable()
-                .writable()
+                .writable(),
+            Computed { dim: TexDimensions::size_2d(cw, ch) }
         );
 
         let taa_tex1_id = graphics.context.request_texture(
-            Texture::computed(TexDimensions::size_2d(cw, ch))
+            Texture::new()
                 .with_label("TAA Texture 1")
                 .with_format(wgpu::TextureFormat::Rgba16Float)
-                .storage_bindable()
+                .storage_bindable(),
+            Computed { dim: TexDimensions::size_2d(cw, ch) }
         );
 
         let taa_tex2_id  = graphics.context.request_texture(
-            Texture::computed(TexDimensions::size_2d(cw, ch))
+            Texture::new()
                 .with_label("TAA Texture 2")
                 .with_format(wgpu::TextureFormat::Rgba16Float)
-                .storage_bindable()
+                .storage_bindable(),
+            Computed { dim: TexDimensions::size_2d(cw, ch) }
         );
 
         Self {
@@ -72,25 +75,28 @@ impl TaaIds {
         graphics.context.remove_texture(&self.tex2);
 
         self.rm_tex = graphics.context.request_texture(
-            Texture::computed(TexDimensions::size_2d(cw, ch))
+            Texture::new()
                 .with_label("Raymarch Texture")
                 .with_format(wgpu::TextureFormat::Rgba16Float)
                 .storage_bindable()
-                .writable()
+                .writable(),
+            Computed { dim: TexDimensions::size_2d(cw, ch) }
         );
 
         self.tex1 = graphics.context.request_texture(
-            Texture::computed(TexDimensions::size_2d(cw, ch))
+            Texture::new()
                 .with_label("TAA Texture1")
                 .with_format(wgpu::TextureFormat::Rgba16Float)
-                .storage_bindable()
+                .storage_bindable(),
+            Computed { dim: TexDimensions::size_2d(cw, ch) }
         );
 
         self.tex2 = graphics.context.request_texture(
-            Texture::computed(TexDimensions::size_2d(cw, ch))
+            Texture::new()
                 .with_label("TAA Texture2")
                 .with_format(wgpu::TextureFormat::Rgba16Float)
-                .storage_bindable()
+                .storage_bindable(),
+            Computed { dim: TexDimensions::size_2d(cw, ch) }
         );
     }
 }
@@ -116,10 +122,8 @@ impl VoxelWorldIds {
             .init(&mut graphics.context, voxel_byte_length);
 
         let grid_id = graphics.context.request_buffer( 
-            Buffer::as_storage()
-                .with_label("Grid Buffer")
-                .with_byte_data(&region_bytes.grids)
-                .writable()
+            Buffer::as_storage().with_label("Grid Buffer").writable(),
+            BufferSource::from_raw(region_bytes.grids)
         );
 
         let palette = UniformBuffer::new(VoxelPalette::create())
@@ -150,35 +154,39 @@ impl GBufferIds {
         let ch_half = ch / 2;
 
         let pos_tex_id = graphics.context.request_texture(
-            Texture::computed(TexDimensions::size_2d(cw_half, ch_half))
+            Texture::new()
                 .with_label("Position Texture")
                 .with_format(wgpu::TextureFormat::Rgba16Float)
                 .storage_bindable()
-                .readable()
+                .readable(),
+            Computed { dim: TexDimensions::size_2d(cw_half, ch_half) }
         );
 
         let norm_tex_id = graphics.context.request_texture(
-            Texture::computed(TexDimensions::size_2d(cw_half, ch_half))
+            Texture::new()
                 .with_label("Normals Texture")
                 .with_format(wgpu::TextureFormat::Rgba8Unorm)
                 .storage_bindable()
-                .readable()
+                .readable(),
+            Computed { dim: TexDimensions::size_2d(cw_half, ch_half) }
         );
 
         let depth_tex_id = graphics.context.request_texture(
-            Texture::computed(TexDimensions::size_2d(cw_half, ch_half))
+            Texture::new()
                 .with_label("Normals Texture")
                 .with_format(wgpu::TextureFormat::R32Float)
                 .storage_bindable()
-                .readable()
+                .readable(),
+            Computed { dim: TexDimensions::size_2d(cw_half, ch_half) }
         );
 
         let mat_tex_id = graphics.context.request_texture(
-            Texture::computed(TexDimensions::size_2d(cw_half, ch_half))
+            Texture::new()
                 .with_label("Normals Texture")
                 .with_format(wgpu::TextureFormat::R32Float)
                 .storage_bindable()
-                .readable()
+                .readable(),
+            Computed { dim: TexDimensions::size_2d(cw_half, ch_half) }
         );
 
         Self {
@@ -200,34 +208,39 @@ impl GBufferIds {
         graphics.context.remove_texture(&self.mat);
 
         self.pos = graphics.context.request_texture(
-            Texture::computed(TexDimensions::size_2d(cw_half, ch_half))
+            Texture::new()
                 .with_label("Position Texture")
                 .with_format(wgpu::TextureFormat::Rgba16Float)
                 .storage_bindable()
-                .readable()
+                .readable(),
+            Computed { dim: TexDimensions::size_2d(cw_half, ch_half) }
         );
 
         self.norm = graphics.context.request_texture(
-            Texture::computed(TexDimensions::size_2d(cw_half, ch_half))
+            Texture::new()
                 .with_label("Normals Texture")
                 .with_format(wgpu::TextureFormat::Rgba8Unorm)
                 .storage_bindable()
-                .readable()
+                .readable(),
+            Computed { dim: TexDimensions::size_2d(cw_half, ch_half) }
         );
 
-        self.depth = graphics.context.request_texture(Texture::computed(TexDimensions::size_2d(cw_half, ch_half))
+        self.depth = graphics.context.request_texture(
+            Texture::new()
                 .with_label("Normals Texture")
                 .with_format(wgpu::TextureFormat::R32Float)
                 .storage_bindable()
-                .readable()
+                .readable(),
+            Computed { dim: TexDimensions::size_2d(cw_half, ch_half) }
         );
 
         self.mat = graphics.context.request_texture(
-            Texture::computed(TexDimensions::size_2d(cw_half, ch_half))
+            Texture::new()
                 .with_label("Normals Texture")
                 .with_format(wgpu::TextureFormat::R32Float)
                 .storage_bindable()
-                .readable()
+                .readable(),
+            Computed { dim: TexDimensions::size_2d(cw_half, ch_half) }
         );
     }
 }
@@ -241,15 +254,13 @@ pub struct MaterialIds {
 impl MaterialIds {
     pub fn init(graphics: &mut Graphics) -> Self {
         let gsam_id = graphics.context.request_texture(
-            Texture::on_disk("./assets/grass_block_side_overlay.png")
-                .with_label("Grass Side Alpha Mask")
-                .writable()
+            Texture::new().with_label("Grass Side Alpha Mask").writable(),
+            OnDisk { path: "./assets/grass_block_side_overlay.png" }
         );
 
         let atlas_id = graphics.context.request_texture(
-            Texture::on_disk("./assets/textures.png")
-                .with_label("Block Atlas Texture")
-                .writable()
+            Texture::new().with_label("Block Atlas Texture").writable(),
+            OnDisk { path: "./assets/textures.png" }
         );
 
         let samp_id = graphics.context.request_sampler(

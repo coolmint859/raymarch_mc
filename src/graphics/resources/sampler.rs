@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, num::NonZero};
+use std::{hash::Hash, marker::PhantomData, num::NonZero};
 
 use uuid::Uuid;
 

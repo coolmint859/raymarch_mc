@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::{graphics::{Buffer, BufferId, GpuContext, RawBytesUpdate, Serializable}, utils::{AttributeTable, AttributeTableProxy, BufferInit, Building, ElementSerializable, Empty, VecRef}};
+use crate::{graphics::{Buffer, BufferId, BufferSource, GpuContext, RawBytesUpdate, Serializable}, utils::{AttributeTable, AttributeTableProxy, BufferInit, Building, ElementSerializable, Empty, VecRef}};
 
 /// A container for storage buffer data
 #[derive(Debug)]
@@ -83,11 +83,8 @@ impl StorageBuffer<Building> {
         let total_bytes = stride * capacity;
 
         let buf_id = context.request_buffer(
-            Buffer::as_storage()
-                .with_label(&self.label)
-                .with_byte_data(&packed_bytes)
-                .with_capacity(total_bytes as u64)
-                .writable()
+            Buffer::as_storage().with_label(&self.label).writable(),
+            BufferSource::from_raw(packed_bytes).with_capacity(total_bytes as u64)
         );
         
         let state = BufferInit {

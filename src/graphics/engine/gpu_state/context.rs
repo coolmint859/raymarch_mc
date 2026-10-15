@@ -1,16 +1,16 @@
 use std::{collections::HashSet};
 use crate::{graphics::{pip_registry::PipelineRegistry, *}, utils::{ResourceHandler, Task}};
 
-/// Represents structs that can be identified as a gpu resource
+/// Represents types that can be identified as a gpu resource
 pub trait ResourceId {
-    /// The type that the struct instance returns as it's id
+    /// The id type mapped to the `ResourceId` type
     type Id;
 
-    /// Create a new id as the associated type `Self::ResourceId`
+    /// Create a new id as the associated type `Self::Id`
     fn create_id(&self) -> Self::Id;
 }
 
-/// The low level gpu resources as used in bind groups.
+/// The low level gpu resources (Buffers, Textures and Samplers)
 pub(crate) struct GpuResources {
     pub(crate) buffers: ResourceHandler<BufferId, wgpu::Buffer>,
     pub(crate) textures: ResourceHandler<TextureId, TextureHandle>,
@@ -34,7 +34,26 @@ impl GpuResources {
     }
 }
 
-/// Represents the state of the gpu, providing means to create and modify gpu resources
+/// A container and lifecycle manager for gpu resources, providing means to create, modify, and remove them.
+/// 
+/// This handles lifecycles of gpu resources through internal, timer-based async handlers, where resources are removed 
+/// automatically if they are not used, based on a hold policy. All resources are therefore created asynchronously, and kept alive for as long as they are used, unless specified otherwise.
+/// Hold policies can be globally configured or specified per resource through their blueprints. All resources have an indefinite hold time by default (meaning they stay alive indefinitely unless manually removed)
+/// 
+/// Blueprints are builder-like descriptor structs that describe the purpose, usage, dependencies, and lifetimes of a wpgu resource.
+/// They are meant to be lightweight and therefore can be cloned, copied, and used as keys in `HashMap`s.
+/// Buffer and texture blueprints have associated source types that can be used to prepopulate them with initial data.
+/// 
+/// Resources that have dependencies (like bind groups and pipelines) are created as soon as the dependencies themselves are created at the next call to `sync()`.
+/// This allows for runtime validation, eliminating many potential execution bugs that could arise due to failed resource creations.
+/// 
+/// Executors that use this context should (and only can) access raw wgpu handles through the validation system. This ensures that executing draw and compute commands
+/// only happen if their depenenencies are ready. 
+/// 
+/// All resources are mapped to ids that are either universally unique (as is the case for buffers and textures), or content-addressable (as is the case for bind group layouts and pipelines).
+/// These ids are lightweight and clonable, allowing any system using this `GpuContext` to easily send ids across threads or own directly.
+/// 
+/// This struct makes no assumptions about the data that lives within the resources, meaning that memory management is still up to the user.
 pub struct GpuContext {
     pub(crate) gpu: GpuHandle,
     pub(crate) resources: GpuResources,
@@ -43,6 +62,7 @@ pub struct GpuContext {
 }
 
 impl GpuContext {
+    /// Create a new `GpuContext` from a `GpuHandle`.
     pub fn new(gpu: GpuHandle) -> Self {
         Self {
             resources: GpuResources::new(),
@@ -52,50 +72,51 @@ impl GpuContext {
         }
     }
 
-    /// Get a reference to the gpu handle used by the context
+    /// Get a reference to the `GpuHandle` used by this `GpuContext`
     pub fn gpu_handle(&self) -> &GpuHandle {
         &self.gpu
     }
 
     /// Request a buffer to be created from the provided blueprint.
     /// 
-    /// Returns an associated `BufferId` that is uniquely associated with the resultant buffer.
-    pub fn request_buffer<B>(&mut self, blueprint: B) -> BufferId 
-    where 
-        B: BufferType + ResourceId<Id = BufferId>
-    {
+    /// Returns a `BufferId` that is uniquely associated with the resultant wgpu `Buffer`.
+    pub fn request_buffer<S>(&mut self, blueprint: Buffer, source: BufferSource<S>) -> BufferId {
         let id = blueprint.create_id();
-
+        
         let gpu = self.gpu.clone();
         let buffer_task = Task::io_bound( async move {
-            gpu.create_buffer(blueprint)
+            gpu.create_buffer(blueprint, source.data, source.capacity)
         });
         self.resources.buffers.request_new(&id, buffer_task);
 
         id
     }
 
-    /// Request a texture to be created from the provided definition and mapped to the provided id.
-    pub fn request_texture<B>(&mut self, blueprint: B) -> TextureId 
-    where
-        B: TextureType + ResourceId<Id = TextureId>
-    {
+    /// Request a texture to be created from the provided blueprint and source.
+    /// 
+    /// Returns a `TextureId` that is uniquely associated with the resultant wgpu `Texture`.
+    pub fn request_texture(&mut self, blueprint: Texture, source: impl TextureSource) -> TextureId {
         let id = blueprint.create_id();
 
         let gpu = self.gpu.clone();
         let texture_task = Task::io_bound(async move {
-            gpu.create_texture(blueprint)
+            gpu.create_texture(blueprint, source)
         });
         self.resources.textures.request_new(&id, texture_task);
 
         id
     }
 
-    /// Request a sampler to be created from the provided definition and mapped to the provided id.
+    /// Request a sampler to be created from the provided blueprint.
+    /// 
+    /// Returns a `SamplerId` that is content-addressable to the blueprint. (This ensures that identical sampler blueprints map to the same id)
     pub fn request_sampler<B>(&mut self, blueprint: B) -> SamplerId 
-    where B: SamplerType + ResourceId<Id = SamplerId>
+    where 
+        B: SamplerType + ResourceId<Id = SamplerId>
     {
         let id = blueprint.create_id();
+
+        // if self.resources.samplers.contains(&id) { return id; }
 
         let gpu = self.gpu.clone();
         let sampler_task = Task::io_bound(async move {
@@ -106,30 +127,34 @@ impl GpuContext {
         id
     }
 
-    /// Request a bind group to be created from the provided definition and mapped to the provided id.
+    /// Request a bind group to be created from the provided blueprint
+    /// 
+    /// Returns a `BindGroupIdPair`, which contains a unique `BindGroupId` and content-addressable `LayoutId`.
     pub fn request_bind_group(&mut self, blueprint: BindGroup) -> BindGroupIdPair {
         return self.bg_registry.request_bg(blueprint, &self.resources);
     }
 
-    /// Request a pipeline to be created from the provided definition and mapped to the provided id.
+    /// Request a pipeline to be created from the provided blueprint.
+    /// 
+    /// Returns a `PipelineId` that is content-addressable to the blueprint. (This ensures that identical pipeline blueprints map to the same id)
     pub fn request_pipeline(&mut self, blueprint: impl Into<PipelineType>) -> PipelineId {
         return self.pip_registry.request(blueprint.into(), &self.bg_registry);
     }
 
-    /// Sync pending resources with the main thread. This should be called regularly in frame-based applications
+    /// Sync pending resources with the main thread. This should be called regularly.
     pub fn sync(&mut self) {
         self.resources.sync();
         self.bg_registry.sync(&self.resources);
         self.pip_registry.sync(&self.bg_registry);
     }
 
-    /// Update a buffer with the provided id, if found. The data payload must not exceed the buffer size
+    /// Update a buffer with the provided id, if found.
+    /// 
+    /// Returns an error if the `update` data exceeds the buffer's capacity.
     pub fn update_buffer(&mut self, id: &BufferId, update: impl BufferUpdate) -> Result<(), String>{
         if let Some(buffer) = self.resources.buffers.get(id) {
             let data = update.bytes();
             let offset = update.offset();
-
-            // println!("Updating buffer with id: {:?}", id);
 
             let update_size = offset + data.len() as u64;
             if update_size > buffer.size() {
@@ -212,7 +237,10 @@ impl GpuContext {
         println!("[GpuContext] Removed Buffer with label '{:?}'", id);
     }
 
-    /// Remove a bind group from the context, releasing the vram allocation
+    /// Remove a bind group from the context, releasing the vram allocation.
+    /// 
+    /// This decrements the associated bind group layout's reference count. If this was the last resource that used the layout,
+    /// (i.e. no other pipeline or bind group references it), then the layout is also removed.
     pub fn remove_bind_group(&mut self, bg_id: &BindGroupId) {
         if let Some(bg_handle) = self.bg_registry.bg_handles.get(bg_id).cloned() {
             self.bg_registry.check_dec_bgl(&bg_handle.layout_id);
@@ -222,7 +250,10 @@ impl GpuContext {
         println!("[GpuContext] Removed Bind Group with label '{:?}'", bg_id);
     }
 
-    /// Remove a pipeline from the context, releasing the vram allocation
+    /// Remove a pipeline from the context, releasing the vram allocation.
+    ///
+    /// This decrements the associated bind group layout's reference count. If this was the last resource that used the layout,
+    /// (i.e. no other pipeline or bind group references it), then the layout is also removed.
     pub fn remove_pipeline(&mut self, id: &PipelineId) {
         if let Some(pip) = self.pip_registry.get_blueprint(id) {
             for layout_id in pip.bg_layouts().iter() {
@@ -239,7 +270,7 @@ impl GpuContext {
     /// 
     /// You can call this prior to rendering to speed up initial gameplay frames, but note that it will only work if
     /// the dependent resources are already ready.
-    ///  /// 
+    ///
     /// Note that any changes to underlying resources will invalidate the bind group, triggering revalidation on the next usage.
     pub fn validate_bind_group(&self, bg_id: &BindGroupId) -> Option<BindGroupHandle> {
         self.bg_registry.validate(bg_id, &self.resources)

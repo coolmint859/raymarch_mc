@@ -111,8 +111,6 @@ impl ResourceId for BindGroupLayout {
     type Id = LayoutId;
 
     fn create_id(&self) -> Self::Id {
-        // Rather than creating a random id, the layout entries are hashed.
-        // This allows structurally identical layouts to have the same id.
         let mut hasher = DefaultHasher::new();
         self.hash(&mut hasher);
         LayoutId(Uuid::from_u128(hasher.finish() as u128))

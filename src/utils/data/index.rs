@@ -1,4 +1,4 @@
-use crate::graphics::{Buffer, BufferId, GpuContext, RawBytesUpdate, Serializable};
+use crate::graphics::{Buffer, BufferId, BufferSource, GpuContext, RawBytesUpdate, Serializable};
 
 /// Represents index data
 #[derive(Debug, Clone)]
@@ -8,6 +8,7 @@ pub enum IndexData {
 }
 
 impl IndexData {
+    /// Returns the format of the index data
     pub fn format(&self) -> wgpu::IndexFormat {
         match self {
             IndexData::U16(_) => wgpu::IndexFormat::Uint16,
@@ -15,6 +16,7 @@ impl IndexData {
         }
     }
 
+    /// Returns the length of the index data
     pub fn len(&self) -> usize {
         match self {
             IndexData::U16(data) => data.len(),
@@ -70,11 +72,11 @@ impl IndexBuffer {
 
     /// Initialize this buffer with a `GpuContext`.
     pub fn init(&mut self, context: &mut GpuContext) {
+        let indices = self.indices.to_bytes().to_vec();
+
         self.id = context.request_buffer(
-            Buffer::as_index()
-                .with_label(&self.label)
-                .with_byte_data(self.indices.to_bytes())
-                .writable()
+            Buffer::as_index().with_label(&self.label).writable(),
+            BufferSource::from_raw(indices)
         );
         self.is_dirty = false;
     }

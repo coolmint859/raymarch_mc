@@ -2,7 +2,7 @@ use std::{any::Any, fmt::Debug};
 
 use indexmap::IndexMap;
 
-use crate::{graphics::{BindGroup, BindGroupId, BindGroupIdPair, Bindable, BindingTarget, Buffer, BufferBinding, BufferId, GpuContext, LayoutId, Sampler, SamplerBinding, SamplerId, SamplerType, Serializable, StructuredUpdate, Texture, TextureBinding, TextureId, TextureType, TextureTypeSampled, Uniform}, utils::{Building, Empty}};
+use crate::{graphics::{BindGroup, BindGroupId, BindGroupIdPair, Bindable, BindingTarget, Buffer, BufferBinding, BufferId, BufferSource, GpuContext, LayoutId, Sampler, SamplerBinding, SamplerId, SamplerType, Serializable, StructuredUpdate, Texture, TextureBinding, TextureId, TextureSource, TextureTypeSampled}, utils::{Building, Empty}};
 
 #[derive(Debug)]
 pub struct MatInit {
@@ -104,7 +104,7 @@ impl Material<MatInit> {
     /// Modify a uniform buffer on this `Material`, if exists, using the provided closure `F`.
     pub fn modify_uniform<T, F>(&mut self, name: impl Into<String>, modifer: F) 
     where 
-        T: Serializable + Debug + 'static, 
+        T: Serializable + Send + Copy + Debug + 'static, 
         F: FnOnce(&mut T)
     {
         if let Some(component) = self.components.get_mut(&name.into()) {
@@ -184,14 +184,14 @@ impl dyn MaterialComponent {
 #[derive(Debug)]
 pub struct UniformComponent<T: Serializable> {
     id: BufferId,
-    blueprint: Buffer<Uniform>,
+    blueprint: Buffer,
     is_dirty: bool,
     data: T,
     visibility: wgpu::ShaderStages,
 }
 
 impl<T: Serializable> UniformComponent<T> {
-    pub fn new(blueprint: Buffer<Uniform>, data: T) -> Self {
+    pub fn new(blueprint: Buffer, data: T) -> Self {
         Self {
             id: BufferId::UNINIT,
             blueprint,
@@ -215,16 +215,16 @@ impl<T: Serializable> UniformComponent<T> {
 }
 
 impl<T> MaterialComponent for UniformComponent<T>
-where T: Serializable + Debug + 'static
+where T: Serializable + Clone + Debug + 'static
 {
     fn as_any(&self) -> &dyn Any { self }
     fn as_any_mut(&mut self) -> &mut dyn Any { self }
 
     fn init(&mut self, context: &mut GpuContext) {
-        let bp = self.blueprint.clone()
-            .with_byte_data(self.data.to_bytes());
-
-        self.id = context.request_buffer(bp);
+        self.id = context.request_buffer(
+            self.blueprint.clone(), 
+            BufferSource::from_pod(self.data.clone())
+        );
     }
 
     fn binding(&self) -> MaterialBinding {
@@ -250,18 +250,22 @@ where T: Serializable + Debug + 'static
 #[derive(Debug)]
 pub struct TextureComponent<T> {
     id: TextureId,
-    blueprint: Texture<T>,
+    blueprint: Texture,
     sample_state: TextureTypeSampled,
     visibility: wgpu::ShaderStages,
+    source: T
 }
 
-impl<T> TextureComponent<T> {
-    pub fn new(blueprint: Texture<T>) -> Self {
+impl<T> TextureComponent<T> 
+where T: TextureSource + Debug + 'static
+{
+    pub fn new(blueprint: Texture, source: T) -> Self {
         Self {
             id: TextureId::UNINIT,
             blueprint,
             sample_state: TextureTypeSampled::default(),
             visibility: wgpu::ShaderStages::FRAGMENT,
+            source,
         }
     }
 
@@ -285,15 +289,13 @@ impl<T> TextureComponent<T> {
 }
 
 impl<T> MaterialComponent for TextureComponent<T> 
-where 
-    T: Debug + Clone + 'static,
-    Texture<T>: TextureType
+where T: TextureSource + Clone + Debug + 'static
 {
     fn as_any(&self) -> &dyn Any { self }
     fn as_any_mut(&mut self) -> &mut dyn Any { self }
 
     fn init(&mut self, context: &mut GpuContext) {
-        self.id = context.request_texture(self.blueprint.clone())
+        self.id = context.request_texture(self.blueprint.clone(), self.source.clone())
     }
 
     fn binding(&self) -> MaterialBinding {
@@ -339,7 +341,7 @@ impl<T> SamplerComponent<T> {
 impl<T> MaterialComponent for SamplerComponent<T> 
 where
     T: Debug + Clone + 'static,
-    Sampler<T>: SamplerType,
+    Sampler<T>: SamplerType
 {
     fn as_any(&self) -> &dyn Any { self }
     fn as_any_mut(&mut self) -> &mut dyn Any { self }

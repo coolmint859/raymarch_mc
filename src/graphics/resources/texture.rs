@@ -9,8 +9,11 @@ use crate::graphics::{ResourceId, TextureId};
 /// A lightweight handle to a gpu texture
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct TextureHandle {
+    /// The Handle to the actual wgpu `Texture`
     pub texture: wgpu::Texture,
+    /// The view into the associated wgpu `Texture`
     pub view: wgpu::TextureView,
+    /// The dimensions (width/height/depth) of the texture
     pub extent: Extent3d,
 }
 
@@ -20,12 +23,6 @@ impl Deref for TextureHandle {
     fn deref(&self) -> &Self::Target {
         &self.view
     }
-}
-
-/// Represents resources that can be condensed into a texture payload.
-pub trait TextureType: Send + 'static {
-    /// Convert the texture into its full payload information, if possible.
-    fn into_payload(self) -> Result<TexturePayload, String>;
 }
 
 /// Specifies the dimensions of a texture
@@ -59,17 +56,108 @@ impl TexDimensions {
     }
 }
 
-/// A blueprint for constructing wgpu textures. 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct Texture<T> {
-    pub label: String,
-    format: wgpu::TextureFormat,
-    usage: wgpu::TextureUsages,
-    mip_levels: u32,
-    ty: T,
+/// Represents sources for textures, condensing the blueprint into a payload for use during uploading.
+pub trait TextureSource: Send + 'static {
+    /// Converts `self` into the raw texture data and dimensions given a `format`, if possible.
+    fn into_data(self, format: wgpu::TextureFormat) -> Result<(Option<Vec<u8>>, TexDimensions), String>;
 }
 
-impl<T> Texture<T> {
+/// A `TextureSource` for textures created from image data
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct OnDisk {
+    /// The path to the image data
+    pub path: &'static str 
+}
+
+impl TextureSource for OnDisk {
+    fn into_data(self, format: wgpu::TextureFormat) -> Result<(Option<Vec<u8>>, TexDimensions), String> {
+        match image::open(self.path)
+            .map_err(|err| format!("Failed to read image file with path {}: {}", self.path, err)) 
+        {
+            Ok(img) => {
+                let dim = TexDimensions {
+                    width: img.width(),
+                    height: img.height(),
+                    depth: 1,
+                    wgpu_dim: wgpu::TextureDimension::D2
+                };
+
+                let raw_data = match format {
+                    wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb => {
+                        img.to_bgra8().into_raw()
+                    },
+                    wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Rgba8UnormSrgb => {
+                        img.to_rgba8().into_raw()
+                    },
+                    wgpu::TextureFormat::R8Unorm => {
+                        img.to_luma8().into_raw()
+                    }
+                    _ => {
+                        return Err(format!(
+                            "Unsupported Texture Format {:?} for image data from path @'{}'", format, self.path
+                        ));
+                    }
+                };
+
+                Ok((Some(raw_data), dim))
+            },
+            Err(e) => return Err(e)
+        }
+    }
+}
+
+
+/// A `TextureSource` for textures created from procedural generation
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct Procedural { 
+    /// The procedurally generated texture data. Must match the dimensions
+    pub data: Vec<u8>,
+    /// The dimensions (width/height/depth) of the texture data
+    pub dim: TexDimensions,
+}
+
+impl TextureSource for Procedural {
+    fn into_data(self, _format: wgpu::TextureFormat) -> Result<(Option<Vec<u8>>, TexDimensions), String> {
+        Ok((Some(self.data), self.dim))
+    }
+}
+
+/// A `TextureSource` for textures created by running a compute shader
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct Computed {
+    /// The dimensions (width/height/depth) of the output from the compute shader
+    pub dim: TexDimensions
+}
+
+impl TextureSource for Computed {
+    fn into_data(self, _format: wgpu::TextureFormat) -> Result<(Option<Vec<u8>>, TexDimensions), String> {
+        Ok((None, self.dim))
+    }
+}
+
+/// A blueprint for constructing wgpu textures.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct Texture {
+    /// Label for gpu profiling
+    pub label: String,
+    /// The format of the texture, default is `wgpu::TextureFormat::Rgba8Unorm`
+    pub format: wgpu::TextureFormat,
+    /// The usage of the texture, default is `wgpu::TextureUsages::TEXTURE_BINDING`
+    pub usage: wgpu::TextureUsages,
+    /// The mip levels of the texture, default is 1.
+    pub mip_levels: u32,
+}
+
+impl Texture {
+    pub fn new() -> Self {
+        Self {
+            label: "Texture".to_string(),
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            mip_levels: 1,
+        }
+    }
+
     /// Set the label for gpu profiling of the resultant texture
     pub fn with_label(mut self, label: &str) -> Self {
         self.label = label.to_string();
@@ -117,144 +205,31 @@ impl<T> Texture<T> {
         self.usage |= wgpu::TextureUsages::STORAGE_BINDING;
         self
     }
+
+    /// Allows the texture to be used as a render attachment
+    pub fn render_attachment(mut self) -> Self {
+        self.usage |= wgpu::TextureUsages::RENDER_ATTACHMENT;
+        self
+    }
+
+    /// Convert this texture blueprint into it's payload representation, given some initial data and dimensions.
+    pub(crate) fn into_payload(&self, data: Option<Vec<u8>>, dim: TexDimensions) -> TexturePayload {
+        TexturePayload {
+            label: self.label.clone(),
+            format: self.format,
+            usage: self.usage,
+            mip_levels: self.mip_levels,
+            size: dim,
+            data
+        }
+    }
 }
 
-impl<T> ResourceId for Texture<T> {
+impl ResourceId for Texture {
     type Id = TextureId;
 
     fn create_id(&self) -> Self::Id {
         TextureId(Uuid::new_v4())
-    }
-}
-
-impl Texture<Procedural> {
-    /// Create a texture from procedurally generated data
-    pub fn procedural(data: Vec<u8>, dim: TexDimensions) -> Self {
-        Self {
-            label: "procedural_texture".to_string(),
-            format: Procedural::default_fmt(),
-            usage: wgpu::TextureUsages::TEXTURE_BINDING,
-            mip_levels: 1,
-            ty: Procedural { data, dim }
-        }
-    }
-}
-
-impl TextureType for Texture<Procedural> {
-    fn into_payload(self) -> Result<TexturePayload, String> {
-        Ok(TexturePayload {
-            label: self.label,
-            size: self.ty.dim, 
-            format: self.format,
-            usage: self.usage,
-            mip_levels: self.mip_levels,
-            data: Some(self.ty.data),
-        })
-    }
-}
-
-impl Texture<OnDisk> {
-    /// Create a texture from an image file
-    pub fn on_disk(path: impl Into<String>) -> Self {
-        Self {
-            label: "disk_loaded_texture".to_string(),
-            format: OnDisk::default_fmt(),
-            usage: wgpu::TextureUsages::TEXTURE_BINDING,
-            mip_levels: 1,
-            ty: OnDisk { path: path.into() }
-        }
-    }
-}
-
-impl TextureType for Texture<OnDisk> {
-    fn into_payload(self) -> Result<TexturePayload, String> {
-        let path = self.ty.path.clone();
-
-        image::open(path)
-            .map(|img| {
-                let dim = TexDimensions {
-                    width: img.width(),
-                    height: img.height(),
-                    depth: 1,
-                    wgpu_dim: wgpu::TextureDimension::D2
-                };
-
-                TexturePayload {
-                    label: self.label,
-                    format: self.format,
-                    usage: self.usage,
-                    data: Some(img.to_rgba8().into_raw()),
-                    mip_levels: self.mip_levels,
-                    size: dim,
-                }
-            })
-            .map_err(|err| format!("Failed to read image file with path {}: {}", self.ty.path, err))
-    }
-}
-
-impl Texture<Computed> {
-    /// Create a texture generated by a compute shader
-    pub fn computed(dim: TexDimensions) -> Self {
-        Self {
-            label: "computed_texture".to_string(),
-            format: Computed::default_fmt(),
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::STORAGE_BINDING,
-            mip_levels: 1,
-            ty: Computed { dim }
-        }
-    }
-}
-
-impl TextureType for Texture<Computed> {
-    fn into_payload(self) -> Result<TexturePayload, String> {
-        Ok(TexturePayload {
-            label: self.label,
-            size: self.ty.dim, 
-            format: self.format,
-            usage: self.usage,
-            mip_levels: self.mip_levels,
-            data: None, // generated in the shader
-        })
-    }
-}
-
-/// Description for a procedurally generated texture
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct Procedural { 
-    pub data: Vec<u8>,
-    pub dim: TexDimensions,
-}
-
-impl Procedural {
-    /// Provide the default format for this texture type
-    pub(crate) fn default_fmt() -> wgpu::TextureFormat {
-        wgpu::TextureFormat::Rgba8Unorm
-    }
-}
-
-/// Description for a texture loaded from disk
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct OnDisk {
-    pub path: String
-}
-
-impl OnDisk {
-    /// Provide the default format for this texture type
-    pub(crate) fn default_fmt() -> wgpu::TextureFormat {
-        wgpu::TextureFormat::Rgba8Unorm
-    }
-}
-
-/// Description for a texture generated in a compute shader
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct Computed {
-    pub dim: TexDimensions
-}
-
-impl Computed {
-    /// Provide the default format for this texture type
-    pub(crate) fn default_fmt() -> wgpu::TextureFormat {
-        wgpu::TextureFormat::Rgba16Float
     }
 }
 

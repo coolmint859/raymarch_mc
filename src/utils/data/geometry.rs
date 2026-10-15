@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::{graphics::{Buffer, BufferId, GpuContext, RawBytesUpdate, Serializable, VertexBufferLayout}, utils::{AttributeTable, AttributeTableProxy, ElementSerializable, VecRef}};
+use crate::{graphics::{Buffer, BufferId, BufferSource, GpuContext, RawBytesUpdate, Serializable, VertexBufferLayout}, utils::{AttributeTable, AttributeTableProxy, ElementSerializable, VecRef}};
 
 /// Represents attributes in a vertex/instance buffer
 pub trait VertexAttribute {
@@ -178,14 +178,11 @@ impl GeometryData<Building> {
         let packed_bytes = self.attributes.serialize_interleaved();
 
         let stride = self.layout.stride() as usize;
-        let total_bytes = stride * capacity;
+        let total_bytes = (stride * capacity) as u64;
 
         let buf_id = context.request_buffer(
-            Buffer::as_vertex()
-                .with_label(&self.label)
-                .with_byte_data(&packed_bytes)
-                .with_capacity(total_bytes as u64)
-                .writable()
+            Buffer::as_vertex().with_label(&self.label).writable(),
+            BufferSource::from_raw(packed_bytes).with_capacity(total_bytes)
         );
         
         let state = BufferInit {
