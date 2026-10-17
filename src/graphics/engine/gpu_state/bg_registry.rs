@@ -54,7 +54,7 @@ pub(crate) struct BindGroupRegistry {
     /// The handles to bind group layouts
     pub(crate) layout_handles: ResourceHandler<LayoutId, BindGroupLayoutHandle>,
     /// maps bind groups to their blueprints
-    pub(crate) bg_defs: HashMap<BindGroupId, BindGroup>,
+    pub(crate) bg_blueprints: HashMap<BindGroupId, BindGroup>,
 }
 
 impl BindGroupRegistry {
@@ -63,18 +63,18 @@ impl BindGroupRegistry {
             gpu,
             bg_handles: ResourceHandler::new(),
             layout_handles: ResourceHandler::new(),
-            bg_defs: HashMap::new(),
+            bg_blueprints: HashMap::new(),
             deferred: HashMap::new(),
             valid_bgs: RefCell::new(HashSet::new())
         }
     }
 
     /// Request a new bind group layout
-    pub fn request_layout(&mut self, id: &LayoutId, bg_def: &BindGroup) {
+    pub fn request_layout(&mut self, id: &LayoutId, blueprint: &BindGroup) {
         if self.layout_handles.contains(id) { return; };
 
         let gpu = self.gpu.clone();
-        let builder = bg_def.clone();
+        let builder = blueprint.clone();
 
         let layout_task = Task::io_bound(async move {
             gpu.create_bg_layout(builder)
@@ -87,13 +87,13 @@ impl BindGroupRegistry {
     /// Request a new bind group
     pub fn request_bg<'a>(&mut self, blueprint: BindGroup, resources: &'a GpuResources) -> BindGroupIdPair {
         let bg_id = blueprint.create_id();
-        let bgl_id = blueprint.layout.create_id();
+        let layout_id = blueprint.layout.create_id();
         
-        self.try_request_bg(blueprint, resources, (&bg_id, &bgl_id));
+        self.try_request_bg(blueprint, resources, &bg_id, &layout_id);
 
         BindGroupIdPair {
             id: bg_id,
-            layout_id: bgl_id
+            layout_id
         }
     }
 
@@ -104,31 +104,34 @@ impl BindGroupRegistry {
 
         // println!("pending bind groups: {}", self.deffered.len());
         let pending_bgs = std::mem::take(&mut self.deferred);
-        for (bg_id, (bgl_id, bg_def)) in &pending_bgs {
-            self.try_request_bg(bg_def.clone(), resources, (bg_id, bgl_id));
+        for (bg_id, (layout_id, blueprint)) in &pending_bgs {
+            self.try_request_bg(blueprint.clone(), resources, bg_id, layout_id);
         }
     }
 
     /// remove a bind group from the registry
-    pub fn remove(&mut self, bg_id: &BindGroupId) {
+    pub fn remove_bg(&mut self, bg_id: &BindGroupId) {
+        if let Some(blueprint) = self.bg_blueprints.get(bg_id) {
+            let layout_id = blueprint.layout.create_id();
+            self.check_dec_bgl(&layout_id);
+        }
+
         self.bg_handles.remove(bg_id);
-        self.bg_defs.remove(bg_id);
+        self.bg_blueprints.remove(bg_id);
         self.deferred.remove(bg_id);
         self.valid_bgs.borrow_mut().remove(bg_id);
     }
 
     /// Validates and returns a bind group corresponding to the id if it passes
-    pub fn validate<'a>(&self, bg_id: &BindGroupId, resources: &'a GpuResources) -> Option<BindGroupHandle> {
+    pub fn validate(&self, bg_id: &BindGroupId, resources: &GpuResources) -> Option<BindGroupHandle> {
         if self.valid_bgs.borrow().contains(bg_id) {
             return self.bg_handles.get(bg_id).cloned();
         }
 
-        if let Some(bgl_id) = self.bg_handles.get(bg_id)
-            .and_then(|bg| Some(bg.layout_id)) 
-        {
-            let bg_def = self.bg_defs.get(bg_id)?.clone();
-            self.resolve_dependencies(&bgl_id, &bg_def, &resources)?;
-        }
+        let layout_id = self.bg_handles.get(bg_id)?.layout_id;
+        let blueprint = self.bg_blueprints.get(bg_id)?.clone();
+
+        self.resolve_dependencies(&layout_id, &blueprint, &resources)?;
 
         self.valid_bgs.borrow_mut().insert(*bg_id);
         self.bg_handles.get(bg_id).cloned()
@@ -144,9 +147,10 @@ impl BindGroupRegistry {
     pub fn check_dec_bgl(&mut self, bgl_id: &LayoutId) {
         let mut should_remove = false;
         if let Some(layout) = self.layout_handles.get_mut(bgl_id) {
-            layout.ref_count.set(layout.ref_count.get() - 1);
-
-            should_remove = layout.ref_count.get() <= 0;
+            if layout.ref_count.get() > 0 {
+                layout.ref_count.set(layout.ref_count.get() - 1);
+            }
+            should_remove = layout.ref_count.get() == 0;
 
             // println!("Subtracted ref count of bind group layout @{:?}; curr count: {}", bgl_id, layout.ref_count.get());
         }
@@ -166,26 +170,25 @@ impl BindGroupRegistry {
     }
 
     /// Try requesting a new bind group and layout tied to the provided ids.
-    fn try_request_bg<'a>(
+    fn try_request_bg(
         &mut self, 
         blueprint: BindGroup,
-        resources: &'a GpuResources,
-        ids: (&BindGroupId, &LayoutId)
+        resources: &GpuResources,
+        bg_id: &BindGroupId, 
+        layout_id: &LayoutId
     ) {
-        let (bg_id, bgl_id) = ids;
-
-        if let Some(deps) = self.resolve_dependencies(&bgl_id, &blueprint, resources) {
+        if let Some(deps) = self.resolve_dependencies(&layout_id, &blueprint, resources) {
             self.deferred.remove(bg_id);
 
-            if !self.bg_defs.contains_key(&bg_id) {
-                self.bg_defs.insert(*bg_id, blueprint.clone());
+            if !self.bg_blueprints.contains_key(&bg_id) {
+                self.bg_blueprints.insert(*bg_id, blueprint.clone());
             }
 
-            self.check_inc_bgl(&bgl_id);
+            self.check_inc_bgl(&layout_id);
 
             let gpu = self.gpu.clone();
             let builder = blueprint.clone();
-            let layout_id_copy = bgl_id.clone();
+            let layout_id_copy = layout_id.clone();
 
             let bind_group_task = Task::io_bound(async move {
                 let mut entries = Vec::new();
@@ -215,25 +218,25 @@ impl BindGroupRegistry {
 
             self.bg_handles.request_new(&bg_id, bind_group_task);
         } else {
-            self.request_layout(bgl_id, &blueprint);
-            self.deferred.insert(*bg_id, (*bgl_id, blueprint.clone()));
+            self.request_layout(layout_id, &blueprint);
+            self.deferred.insert(*bg_id, (*layout_id, blueprint.clone()));
         }
     }
 
     /// Fetches bind group dependencies if they are ready. If at least one dependency is not yet ready, None is returned
     fn resolve_dependencies<'a>(
         &self, 
-        bgl_id: &LayoutId,
-        bg_def: &BindGroup,
+        layout_id: &LayoutId,
+        blueprint: &BindGroup,
         resources: &'a GpuResources,
     ) -> Option<BindGroupDependencies> {
-        let layout = self.layout_handles.get(bgl_id)?.clone();
+        let layout = self.layout_handles.get(layout_id)?.clone();
 
         let mut buffer_handles = Vec::new();
         let mut texture_handles = Vec::new();
         let mut sampler_handles = Vec::new();
 
-        for binding in &bg_def.bindings {
+        for binding in &blueprint.bindings {
             match &binding.target {
                 BindingTarget::Buffer(buf_id) => {
                     if let Some(handle) = resources.buffers.get(buf_id) {

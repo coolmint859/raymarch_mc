@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fs::File, io::Read};
 
-use crate::utils::gen_sdf_atlas;
+use crate::utils::{AtlasConfig, AtlasType, generate_atlas};
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
 pub struct FontReaderId(pub &'static str);
@@ -56,6 +56,60 @@ pub struct FontReader<P> {
     parser: P,
 }
 
+pub struct BitMap;
+impl FontReader<BitMap> {
+    /// Create a font reader that outputs an bitmap texture atlas
+    pub fn as_bitmap() -> Self {
+        Self {
+            atlas_size: 1024,
+            scale: 96.0,
+            parser: BitMap
+        }
+    }
+}
+
+impl FontReaderType for FontReader<BitMap> {
+    fn id(&self) -> FontReaderId {
+        FontReaderId("bitmap_reader")
+    }
+
+    fn font_shader(&self) -> String {
+        return "./shaders/bitmap_font.wgsl".to_string()
+    }
+
+    fn parse(&self, path: &str) -> Result<FontReadResult, String> {
+        let mut ttf = File::open(path).map_err(|e| e.to_string())?;
+        let mut font_data = Vec::new();
+        ttf.read_to_end(&mut font_data).map_err(|e| e.to_string())?;
+
+        let font = fontdue::Font::from_bytes(font_data, fontdue::FontSettings::default())?;
+        let line_metrics = font.horizontal_line_metrics(self.scale)
+            .ok_or("[FontReader<SDF>] Failed to read font line metrics")?;
+        let line_height = line_metrics.new_line_size / self.scale;
+
+        let (glyphs, atlas_data) = generate_atlas(
+            AtlasConfig {
+                font,
+                scale: self.scale,
+                size: self.atlas_size,
+                spacing: 2,
+                ty: AtlasType::BitMap
+            }
+        );
+
+        let read_result = FontReadResult {
+            shader: self.font_shader(),
+            glyphs,
+            atlas_data,
+            atlas_size: self.atlas_size,
+            line_height,
+            scale: self.scale
+        };
+
+        Ok(read_result)
+    }
+}
+
 /// A font reader type for sdf rendered fonts
 pub struct SDF {
     /// the distance between extreme values in the sdf atlas
@@ -92,11 +146,14 @@ impl FontReaderType for FontReader<SDF> {
             .ok_or("[FontReader<SDF>] Failed to read font line metrics")?;
         let line_height = line_metrics.new_line_size / self.scale;
 
-        let (glyphs, atlas_data) = gen_sdf_atlas(
-            font, 
-            self.atlas_size, 
-            self.scale, 
-            self.parser.radius
+        let (glyphs, atlas_data) = generate_atlas(
+            AtlasConfig {
+                font,
+                scale: self.scale,
+                size: self.atlas_size,
+                spacing: 2,
+                ty: AtlasType::Sdf { radius: self.parser.radius }
+            }
         );
 
         let read_result = FontReadResult {

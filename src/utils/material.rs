@@ -108,7 +108,7 @@ impl Material<MatInit> {
         F: FnOnce(&mut T)
     {
         if let Some(component) = self.components.get_mut(&name.into()) {
-            if let Some(buffer_comp) = component.downcast_mut::<UniformComponent<T>>() {
+            if let Some(buffer_comp) = component.downcast_mut::<BufferComponent<T>>() {
                 buffer_comp.modify(modifer)
             }
         }
@@ -180,9 +180,9 @@ impl dyn MaterialComponent {
     }
 }
 
-/// A `MaterialComponent` for uniform buffers
+/// A `MaterialComponent` for buffers
 #[derive(Debug)]
-pub struct UniformComponent<T: Serializable> {
+pub struct BufferComponent<T: Serializable> {
     id: BufferId,
     blueprint: Buffer,
     is_dirty: bool,
@@ -190,7 +190,7 @@ pub struct UniformComponent<T: Serializable> {
     visibility: wgpu::ShaderStages,
 }
 
-impl<T: Serializable> UniformComponent<T> {
+impl<T: Serializable> BufferComponent<T> {
     pub fn new(blueprint: Buffer, data: T) -> Self {
         Self {
             id: BufferId::UNINIT,
@@ -214,7 +214,7 @@ impl<T: Serializable> UniformComponent<T> {
     }
 }
 
-impl<T> MaterialComponent for UniformComponent<T>
+impl<T> MaterialComponent for BufferComponent<T>
 where T: Serializable + Clone + Debug + 'static
 {
     fn as_any(&self) -> &dyn Any { self }

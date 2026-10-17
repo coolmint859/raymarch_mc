@@ -172,11 +172,13 @@ impl Screen for QuadTest {
         self.arial = self.text_renderer.request_font(
             "./assets/arial.ttf", 
             FontReader::as_sdf(16.0)
+            // FontReader::as_bitmap()
         );
 
         self.mono = self.text_renderer.request_font(
             "./assets/Monopack.ttf", 
-            FontReader::as_sdf(16.0)
+            // FontReader::as_sdf(16.0)
+            FontReader::as_bitmap()
         );
     }
 
@@ -210,7 +212,7 @@ impl Screen for QuadTest {
 
         self.text_renderer.stage_text(
             &self.mono, 
-            &format!("fps: {:.2}", 1.0 / dt), 
+            &format!("(bitmap) fps: {:.2}", 1.0 / dt), 
             TextOptions { 
                 transform: Transform::from_position(glam::vec3(0.05, 0.95, 0.0)),
                 height: 40.0 / screen_height
@@ -219,7 +221,7 @@ impl Screen for QuadTest {
 
         self.text_renderer.stage_text(
             &self.arial, 
-            "The quick brown fox jumps over the lazy dog.", 
+            "(sdf) The quick brown fox jumps over the lazy dog.", 
             TextOptions { 
                 transform: Transform::from_position(glam::vec3(0.05, 0.05, 0.0)),
                 height: 30.0 / screen_height

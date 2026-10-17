@@ -38,7 +38,7 @@ impl PipelineRegistry {
         id
     }
 
-    /// sync the registry and process defferred groups
+    /// sync the registry and process deferred groups
     pub fn sync<'a>(&mut self, bgs: &'a BindGroupRegistry) {
         self.handles.sync();
 
@@ -49,16 +49,16 @@ impl PipelineRegistry {
     }
 
     /// remove a bind group from the registry
-    pub fn remove(&mut self, pip_id: &PipelineId) {
+    pub fn remove(&mut self, pip_id: &PipelineId, bgs: &mut BindGroupRegistry) {
+        if let Some(blueprint) = self.pip_bps.remove(pip_id) {
+            for layout_id in blueprint.bg_layouts().iter() {
+                bgs.check_dec_bgl(layout_id);
+            }
+        }
+
         self.handles.remove(pip_id);
-        self.pip_bps.remove(pip_id);
         self.deferred.remove(pip_id);
         self.invalidate(pip_id);
-    }
-
-    /// Get a reference to the blueprint of the pipeline matching the id, if exists
-    pub fn get_blueprint(&self, id: &PipelineId) -> Option<&PipelineType> {
-        self.pip_bps.get(id)
     }
 
     /// Validates and returns a pipeline handle corresponding to the id if it passes

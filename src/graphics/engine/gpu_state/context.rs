@@ -173,7 +173,7 @@ impl GpuContext {
 
         let mut invalid_bgs = HashSet::new();
 
-        for (bd_id, bg_blueprint) in &self.bg_registry.bg_defs {
+        for (bd_id, bg_blueprint) in &self.bg_registry.bg_blueprints {
             for entry in &bg_blueprint.bindings {
                 if let BindingTarget::Texture(tex_id) = &entry.target {
                     if tex_id == id {
@@ -196,7 +196,7 @@ impl GpuContext {
         self.resources.buffers.remove(id);
         let mut invalid_bgs = HashSet::new();
 
-        for (bd_id, bg_blueprint) in &self.bg_registry.bg_defs {
+        for (bd_id, bg_blueprint) in &self.bg_registry.bg_blueprints {
             for entry in &bg_blueprint.bindings {
                 if let BindingTarget::Buffer(buf_id) = &entry.target {
                     if buf_id == id {
@@ -219,7 +219,7 @@ impl GpuContext {
         self.resources.samplers.remove(id);
         let mut invalid_bgs = HashSet::new();
 
-        for (bd_id, bg_blueprint) in &self.bg_registry.bg_defs {
+        for (bd_id, bg_blueprint) in &self.bg_registry.bg_blueprints {
             for entry in &bg_blueprint.bindings {
                 if let BindingTarget::Sampler(samp_id) = &entry.target {
                     if samp_id == id {
@@ -234,7 +234,7 @@ impl GpuContext {
             self.bg_registry.invalidate(bg_id);
         }
 
-        println!("[GpuContext] Removed Buffer with label '{:?}'", id);
+        println!("[GpuContext] Removed Sampler with label '{:?}'", id);
     }
 
     /// Remove a bind group from the context, releasing the vram allocation.
@@ -242,10 +242,7 @@ impl GpuContext {
     /// This decrements the associated bind group layout's reference count. If this was the last resource that used the layout,
     /// (i.e. no other pipeline or bind group references it), then the layout is also removed.
     pub fn remove_bind_group(&mut self, bg_id: &BindGroupId) {
-        if let Some(bg_handle) = self.bg_registry.bg_handles.get(bg_id).cloned() {
-            self.bg_registry.check_dec_bgl(&bg_handle.layout_id);
-        }
-        self.bg_registry.remove(bg_id);
+        self.bg_registry.remove_bg(bg_id);
 
         println!("[GpuContext] Removed Bind Group with label '{:?}'", bg_id);
     }
@@ -255,13 +252,7 @@ impl GpuContext {
     /// This decrements the associated bind group layout's reference count. If this was the last resource that used the layout,
     /// (i.e. no other pipeline or bind group references it), then the layout is also removed.
     pub fn remove_pipeline(&mut self, id: &PipelineId) {
-        if let Some(pip) = self.pip_registry.get_blueprint(id) {
-            for layout_id in pip.bg_layouts().iter() {
-                self.bg_registry.check_dec_bgl(layout_id);
-            }
-        }
-
-        self.pip_registry.remove(id);
+        self.pip_registry.remove(id, &mut self.bg_registry);
 
         println!("[GpuContext] Removed Pipeline with label '{:?}'", id);
     }
