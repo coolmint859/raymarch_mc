@@ -1,5 +1,3 @@
-use std::println;
-
 use crate::game::{Environment, EnvironmentUniform, REGION_VOLUME, Region, RegionLocation, WorldGenerator};
 
 pub struct RegionBytes {
@@ -24,8 +22,6 @@ impl VoxelWorld {
                 let location = RegionLocation { x: x, y: 0, z: z, _pad: 0 };
                 let region_data = world_gen.gen_region(location);
 
-                // println!("{:?}", location);
-
                 regions.push(Region::new(region_data, location));
             }
         }
@@ -40,7 +36,6 @@ impl VoxelWorld {
 
     pub fn toggle_pause(&mut self) {
         self.is_paused = !self.is_paused;
-        println!("Is Paused: {}", self.is_paused);
     }
 
     pub fn update(&mut self, dt: f32, is_step: bool) {

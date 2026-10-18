@@ -1,20 +1,9 @@
 use std::{collections::HashMap, fs::File, io::Read};
 
-use crate::utils::{AtlasConfig, AtlasType, generate_atlas};
+use crate::utils::{AtlasConfig, AtlasType, CharacterGlyph, generate_atlas};
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
 pub struct FontReaderId(pub &'static str);
-
-/// Data struct holding information about character glyphs for use during rendering
-#[derive(Clone, Debug)]
-pub struct CharacterGlyph {
-    /// The bounding box of the glyph in the atlas
-    pub uv_bounds: glam::Vec4,
-    /// The layout bounds of the character relative to the cursor
-    pub plane_bounds: glam::Vec4,
-    /// How far to advance the cursor after placing this character
-    pub advance: f32,
-}
 
 /// The result of a font reader.
 #[derive(Debug)]
@@ -56,6 +45,7 @@ pub struct FontReader<P> {
     parser: P,
 }
 
+/// A font reader type for bitmap fonts
 pub struct BitMap;
 impl FontReader<BitMap> {
     /// Create a font reader that outputs an bitmap texture atlas
@@ -152,7 +142,7 @@ impl FontReaderType for FontReader<SDF> {
                 scale: self.scale,
                 size: self.atlas_size,
                 spacing: 2,
-                ty: AtlasType::Sdf { radius: self.parser.radius }
+                ty: AtlasType::SDF { radius: self.parser.radius }
             }
         );
 

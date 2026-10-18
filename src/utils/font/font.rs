@@ -3,7 +3,7 @@ use std::{collections::HashMap, format};
 use glam::{Quat, Vec3};
 use uuid::Uuid;
 
-use crate::{graphics::{BindGroup, BindGroupIdPair, BufferBinding, BufferId, DrawCommand, GpuContext, IndexedDraw, Pipeline, PipelineId, Procedural, Sampler, TexDimensions, Texture}, utils::{BufferInit, CharacterGlyph, GeometryData, IndexBuffer, MatInit, Material, SamplerComponent, TextOptions, TextureComponent, Transform, TransformAttribute, Vec2Attribute, Vec3Attribute, Vec4Attribute}};
+use crate::{graphics::{BufferId, DrawCommand, GpuContext, IndexedDraw, Pipeline, PipelineId, Procedural, Sampler, TexDimensions, Texture}, utils::{BufferInit, BufferRefComponent, CharacterGlyph, GeometryData, IndexBuffer, MatInit, Material, SamplerComponent, TextOptions, TextureComponent, Transform, TransformAttribute, Vec2Attribute, Vec3Attribute, Vec4Attribute}};
 
 /// The maximum number of renderable characters per font
 const CHAR_LIMIT: usize = 500;
@@ -68,8 +68,6 @@ pub(crate) struct FontPrimitive {
     pub(crate) quad: Quad,
     /// the individual characters staged to be rendered using this font
     pub(crate) instances: GeometryData<BufferInit>,
-    /// global bind group
-    pub(crate) global_bg: BindGroupIdPair,
     /// font material
     pub(crate) material: Material<MatInit>,
     /// the id to the font pipeline
@@ -97,14 +95,10 @@ impl FontPrimitive {
             .init(context, CHAR_LIMIT);
 
         let atlas_dim = TexDimensions::size_2d(atlas_size, atlas_size);
-        let global_bg = context.request_bind_group(
-            BindGroup::new()
-                .with_label(&format!("Font Bind Group shader@{:?}", shader_path))
-                .with_entry(BufferBinding::as_uniform(*cam_buf_id))
-        );
-    
+
         let material = Material::new()
             .with_label("Font Material")
+            .with_component("camera", BufferRefComponent::new(*cam_buf_id).with_visibility(wgpu::ShaderStages::VERTEX))
             .with_component("atlas", TextureComponent::new(
                 Texture::new().with_format(wgpu::TextureFormat::R8Unorm).writable(),
                 Procedural { data: atlas_data, dim: atlas_dim }
@@ -115,7 +109,7 @@ impl FontPrimitive {
         let pipeline = context.request_pipeline(
             Pipeline::as_render()
                 .with_label(&format!("Font Render Pipeline shader@{:?}", shader_path))
-                .with_bg_layouts(&[global_bg.layout_id, material.layout_id()])
+                .with_bg_layouts(&[material.layout_id()])
                 .with_vertex_layout(quad.vertices.layout().clone())
                 .with_vertex_layout(instances.layout().clone())
                 .with_shader(shader_path)
@@ -124,7 +118,6 @@ impl FontPrimitive {
         Self {
             quad,
             instances,
-            global_bg,
             material,
             pipeline
         }
@@ -160,14 +153,11 @@ impl Font {
             char_instances.get_attribute_mut::<Transform>("transform"),
             char_instances.get_attribute_mut::<glam::Vec4>("bounds")
         ) {
-            transforms.clear();
-            bounds.clear();
-
             let mut cursor = Vec3::ZERO;
             for character in text.chars() {
                 if character == '\n' {
                     cursor.x = 0.0;
-                    cursor.y -= self.line_height * size;
+                    cursor.y -= self.line_height * options.height;
 
                     continue;
                 }
@@ -205,15 +195,15 @@ impl Font {
     }
 
     /// Issue a draw call of this font to a `DrawCommand`
-    pub fn render(&self, draw_cmd: &mut DrawCommand) {
-        // println!("font instance count: {}", self.primitive.instances.elem_count());
-
+    pub fn render(&mut self, draw_cmd: &mut DrawCommand) {
         let draw_call = IndexedDraw::new(self.primitive.pipeline, 0..6)
-            .with_bind_groups(&[self.primitive.global_bg.id, self.primitive.material.bg_id()])
+            .with_bind_groups(&[self.primitive.material.bg_id()])
             .with_vertex_buffers(&self.primitive.geo_buf_ids())
             .with_index_buffer(self.primitive.idx_buf_id(), wgpu::IndexFormat::Uint16)
             .with_instances(0..self.primitive.instances.elem_count() as u32);
         
         draw_cmd.add_draw(draw_call);
+
+        self.primitive.instances.clear();
     }
 }

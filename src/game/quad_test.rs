@@ -1,6 +1,6 @@
 use winit::event::MouseButton;
 
-use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{BindGroup, BindGroupId, BindGroupIdPair, BufferBinding, BufferId, DrawCommand, GpuContext, IndexedDraw, LayoutId, MultiBufferExecutor, OnDisk, Pipeline, PipelineId, RenderingState, Sampler, SequentialExecutor, Texture, VertexBufferLayout}, utils::{BufferInit, Camera, FontManager, FontReader, GeometryData, MatInit, Material, MouseHandler, SamplerComponent, ScreenSpace, TextOptions, TextureComponent, Transform, TransformAttribute, font::font::{FontId, Quad}}};
+use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{BindGroupId, BufferId, DrawCommand, GpuContext, IndexedDraw, LayoutId, MultiBufferExecutor, OnDisk, Pipeline, PipelineId, RenderingState, Sampler, SequentialExecutor, Texture, VertexBufferLayout}, utils::{BufferInit, BufferRefComponent, Camera, FontManager, FontReader, GeometryData, MatInit, Material, MouseHandler, SamplerComponent, ScreenSpace, TextOptions, TextureComponent, Transform, TransformAttribute, font::font::{FontId, Quad}}};
 
 pub struct QuadPrimitive {
     pub quad: Quad,
@@ -57,8 +57,6 @@ pub struct QuadTest {
     mono: FontId,
 
     camera: Camera<ScreenSpace>,
-    cam_bg: BindGroupIdPair,
-
     quad1: QuadPrimitive,
     quad2: QuadPrimitive,
 
@@ -76,8 +74,6 @@ impl QuadTest {
             mono: FontId::UNINIT,
 
             camera: Camera::new(ScreenSpace),
-            cam_bg: BindGroupIdPair::UNINIT,
-
             quad1: QuadPrimitive::uninit(),
             quad2: QuadPrimitive::uninit(),
 
@@ -112,6 +108,7 @@ impl Screen for QuadTest {
 
         let q1_material = Material::new()
             .with_label("Quad1 Material")
+            .with_component("camera", BufferRefComponent::new(*self.camera.buf_id()).with_visibility(wgpu::ShaderStages::VERTEX))
             .with_component("blue_devils", TextureComponent::new(
                 Texture::new().writable(),
                 OnDisk { path: "./assets/BlueDevilsLogo.png" }
@@ -141,6 +138,7 @@ impl Screen for QuadTest {
 
         let q2_material = Material::new()
             .with_label("Quad2 Material")
+            .with_component("camera", BufferRefComponent::new(*self.camera.buf_id()).with_visibility(wgpu::ShaderStages::VERTEX))
             .with_component("vanguard", TextureComponent::new(
                 Texture::new().writable(),
                 OnDisk { path: "./assets/vanguard.jpg" }
@@ -154,16 +152,10 @@ impl Screen for QuadTest {
             material: q2_material 
         };
 
-        self.cam_bg = graphics.context.request_bind_group(
-            BindGroup::new()
-                .with_label("Camera Bind Group")
-                .with_entry(BufferBinding::as_uniform(*self.camera.buf_id()))
-        );
-
         self.qpip = graphics.context.request_pipeline(
             Pipeline::as_render()
                 .with_label("Quad Pipeline")
-                .with_bg_layouts(&[self.cam_bg.layout_id, self.quad1.mat_layout_id()])
+                .with_bg_layouts(&[self.quad1.mat_layout_id()])
                 .with_vertex_layout(self.quad1.vertex_layout())
                 .with_vertex_layout(self.quad1.instance_layout())
                 .with_shader("./shaders/2d_draw.wgsl")
@@ -252,13 +244,13 @@ impl Screen for QuadTest {
         let frame = graphics.canvas.next_frame()?;
 
         let draw_q1 = IndexedDraw::new(self.qpip, 0..6)
-            .with_bind_groups(&[self.cam_bg.id, self.quad1.mat_bg_id()])
+            .with_bind_groups(&[self.quad1.mat_bg_id()])
             .with_vertex_buffers(&self.quad1.geo_buf_ids())
             .with_index_buffer(self.quad1.idx_buf_id(), wgpu::IndexFormat::Uint16)
             .with_instances(0..self.quad1.instances.elem_count() as u32);
         
         let draw_q2 = IndexedDraw::new(self.qpip, 0..6)
-            .with_bind_groups(&[self.cam_bg.id, self.quad2.mat_bg_id()])
+            .with_bind_groups(&[self.quad2.mat_bg_id()])
             .with_vertex_buffers(&self.quad2.geo_buf_ids())
             .with_index_buffer(self.quad2.idx_buf_id(), wgpu::IndexFormat::Uint16)
             .with_instances(0..self.quad2.instances.elem_count() as u32);

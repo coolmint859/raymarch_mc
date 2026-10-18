@@ -1,8 +1,10 @@
-use glam::{Quat, Vec3};
+use std::format;
+
+use glam::{Quat, Vec3, vec3};
 use winit::{event::MouseButton, keyboard::KeyCode};
 
 use crate::{
-    Graphics, InputEvent, game::{Screen, ScreenTransition, VoxelRenderer, VoxelWorld}, graphics::*, utils::{Camera, Controllable, EntityController, KeyboardHandler, MouseHandler, RelativePerspective},
+    Graphics, InputEvent, game::{Screen, ScreenTransition, VoxelRenderer, VoxelWorld}, graphics::*, utils::{Camera, Controllable, EntityController, FontManager, FontReader, KeyboardHandler, MouseHandler, RelativePerspective, TextOptions, Transform, font::font::FontId},
 };
 
 #[derive(Clone, Copy)]
@@ -14,8 +16,9 @@ pub enum PlayerKeyAction {
     MoveUp,
     MoveDown,
     ResetCamera,
-    PauseSimulation,
+    ToggleSimulation,
     StepSimulation,
+    ShowFPS,
     Exit,
 }
 
@@ -30,6 +33,10 @@ pub struct Game {
     camera: Camera<RelativePerspective>,
     keyboard: KeyboardHandler<PlayerKeyAction>,
     mouse: MouseHandler<PlayerMouseAction>,
+
+    arial: FontId,
+    fonts: FontManager,
+    show_fps: bool,
 
     default_cam_pos: Vec3,
     world: VoxelWorld,
@@ -48,6 +55,11 @@ impl Game {
             controller: EntityController::new(10.0, 0.003),
             keyboard: KeyboardHandler::new(),
             mouse: MouseHandler::new(),
+
+            arial: FontId::UNINIT,
+            fonts: FontManager::new(),
+            show_fps: true,
+
             default_cam_pos,
             world: VoxelWorld::new(),
             renderer: VoxelRenderer::new(),
@@ -63,8 +75,9 @@ impl Game {
         self.keyboard.register_key(KeyCode::Space, PlayerKeyAction::MoveDown);
         self.keyboard.register_key(KeyCode::Escape, PlayerKeyAction::Exit);
         self.keyboard.register_key(KeyCode::KeyR, PlayerKeyAction::ResetCamera);
-        self.keyboard.register_key(KeyCode::KeyP, PlayerKeyAction::PauseSimulation);
+        self.keyboard.register_key(KeyCode::KeyT, PlayerKeyAction::ToggleSimulation);
         self.keyboard.register_key(KeyCode::KeyN, PlayerKeyAction::StepSimulation);
+        self.keyboard.register_key(KeyCode::KeyF, PlayerKeyAction::ShowFPS);
 
         self.mouse.register_button(MouseButton::Left, PlayerMouseAction::LockMouse);
         self.mouse.register_button(MouseButton::Right, PlayerMouseAction::UnlockMouse);
@@ -75,6 +88,11 @@ impl Screen for Game {
     fn init(&mut self, graphics: &mut Graphics) {
         self.camera.init(graphics);
         self.renderer.init(graphics, &self.world, *self.camera.buf_id());
+
+        self.arial = self.fonts.request_font(
+            "./assets/arial.ttf", 
+            FontReader::as_sdf(16.0)
+        );
 
         self.world.toggle_pause();
         self.init_input();
@@ -135,8 +153,9 @@ impl Screen for Game {
 
             for action in self.keyboard.poll_on_press() {
                 match action {
-                    PlayerKeyAction::PauseSimulation => self.world.toggle_pause(),
+                    PlayerKeyAction::ToggleSimulation => self.world.toggle_pause(),
                     PlayerKeyAction::StepSimulation => self.world.update(dt, true),
+                    PlayerKeyAction::ShowFPS => self.show_fps = !self.show_fps,
                     PlayerKeyAction::ResetCamera => {
                         self.camera.transform_mut().move_to(self.default_cam_pos);
                         self.camera.transform_mut().set_rotation(Quat::IDENTITY);
@@ -157,10 +176,38 @@ impl Screen for Game {
         self.world.update(dt, false);
         self.camera.update(graphics, dt);
 
+        let screen_height = graphics.canvas.dimensions().1 as f32;
+
+        if self.show_fps {
+            self.fonts.stage_text(
+                &self.arial, 
+                &format!("FPS: {:.2}", 1.0 / dt), 
+                TextOptions {
+                    transform: Transform::from_position(vec3(0.05, 0.95, 0.0)),
+                    height: 40.0 / screen_height
+                }
+            );
+        }
+
+        let show_fps_str = "Show FPS (F)";
+        let toggle_sim_str = "Toggle Simulation: (T)";
+        let step_sim = "Step Simulation: (N)";
+
+        self.fonts.stage_text(
+            &self.arial, 
+            &format!("{}\n{}\n{}", show_fps_str, toggle_sim_str, step_sim), 
+            TextOptions {
+                transform: Transform::from_position(vec3(0.05, 0.1, 0.0)),
+                height: 25.0 / screen_height
+            }
+        );
+
         self.renderer.update_environment(graphics, StructuredUpdate { 
             data: &self.world.env_uniform(),
             offset: 0
         });
+
+        self.fonts.update(graphics);
     }
 
     fn render(&mut self, graphics: &mut Graphics) -> Result<(), wgpu::SurfaceError> {
@@ -174,6 +221,14 @@ impl Screen for Game {
                 clear_color: Some(wgpu::Color::BLACK) 
             }, 
             graphics.canvas.dimensions()
+        );
+
+        self.fonts.record(
+            RenderingState {
+                output_view: frame.view.clone(),
+                clear_color: None
+            }, 
+            &mut executor
         );
 
         executor.record_and_submit(&graphics.context);

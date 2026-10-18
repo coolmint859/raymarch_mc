@@ -285,4 +285,8 @@ impl GeometryData<BufferInit> {
     pub fn attr_count(&self) -> u32 {
         self.attributes.attr_count() as u32
     }
+
+    pub fn clear(&mut self) {
+        self.attributes.clear()
+    }
 }

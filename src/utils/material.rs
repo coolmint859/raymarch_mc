@@ -246,6 +246,42 @@ where T: Serializable + Clone + Debug + 'static
     }
 }
 
+/// A `MaterialComponent` for buffers created externally.
+#[derive(Debug)]
+pub struct BufferRefComponent {
+    id: BufferId,
+    visibility: wgpu::ShaderStages,
+}
+
+impl BufferRefComponent {
+    pub fn new(id: BufferId) -> Self {
+        Self {
+            id,
+            visibility: wgpu::ShaderStages::FRAGMENT
+        }
+    }
+
+    /// Set the shader visibility of the buffer when bound to the `Material`'s bind group
+    pub fn with_visibility(mut self, vis: wgpu::ShaderStages) -> Self {
+        self.visibility = vis;
+        self
+    }
+}
+
+impl MaterialComponent for BufferRefComponent {
+    fn as_any(&self) -> &dyn Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn Any { self }
+
+    fn init(&mut self, _context: &mut GpuContext) {} // nothing to initialize
+
+    fn binding(&self) -> MaterialBinding {
+        let binding = BufferBinding::as_uniform(self.id)
+            .with_visibility(self.visibility);
+        
+        MaterialBinding::Buffer(binding)
+    }
+}
+
 /// A `MaterialComponent` for textures
 #[derive(Debug)]
 pub struct TextureComponent<T> {
@@ -297,6 +333,56 @@ where T: TextureSource + Clone + Debug + 'static
     fn init(&mut self, context: &mut GpuContext) {
         self.id = context.request_texture(self.blueprint.clone(), self.source.clone())
     }
+
+    fn binding(&self) -> MaterialBinding {
+        let binding = TextureBinding::as_sampled(self.id, self.sample_state)
+            .with_visibility(self.visibility);
+
+        MaterialBinding::Texture(binding)
+    }
+}
+
+/// A `MaterialComponent` for textures
+#[derive(Debug)]
+pub struct TextureRefComponent {
+    id: TextureId,
+    sample_state: TextureTypeSampled,
+    visibility: wgpu::ShaderStages,
+}
+
+impl TextureRefComponent {
+    pub fn new(id: TextureId) -> Self {
+        Self {
+            id,
+            sample_state: TextureTypeSampled::default(),
+            visibility: wgpu::ShaderStages::FRAGMENT,
+        }
+    }
+
+    /// Allow the texture to be filtered when sampled
+    pub fn filterable(mut self) -> Self {
+        self.sample_state.filterable = true;
+        self
+    }
+
+    /// Allow the texture to be multisampled
+    pub fn multisampled(mut self) -> Self {
+        self.sample_state.multisampled = true;
+        self
+    }
+    
+    /// Set the shader visibility of the buffer when bound to the `Material`'s bind group
+    pub fn with_visibility(mut self, vis: wgpu::ShaderStages) -> Self {
+        self.visibility = vis;
+        self
+    }
+}
+
+impl MaterialComponent for TextureRefComponent {
+    fn as_any(&self) -> &dyn Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn Any { self }
+
+    fn init(&mut self, _context: &mut GpuContext) {} // nothing to initialize
 
     fn binding(&self) -> MaterialBinding {
         let binding = TextureBinding::as_sampled(self.id, self.sample_state)

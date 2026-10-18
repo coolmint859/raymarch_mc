@@ -5,9 +5,8 @@ struct CameraUniform {
 };
 
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
-
-@group(1) @binding(0) var font_atlas: texture_2d<f32>;
-@group(1) @binding(1) var atlas_sampler: sampler;
+@group(0) @binding(1) var font_atlas: texture_2d<f32>;
+@group(0) @binding(2) var atlas_sampler: sampler;
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4f,
@@ -38,7 +37,6 @@ fn vs_main(vertex: VertexInput, model: InstanceInput) -> VertexOutput {
 
     var out: VertexOutput;
     out.clip_position = camera.view_proj * model_matrix * vec4f(vertex.position, 1.0);
-    // out.tex_coords = vertex.uv;
     out.tex_coords = (vertex.uv * model.bounds.zw) + model.bounds.xy;
     return out;
 }

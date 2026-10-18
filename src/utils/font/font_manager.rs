@@ -14,7 +14,7 @@ pub struct TextOptions {
 
 /// Creates `Font` resources, and allows text to be staged for rendering using known `Font`s. 
 /// 
-/// Font resources are loaded asynchronously using an internal `ResourceHandler`
+/// `Font` resources are loaded asynchronously using an internal `ResourceHandler`
 pub struct FontManager {
     /// The set of fonts currently parsing
     pending_fonts: ResourceHandler<FontId, FontReadResult>,
@@ -36,7 +36,12 @@ impl FontManager {
         }
     }
 
-    /// Registers a new font. If the font already exists, it's matching handle is returned.
+    /// Set the camera used to render the font.
+    pub fn set_camera(&mut self, cam_id: &BufferId) {
+        self.cam_buf_id = Some(*cam_id);
+    }
+
+    /// Registers a new `Font`, assigning it a unique id.
     pub fn request_font(&mut self, font_path: &str, reader: impl FontReaderType) -> FontId {
         let font_id = FontId(Uuid::new_v4());
 
@@ -49,7 +54,7 @@ impl FontManager {
         return font_id;
     }
 
-    /// State text to be rendered with the provided font and options.
+    /// Stage `text` to be rendered with the provided `FontId` and `TextOptions`.
     /// 
     /// This does not render the text, it only prepares it to be. After staging text, call record() for a draw command to be added to a command executor.
     pub fn stage_text(&mut self, font_id: &FontId, text: &str, options: TextOptions) {
@@ -59,7 +64,7 @@ impl FontManager {
         }
     }
 
-    /// update the `FontManager`, syncing `Font` resources with the main thread.
+    /// Update the `FontManager`, syncing `Font` resources with the main thread. Also uploads all staged text to the associated `Font`.
     pub fn update(&mut self, graphics: &mut Graphics) {
         self.pending_fonts.sync();
 
@@ -100,11 +105,11 @@ impl FontManager {
         }
     }
 
-    /// Records draw commands for any previously staged text to the provided executor.
+    /// Records a `DrawCommand` for all previously staged text, and adds it to the provided executor.
     pub fn record(&mut self, state: RenderingState, executor: &mut impl SequentialExecutor) {
         let mut draw_cmd = DrawCommand::new(state);
 
-        // active font set is reset here
+        // active font set and previously staged text is reset here
         for font_id in &std::mem::take(&mut self.active_fonts) {
             if let Some(font) = self.ready_fonts.get_mut(font_id) {
                 font.render(&mut draw_cmd);
@@ -116,6 +121,7 @@ impl FontManager {
         }
     }
 
+    /// In the case a camera wasn't provided, this sets up a default camera to be used in `ScreenSpace`.
     fn init_camera(&mut self, graphics: &mut Graphics) -> BufferId {
         let mut camera = Camera::new(ScreenSpace);
         camera.init(graphics);

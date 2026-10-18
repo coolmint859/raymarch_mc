@@ -144,6 +144,12 @@ impl AttributeTable {
         Some(VecRef { _guard: guard, data})
     }
 
+    pub fn clear(&mut self) {
+        for attr in self.attributes.values_mut() {
+            attr.borrow_mut().clear();
+        }
+    }
+
     /// Resize the `AttributeTable` to have `new_len` number of elements for each attribute.
     /// 
     /// If `new_len` is greater than the current length, this appends default elements to the end of the attributes up to `new_len`.
