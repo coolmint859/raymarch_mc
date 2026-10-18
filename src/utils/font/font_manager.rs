@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use uuid::Uuid;
 
-use crate::{graphics::{BufferId, DrawCommand, Graphics, RenderingState, SequentialExecutor}, utils::{Camera, FontReadResult, FontReaderType, ResourceHandler, ScreenSpace, Task, Transform, font::font::{Font, FontId, FontPrimitive}}};
+use crate::{graphics::{BufferId, DrawCommand, Graphics, RenderingState, SequentialExecutor}, utils::{Camera, FontReadResult, FontReaderType, ResourceHandler, ScreenSpace, Task, Transform, font::font::{Font, FontId}}};
 
 /// Options for text display
 pub struct TextOptions {
@@ -80,21 +80,10 @@ impl FontManager {
 
         for font_id in ids {
             if let Some(raw_font) = self.pending_fonts.remove(&font_id) {
-                let font_primitive = FontPrimitive::init(
-                    &cam_buf_id,
-                    (raw_font.atlas_data, raw_font.atlas_size), 
-                    &mut graphics.context,
-                    &raw_font.shader
+                self.ready_fonts.insert(
+                    font_id.clone(), 
+                    Font::create(raw_font, &cam_buf_id, &mut graphics.context)
                 );
-
-                let font = Font {
-                    primitive: font_primitive,
-                    glyph_map: raw_font.glyphs,
-                    line_height: raw_font.line_height,
-                    scale: raw_font.scale,
-                };
-
-                self.ready_fonts.insert(font_id.clone(), font);
             }
         }
 

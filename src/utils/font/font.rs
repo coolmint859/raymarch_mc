@@ -3,7 +3,7 @@ use std::{collections::HashMap, format};
 use glam::{Quat, Vec3};
 use uuid::Uuid;
 
-use crate::{graphics::{BufferId, DrawCommand, GpuContext, IndexedDraw, Pipeline, PipelineId, Procedural, Sampler, TexDimensions, Texture}, utils::{BufferInit, BufferRefComponent, CharacterGlyph, GeometryData, IndexBuffer, MatInit, Material, SamplerComponent, TextOptions, TextureComponent, Transform, TransformAttribute, Vec2Attribute, Vec3Attribute, Vec4Attribute}};
+use crate::{graphics::{BufferId, DrawCommand, GpuContext, IndexedDraw, Pipeline, PipelineId, Procedural, Sampler, TexDimensions, Texture}, utils::{BufferInit, BufferRefComponent, CharacterGlyph, FontReadResult, GeometryData, IndexBuffer, MatInit, Material, SamplerComponent, TextOptions, TextureComponent, Transform, TransformAttribute, Vec2Attribute, Vec3Attribute, Vec4Attribute}};
 
 /// The maximum number of renderable characters per font
 const CHAR_LIMIT: usize = 500;
@@ -77,7 +77,7 @@ pub(crate) struct FontPrimitive {
 impl FontPrimitive {
     /// create the gpu assets that this font uses
     pub fn init(
-        cam_buf_id: &BufferId,
+        camera_id: &BufferId,
         atlas: (Vec<u8>, u32),
         context: &mut GpuContext,
         shader_path: &str
@@ -98,12 +98,12 @@ impl FontPrimitive {
 
         let material = Material::new()
             .with_label("Font Material")
-            .with_component("camera", BufferRefComponent::new(*cam_buf_id).with_visibility(wgpu::ShaderStages::VERTEX))
+            .with_component("camera", BufferRefComponent::new(*camera_id).with_visibility(wgpu::ShaderStages::VERTEX))
             .with_component("atlas", TextureComponent::new(
                 Texture::new().with_format(wgpu::TextureFormat::R8Unorm).writable(),
                 Procedural { data: atlas_data, dim: atlas_dim }
-            ))
-            .with_component("samp", SamplerComponent::new(Sampler::nearest()))
+            ).filterable())
+            .with_component("samp", SamplerComponent::new(Sampler::linear()).with_binding_type(wgpu::SamplerBindingType::Filtering))
             .init(context);
 
         let pipeline = context.request_pipeline(
@@ -114,7 +114,7 @@ impl FontPrimitive {
                 .with_vertex_layout(instances.layout().clone())
                 .with_shader(shader_path)
         );
-
+ 
         Self {
             quad,
             instances,
@@ -143,6 +143,23 @@ pub(crate) struct Font {
 }
 
 impl Font {
+    /// Create a new `Font` given the `read_result`, `camera_id`, and graphics `context`
+    pub fn create(read_result: FontReadResult, camera_id: &BufferId, context: &mut GpuContext) -> Self {
+        let primitive = FontPrimitive::init(
+            camera_id, 
+            (read_result.glyph_table.atlas, read_result.glyph_table.size), 
+            context, 
+            &read_result.shader
+        );
+
+        Self {
+            primitive,
+            glyph_map: read_result.glyph_table.map,
+            line_height: read_result.line_height,
+            scale: read_result.scale
+        }
+    }
+
     /// Stage character instances with this `Font`
     pub fn stage_text(&mut self, text: &str, options: TextOptions) {
         let size = options.height / (self.line_height * self.scale);

@@ -1,11 +1,24 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Range, println};
 
 use glam::Vec4;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::utils::SdfGenerator;
 
-/// Data struct holding information about character glyphs for use during rendering
+/// The result from parsing a ttf file.
+/// 
+/// Contains the glyph map, atlas, and atlas size.
+#[derive(Debug)]
+pub struct GlyphTable {
+    /// The mapping of characters to their glyph metrics
+    pub map: HashMap<char, CharacterGlyph>,
+    /// The raw atlas data of the characters
+    pub atlas: Vec<u8>,
+    /// The width/height of the atlas
+    pub size: u32,
+}
+
+/// Data struct holding information about a character glyph
 #[derive(Clone, Debug)]
 pub struct CharacterGlyph {
     /// The bounding box of the glyph in the atlas
@@ -42,13 +55,26 @@ pub enum AtlasType {
     BitMap
 }
 
+/// The range of characters to rasterize into the glyph table
+/// 
+/// Default is 32-127 (The majority of the ASCII table, most common)
+#[derive(Debug, Clone)]
+pub struct CharacterRange(pub Range<u8>);
+
+impl Default for CharacterRange {
+    fn default() -> Self {
+        CharacterRange(32u8..127)
+    }
+}
+
 /// Config struct for generating font atlases
 pub struct AtlasConfig {
     pub font: fontdue::Font,
     pub size: u32,
     pub scale: f32,
     pub spacing: u32,
-    pub ty: AtlasType
+    pub ty: AtlasType,
+    pub char_range: CharacterRange
 }
 
 /// Generate a signed distance field (sdf) font atlas by rasterizing a ttf font
@@ -57,9 +83,10 @@ pub struct AtlasConfig {
 /// * 'size' - the size of the sdf atlas in pixels
 /// * 'scale' - the size to rasterize the characters with, in pixels per em unit
 /// * 'radius' - the signed distance between extreme values in the sdf atlas
-pub fn generate_atlas(config: AtlasConfig) -> (HashMap<char, CharacterGlyph>, Vec<u8>) {
-    let characters: Vec<u8> = (32u8..127).collect();
-    let sdf_glyphs: Vec<Glyph> = characters
+pub fn generate_atlas(config: AtlasConfig) -> GlyphTable {
+    let characters = config.char_range.0.clone();
+
+    let glyphs: Vec<Glyph> = characters
         .into_par_iter()
         .map(|u_char| {
             let ch = u_char as char;
@@ -82,13 +109,16 @@ pub fn generate_atlas(config: AtlasConfig) -> (HashMap<char, CharacterGlyph>, Ve
         })
         .collect();
 
-    self::blit_glyphs(sdf_glyphs, config)
+    self::blit_glyphs(glyphs, config)
 }
 
-/// blit character glyphs into a font atlas, and convert metrics into glyph bounds
-fn blit_glyphs(glyphs: Vec<Glyph>, config: AtlasConfig) -> (HashMap<char, CharacterGlyph>, Vec<u8>){
-    let mut atlas_bitmap = vec![0u8; (config.size * config.size) as usize];
-    let mut glyph_table = HashMap::new();
+/// Blit character glyphs into a font atlas, and convert metrics into glyph bounds
+fn blit_glyphs(mut glyphs: Vec<Glyph>, config: AtlasConfig) -> GlyphTable {
+    let mut atlas = vec![0u8; (config.size * config.size) as usize];
+    let mut glyph_map = HashMap::new();
+
+    // sort the characters by height in descending order
+    glyphs.sort_unstable_by(|a, b| b.bitmap.height.cmp(&a.bitmap.height));
 
     let mut current_x: u32 = 0;
     let mut current_y: u32 = 0;
@@ -103,6 +133,14 @@ fn blit_glyphs(glyphs: Vec<Glyph>, config: AtlasConfig) -> (HashMap<char, Charac
         }
         max_row_height = max_row_height.max(glyph.bitmap.height);
 
+        if current_y + glyph.bitmap.height > config.size {
+            println!(
+                "[FontAtlasGenerator] Not enough space in the allocated atlas to fit all characters within the range {:?} for atlas size {}px and scale {}.",
+                config.char_range, config.size, config.scale
+            );
+            break;
+        }
+
         // blit character sdf bitmap into atlas
         for r in 0..glyph.bitmap.height {
             for c in 0..glyph.bitmap.width {
@@ -112,7 +150,7 @@ fn blit_glyphs(glyphs: Vec<Glyph>, config: AtlasConfig) -> (HashMap<char, Charac
                 let atlas_y = current_y + r;
                 let atlas_idx = (atlas_y * config.size + atlas_x) as usize;
 
-                atlas_bitmap[atlas_idx] = glyph.bitmap.data[src_idx];
+                atlas[atlas_idx] = glyph.bitmap.data[src_idx];
             }
         }
 
@@ -136,7 +174,7 @@ fn blit_glyphs(glyphs: Vec<Glyph>, config: AtlasConfig) -> (HashMap<char, Charac
             glyph.metrics.height as f32 + (r * 2.0)
         );
 
-        glyph_table.insert(glyph.ch, CharacterGlyph {
+        glyph_map.insert(glyph.ch, CharacterGlyph {
             plane_bounds,
             uv_bounds,
             advance: glyph.metrics.advance_width
@@ -146,5 +184,9 @@ fn blit_glyphs(glyphs: Vec<Glyph>, config: AtlasConfig) -> (HashMap<char, Charac
         current_x += glyph.bitmap.width + config.spacing;
     }
 
-    (glyph_table, atlas_bitmap)
+    GlyphTable {
+        map: glyph_map,
+        atlas,
+        size: config.size,
+    }
 }

@@ -1,6 +1,6 @@
-use std::{collections::HashMap, fs::File, io::Read};
+use std::{fs::File, io::Read};
 
-use crate::utils::{AtlasConfig, AtlasType, CharacterGlyph, generate_atlas};
+use crate::utils::{AtlasConfig, AtlasType, CharacterRange, GlyphTable, generate_atlas};
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
 pub struct FontReaderId(pub &'static str);
@@ -10,12 +10,8 @@ pub struct FontReaderId(pub &'static str);
 pub struct FontReadResult {
     /// the path to the shader used to render fonts
     pub shader: String,
-    /// The raw byte data for the parsed font atlas
-    pub atlas_data: Vec<u8>,
-    /// the width/height of the font atlas
-    pub atlas_size: u32,
-    /// the map of characters to their glyph metrics
-    pub glyphs: HashMap<char, CharacterGlyph>,
+    /// The glyph information and atlas
+    pub glyph_table: GlyphTable,
     /// the height of a line of text rendered with this font
     pub line_height: f32,
     /// the scale that the font was rasterized in
@@ -43,17 +39,20 @@ pub struct FontReader<P> {
     scale: f32,
     /// A parser implementation
     parser: P,
+    /// the range of characters to read in
+    char_range: CharacterRange,
 }
 
 /// A font reader type for bitmap fonts
 pub struct BitMap;
 impl FontReader<BitMap> {
     /// Create a font reader that outputs an bitmap texture atlas
-    pub fn as_bitmap() -> Self {
+    pub fn as_bitmap(char_range: CharacterRange) -> Self {
         Self {
             atlas_size: 1024,
             scale: 96.0,
-            parser: BitMap
+            parser: BitMap,
+            char_range
         }
     }
 }
@@ -77,21 +76,20 @@ impl FontReaderType for FontReader<BitMap> {
             .ok_or("[FontReader<SDF>] Failed to read font line metrics")?;
         let line_height = line_metrics.new_line_size / self.scale;
 
-        let (glyphs, atlas_data) = generate_atlas(
+        let glyph_table = generate_atlas(
             AtlasConfig {
                 font,
                 scale: self.scale,
                 size: self.atlas_size,
                 spacing: 2,
-                ty: AtlasType::BitMap
+                ty: AtlasType::BitMap,
+                char_range: self.char_range.clone()
             }
         );
 
         let read_result = FontReadResult {
             shader: self.font_shader(),
-            glyphs,
-            atlas_data,
-            atlas_size: self.atlas_size,
+            glyph_table,
             line_height,
             scale: self.scale
         };
@@ -108,11 +106,12 @@ pub struct SDF {
 
 impl FontReader<SDF> {
     /// Create a font reader that outputs an sdf texture atlas
-    pub fn as_sdf(radius: f32) -> Self {
+    pub fn as_sdf(radius: f32, char_range: CharacterRange) -> Self {
         Self {
             atlas_size: 1024,
             scale: 96.0,
-            parser: SDF { radius }
+            parser: SDF { radius },
+            char_range
         }
     }
 }
@@ -136,21 +135,20 @@ impl FontReaderType for FontReader<SDF> {
             .ok_or("[FontReader<SDF>] Failed to read font line metrics")?;
         let line_height = line_metrics.new_line_size / self.scale;
 
-        let (glyphs, atlas_data) = generate_atlas(
+        let glyph_table = generate_atlas(
             AtlasConfig {
                 font,
                 scale: self.scale,
                 size: self.atlas_size,
                 spacing: 2,
-                ty: AtlasType::SDF { radius: self.parser.radius }
+                ty: AtlasType::SDF { radius: self.parser.radius },
+                char_range: self.char_range.clone()
             }
         );
 
         let read_result = FontReadResult {
             shader: self.font_shader(),
-            glyphs,
-            atlas_data,
-            atlas_size: self.atlas_size,
+            glyph_table,
             line_height,
             scale: self.scale
         };

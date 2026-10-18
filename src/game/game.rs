@@ -4,7 +4,7 @@ use glam::{Quat, Vec3, vec3};
 use winit::{event::MouseButton, keyboard::KeyCode};
 
 use crate::{
-    Graphics, InputEvent, game::{Screen, ScreenTransition, VoxelRenderer, VoxelWorld}, graphics::*, utils::{Camera, Controllable, EntityController, FontManager, FontReader, KeyboardHandler, MouseHandler, RelativePerspective, TextOptions, Transform, font::font::FontId},
+    Graphics, InputEvent, game::{Screen, ScreenTransition, VoxelRenderer, VoxelWorld}, graphics::*, utils::{Camera, CharacterRange, Controllable, EntityController, FontManager, FontReader, KeyboardHandler, MouseHandler, RelativePerspective, TextOptions, Transform, font::font::FontId},
 };
 
 #[derive(Clone, Copy)]
@@ -91,7 +91,7 @@ impl Screen for Game {
 
         self.arial = self.fonts.request_font(
             "./assets/arial.ttf", 
-            FontReader::as_sdf(16.0)
+            FontReader::as_sdf(16.0, CharacterRange::default())
         );
 
         self.world.toggle_pause();

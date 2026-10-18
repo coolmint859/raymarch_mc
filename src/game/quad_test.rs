@@ -1,6 +1,6 @@
 use winit::event::MouseButton;
 
-use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{BindGroupId, BufferId, DrawCommand, GpuContext, IndexedDraw, LayoutId, MultiBufferExecutor, OnDisk, Pipeline, PipelineId, RenderingState, Sampler, SequentialExecutor, Texture, VertexBufferLayout}, utils::{BufferInit, BufferRefComponent, Camera, FontManager, FontReader, GeometryData, MatInit, Material, MouseHandler, SamplerComponent, ScreenSpace, TextOptions, TextureComponent, Transform, TransformAttribute, font::font::{FontId, Quad}}};
+use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{BindGroupId, BufferId, DrawCommand, GpuContext, IndexedDraw, LayoutId, MultiBufferExecutor, OnDisk, Pipeline, PipelineId, RenderingState, Sampler, SequentialExecutor, Texture, VertexBufferLayout}, utils::{BufferInit, BufferRefComponent, Camera, CharacterRange, FontManager, FontReader, GeometryData, MatInit, Material, MouseHandler, SamplerComponent, ScreenSpace, TextOptions, TextureComponent, Transform, TransformAttribute, font::font::{FontId, Quad}}};
 
 pub struct QuadPrimitive {
     pub quad: Quad,
@@ -163,14 +163,14 @@ impl Screen for QuadTest {
 
         self.arial = self.text_renderer.request_font(
             "./assets/arial.ttf", 
-            FontReader::as_sdf(16.0)
+            FontReader::as_sdf(16.0, CharacterRange::default())
             // FontReader::as_bitmap()
         );
 
         self.mono = self.text_renderer.request_font(
             "./assets/Monopack.ttf", 
             // FontReader::as_sdf(16.0)
-            FontReader::as_bitmap()
+            FontReader::as_bitmap(CharacterRange::default())
         );
     }
 
