@@ -1,10 +1,8 @@
 use glam::vec3;
-use winit::event::MouseButton;
 
-use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{MultiBufferExecutor, RenderingState}, utils::{Camera, CharacterRange, FontManager, FontReader, MouseHandler, ScreenSpace, TextOptions, Transform, font::font::FontId}};
+use crate::{Graphics, game::ScreenTransition, graphics::{MultiBufferExecutor, RenderingState}, utils::{Camera, CharacterRange, FontManager, FontReader, InputHandler, NoAction, ScreenSpace, TextOptions, Transform, font::font::FontId}};
 
 pub struct TextTest {
-    mouse: MouseHandler<PlayerMouseAction>,
     executor: MultiBufferExecutor,
     camera: Camera<ScreenSpace>,
 
@@ -17,7 +15,6 @@ pub struct TextTest {
 impl TextTest {
     pub fn new() -> Self {
         Self { 
-            mouse: MouseHandler::new(),
             executor: MultiBufferExecutor::new(),
             camera: Camera::new(ScreenSpace),
 
@@ -28,15 +25,7 @@ impl TextTest {
         }
     }
 
-    pub fn init_input(&mut self) {
-        self.mouse.register_button(MouseButton::Left, PlayerMouseAction::LockMouse);
-        self.mouse.register_button(MouseButton::Right, PlayerMouseAction::UnlockMouse);
-    }
-}
-
-impl Screen for TextTest {
-    fn init(&mut self, graphics: &mut Graphics) {
-        self.init_input();
+    pub fn init(&mut self, graphics: &mut Graphics, _input: &mut InputHandler<NoAction, NoAction>) {
         self.camera.init(graphics);
 
         self.arial_sdf = self.fonts.request_font(
@@ -56,31 +45,11 @@ impl Screen for TextTest {
         );
     }
 
-    fn input_event(&mut self, event: InputEvent) {
-        match event {
-            InputEvent::MouseButton { state, button } => {
-                self.mouse.button_event(state, button);
-            },
-            InputEvent::MouseMotion { dx, dy } => {
-                self.mouse.motion_event(dx, dy);
-            },
-            _ => {}
-        }
-    }
-
-    fn process_input(&mut self, graphics: &mut Graphics, _dt: f32) -> ScreenTransition {
-        for action in self.mouse.poll_on_press() {
-            match action {
-                PlayerMouseAction::LockMouse => graphics.canvas.set_cursor_lock(true),
-                PlayerMouseAction::UnlockMouse => graphics.canvas.set_cursor_lock(false),
-            }
-        }
-        self.mouse.clear_events();
-
+    pub fn process_input(&mut self, _graphics: &mut Graphics, _input: &mut InputHandler<NoAction, NoAction>, _dt: f32) -> ScreenTransition {
         ScreenTransition::None
     }
 
-    fn update(&mut self, graphics: &mut Graphics, dt: f32) {
+    pub fn update(&mut self, graphics: &mut Graphics, dt: f32) {
         self.camera.update(graphics, 0.0);
         let screen_height = graphics.canvas.dimensions().1 as f32;
 
@@ -123,7 +92,7 @@ impl Screen for TextTest {
         self.fonts.update(graphics);
     }
 
-    fn render(&mut self, graphics: &mut Graphics) -> Result<(), wgpu::SurfaceError> {
+    pub fn render(&mut self, graphics: &mut Graphics) -> Result<(), wgpu::SurfaceError> {
         let frame = graphics.canvas.next_frame()?;
 
         self.fonts.record(

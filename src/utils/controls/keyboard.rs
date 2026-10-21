@@ -106,4 +106,11 @@ impl<K: Clone> KeyboardHandler<K> {
         self.just_pressed.clear();
         self.just_released.clear();
     }
+
+    /// Removes all bindings from the keyboard handler.
+    /// 
+    /// Call `register_key()` to add new bindings.
+    pub fn reset_bindings(&mut self) {
+        self.bindings.clear();
+    }
 }

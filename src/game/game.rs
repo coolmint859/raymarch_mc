@@ -1,10 +1,10 @@
 use std::format;
 
 use glam::{Quat, Vec3, vec3};
-use winit::{event::MouseButton, keyboard::KeyCode};
+use winit::keyboard::KeyCode;
 
 use crate::{
-    Graphics, InputEvent, game::{Screen, ScreenTransition, VoxelRenderer, VoxelWorld}, graphics::*, utils::{Camera, CharacterRange, Controllable, EntityController, FontManager, FontReader, KeyboardHandler, MouseHandler, RelativePerspective, TextOptions, Transform, font::font::FontId},
+    Graphics, game::{ScreenTransition, VoxelRenderer, VoxelWorld}, graphics::*, utils::{Camera, CharacterRange, Controllable, EntityController, FontManager, FontReader, InputHandler, NoAction, RelativePerspective, TextOptions, Transform, font::font::FontId},
 };
 
 #[derive(Clone, Copy)]
@@ -19,20 +19,11 @@ pub enum PlayerKeyAction {
     ToggleSimulation,
     StepSimulation,
     ShowFPS,
-    Exit,
-}
-
-#[derive(Clone, Copy)]
-pub enum PlayerMouseAction {
-    LockMouse,
-    UnlockMouse,
 }
 
 pub struct Game {
     controller: EntityController,
     camera: Camera<RelativePerspective>,
-    keyboard: KeyboardHandler<PlayerKeyAction>,
-    mouse: MouseHandler<PlayerMouseAction>,
 
     arial: FontId,
     fonts: FontManager,
@@ -53,8 +44,6 @@ impl Game {
         Self {
             camera,
             controller: EntityController::new(10.0, 0.003),
-            keyboard: KeyboardHandler::new(),
-            mouse: MouseHandler::new(),
 
             arial: FontId::UNINIT,
             fonts: FontManager::new(),
@@ -66,26 +55,20 @@ impl Game {
         }
     }
 
-    pub fn init_input(&mut self) {
-        self.keyboard.register_key(KeyCode::KeyW, PlayerKeyAction::MoveForward);
-        self.keyboard.register_key(KeyCode::KeyA, PlayerKeyAction::StrafeLeft);
-        self.keyboard.register_key(KeyCode::KeyS, PlayerKeyAction::MoveBackward);
-        self.keyboard.register_key(KeyCode::KeyD, PlayerKeyAction::StrafeRight);
-        self.keyboard.register_key(KeyCode::ShiftLeft, PlayerKeyAction::MoveUp);
-        self.keyboard.register_key(KeyCode::Space, PlayerKeyAction::MoveDown);
-        self.keyboard.register_key(KeyCode::Escape, PlayerKeyAction::Exit);
-        self.keyboard.register_key(KeyCode::KeyR, PlayerKeyAction::ResetCamera);
-        self.keyboard.register_key(KeyCode::KeyT, PlayerKeyAction::ToggleSimulation);
-        self.keyboard.register_key(KeyCode::KeyN, PlayerKeyAction::StepSimulation);
-        self.keyboard.register_key(KeyCode::KeyF, PlayerKeyAction::ShowFPS);
-
-        self.mouse.register_button(MouseButton::Left, PlayerMouseAction::LockMouse);
-        self.mouse.register_button(MouseButton::Right, PlayerMouseAction::UnlockMouse);
+    pub fn init_input(&mut self, input: &mut InputHandler<PlayerKeyAction, NoAction>) {
+        input.keyboard.register_key(KeyCode::KeyW, PlayerKeyAction::MoveForward);
+        input.keyboard.register_key(KeyCode::KeyA, PlayerKeyAction::StrafeLeft);
+        input.keyboard.register_key(KeyCode::KeyS, PlayerKeyAction::MoveBackward);
+        input.keyboard.register_key(KeyCode::KeyD, PlayerKeyAction::StrafeRight);
+        input.keyboard.register_key(KeyCode::ShiftLeft, PlayerKeyAction::MoveUp);
+        input.keyboard.register_key(KeyCode::Space, PlayerKeyAction::MoveDown);
+        input.keyboard.register_key(KeyCode::KeyR, PlayerKeyAction::ResetCamera);
+        input.keyboard.register_key(KeyCode::KeyT, PlayerKeyAction::ToggleSimulation);
+        input.keyboard.register_key(KeyCode::KeyN, PlayerKeyAction::StepSimulation);
+        input.keyboard.register_key(KeyCode::KeyF, PlayerKeyAction::ShowFPS);
     }
-}
 
-impl Screen for Game {
-    fn init(&mut self, graphics: &mut Graphics) {
+    pub fn init(&mut self, graphics: &mut Graphics, input: &mut InputHandler<PlayerKeyAction, NoAction>) {
         self.camera.init(graphics);
         self.renderer.init(graphics, &self.world, *self.camera.buf_id());
 
@@ -95,49 +78,21 @@ impl Screen for Game {
         );
 
         self.world.toggle_pause();
-        self.init_input();
+        self.init_input(input);
     }
 
-    fn on_resize(&mut self, graphics: &mut Graphics) {
+    pub fn on_resize(&mut self, graphics: &mut Graphics) {
         self.renderer.on_resize(graphics);
     }
 
-    fn input_event(&mut self, event: crate::InputEvent) {
-        match event {
-            InputEvent::Key(key_event) => {
-                self.keyboard.key_event(key_event)
-            },
-            InputEvent::MouseButton { state, button } => {
-                self.mouse.button_event(state, button);
-            },
-            InputEvent::MouseMotion { dx, dy } => {
-                self.mouse.motion_event(dx, dy);
-            }
-        }
-    }
-
-    fn process_input(&mut self, graphics: &mut Graphics, dt: f32) -> ScreenTransition {
-        for action in self.mouse.poll_on_press() {
-            match action {
-                PlayerMouseAction::LockMouse => graphics.canvas.set_cursor_lock(true),
-                PlayerMouseAction::UnlockMouse => graphics.canvas.set_cursor_lock(false),
-            }
-        }
-        
-        for action in self.keyboard.peek_on_press() {
-            match action {
-                PlayerKeyAction::Exit => return ScreenTransition::Exit,
-                _ => {}
-            }
-        }
-        
+    pub fn process_input(&mut self, graphics: &mut Graphics, input: &mut InputHandler<PlayerKeyAction, NoAction>, dt: f32) -> ScreenTransition {
         if graphics.canvas.cursor_locked() {
-            let dm = self.mouse.poll_motion();
+            let dm = input.mouse.poll_motion();
             if dm.dx != 0.0 || dm.dy != 0.0 {
                 self.controller.rotate_delta(&mut self.camera, dm.dx, dm.dy);
             }
 
-            for action in self.keyboard.poll_on_held() {
+            for action in input.keyboard.poll_on_held() {
                 match action {
                     PlayerKeyAction::MoveForward => self.controller.move_forward(&mut self.camera, dt),
                     PlayerKeyAction::MoveBackward => self.controller.move_backward(&mut self.camera, dt),
@@ -151,7 +106,7 @@ impl Screen for Game {
 
             // println!("cam pos: {:?}", self.camera.transform.get_position())
 
-            for action in self.keyboard.poll_on_press() {
+            for action in input.keyboard.poll_on_press() {
                 match action {
                     PlayerKeyAction::ToggleSimulation => self.world.toggle_pause(),
                     PlayerKeyAction::StepSimulation => self.world.update(dt, true),
@@ -166,13 +121,10 @@ impl Screen for Game {
             }
         }
 
-        self.keyboard.clear_events();
-        self.mouse.clear_events();
-
         ScreenTransition::None
     }
 
-    fn update(&mut self, graphics: &mut Graphics, dt: f32) {
+    pub fn update(&mut self, graphics: &mut Graphics, dt: f32) {
         self.world.update(dt, false);
         self.camera.update(graphics, dt);
 
@@ -210,7 +162,7 @@ impl Screen for Game {
         self.fonts.update(graphics);
     }
 
-    fn render(&mut self, graphics: &mut Graphics) -> Result<(), wgpu::SurfaceError> {
+    pub fn render(&mut self, graphics: &mut Graphics) -> Result<(), wgpu::SurfaceError> {
         let frame = graphics.canvas.next_frame()?;
 
         let mut executor = MultiBufferExecutor::new();

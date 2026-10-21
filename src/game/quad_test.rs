@@ -1,6 +1,4 @@
-use winit::event::MouseButton;
-
-use crate::{Graphics, InputEvent, game::{PlayerMouseAction, Screen, ScreenTransition}, graphics::{BindGroupId, BufferId, DrawCommand, GpuContext, IndexedDraw, LayoutId, MultiBufferExecutor, OnDisk, Pipeline, PipelineId, RenderingState, Sampler, SequentialExecutor, Texture, VertexBufferLayout}, utils::{BufferInit, BufferRefComponent, Camera, CharacterRange, FontManager, FontReader, GeometryData, MatInit, Material, MouseHandler, SamplerComponent, ScreenSpace, TextOptions, TextureComponent, Transform, TransformAttribute, font::font::{FontId, Quad}}};
+use crate::{Graphics, game::ScreenTransition, graphics::{BindGroupId, BufferId, DrawCommand, GpuContext, IndexedDraw, LayoutId, MultiBufferExecutor, OnDisk, Pipeline, PipelineId, RenderingState, Sampler, SequentialExecutor, Texture, VertexBufferLayout}, utils::{BufferInit, BufferRefComponent, Camera, CharacterRange, FontManager, FontReader, GeometryData, InputHandler, MatInit, Material, NoAction, SamplerComponent, ScreenSpace, TextOptions, TextureComponent, Transform, TransformAttribute, font::font::{FontId, Quad}}};
 
 pub struct QuadPrimitive {
     pub quad: Quad,
@@ -49,7 +47,6 @@ impl QuadPrimitive {
 }
 
 pub struct QuadTest {
-    mouse: MouseHandler<PlayerMouseAction>,
     executor: MultiBufferExecutor,
 
     text_renderer: FontManager,
@@ -65,8 +62,7 @@ pub struct QuadTest {
 
 impl QuadTest {
     pub fn new() -> Self {
-        Self { 
-            mouse: MouseHandler::new(),
+        Self {
             executor: MultiBufferExecutor::new(),
 
             text_renderer: FontManager::new(),
@@ -81,15 +77,7 @@ impl QuadTest {
         }
     }
 
-    pub fn init_input(&mut self) {
-        self.mouse.register_button(MouseButton::Left, PlayerMouseAction::LockMouse);
-        self.mouse.register_button(MouseButton::Right, PlayerMouseAction::UnlockMouse);
-    }
-}
-
-impl Screen for QuadTest {
-    fn init(&mut self, graphics: &mut Graphics) {
-        self.init_input();
+    pub fn init(&mut self, graphics: &mut Graphics, _input: &mut InputHandler<NoAction, NoAction>) {
         self.camera.init(graphics);
 
         let mut q1_geometry = Quad::new();
@@ -174,31 +162,13 @@ impl Screen for QuadTest {
         );
     }
 
-    fn input_event(&mut self, event: InputEvent) {
-        match event {
-            InputEvent::MouseButton { state, button } => {
-                self.mouse.button_event(state, button);
-            },
-            InputEvent::MouseMotion { dx, dy } => {
-                self.mouse.motion_event(dx, dy);
-            },
-            _ => {}
-        }
-    }
-
-    fn process_input(&mut self, graphics: &mut Graphics, _dt: f32) -> ScreenTransition {
-        for action in self.mouse.poll_on_press() {
-            match action {
-                PlayerMouseAction::LockMouse => graphics.canvas.set_cursor_lock(true),
-                PlayerMouseAction::UnlockMouse => graphics.canvas.set_cursor_lock(false),
-            }
-        }
-        self.mouse.clear_events();
-
+    pub fn process_input(&mut self, _graphics: &mut Graphics, _input: &mut InputHandler<NoAction, NoAction>, _dt: f32) -> ScreenTransition {
         ScreenTransition::None
     }
 
-    fn update(&mut self, graphics: &mut Graphics, dt: f32) {
+    pub fn on_resize(&mut self, _graphics: &mut Graphics) {}
+
+    pub fn update(&mut self, graphics: &mut Graphics, dt: f32) {
         self.camera.update(graphics, 0.0);
         let screen_height = graphics.canvas.dimensions().1 as f32;
 
@@ -240,7 +210,7 @@ impl Screen for QuadTest {
         self.text_renderer.update(graphics);
     }
 
-    fn render(&mut self, graphics: &mut Graphics) -> Result<(), wgpu::SurfaceError> {
+    pub fn render(&mut self, graphics: &mut Graphics) -> Result<(), wgpu::SurfaceError> {
         let frame = graphics.canvas.next_frame()?;
 
         let draw_q1 = IndexedDraw::new(self.qpip, 0..6)

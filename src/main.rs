@@ -2,16 +2,36 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use winit::{
-    application::ApplicationHandler, dpi::{PhysicalSize, Size}, event::{DeviceEvent, DeviceId, ElementState, KeyEvent, MouseButton, WindowEvent}, event_loop::{ActiveEventLoop, ControlFlow, DeviceEvents, EventLoop}, window::{WindowAttributes, WindowId},
+    application::ApplicationHandler, dpi::{PhysicalSize, Size}, event::{DeviceEvent, DeviceId, ElementState, KeyEvent, MouseButton, WindowEvent}, event_loop::{ActiveEventLoop, ControlFlow, DeviceEvents, EventLoop}, keyboard::KeyCode, window::{WindowAttributes, WindowId},
 };
 
 pub mod game;
 pub mod utils;
 
 pub mod graphics;
-use crate::{game::{Game, QuadTest, Screen, ScreenTransition, TextTest}, graphics::*};
+use crate::{game::{ActiveScreen, Game, QuadTest, ScreenRouter, TextTest, WindowDriver}, graphics::*, utils::InputHandler};
+
+#[derive(Debug, Clone)]
+enum MouseGlobalAction {
+    LockMouse,
+    UnlockMouse,
+}
+
+#[derive(Debug, Clone)]
+enum KeyboardGlobalAction {
+    Exit
+}
+
+/// Represents the the frame-by-frame state of the window and event loop.
+pub enum WindowState {
+    /// Window should remain open and continue to process events.
+    Continue,
+    /// Window should close.
+    Exit,
+}
 
 /// Represents events triggered by user input
+#[derive(Debug, Clone)]
 pub enum InputEvent {
     /// User pressed a key
     Key(KeyEvent),
@@ -30,7 +50,8 @@ pub enum InputEvent {
 /// Core window driver
 struct App {
     graphics: Option<Graphics>,
-    active_screen: Option<Box<dyn Screen>>,
+    global_input: InputHandler<KeyboardGlobalAction, MouseGlobalAction>,
+    driver: Option<Box<dyn WindowDriver>>,
 
     previous_time: Instant,
     elapsed_time: f32,
@@ -40,10 +61,19 @@ impl App {
     pub fn new() -> Self {
         Self {
             graphics: None,
-            active_screen: None,
+            global_input: InputHandler::new(),
+
+            driver: None,
             previous_time: Instant::now(),
             elapsed_time: 0.0,
         }
+    }
+
+    pub fn register_bindings(&mut self) {
+        self.global_input.keyboard.register_key(KeyCode::Escape, KeyboardGlobalAction::Exit);
+
+        self.global_input.mouse.register_button(MouseButton::Left, MouseGlobalAction::LockMouse);
+        self.global_input.mouse.register_button(MouseButton::Right, MouseGlobalAction::UnlockMouse);
     }
     
     pub fn run_frame(&mut self, event_loop: &ActiveEventLoop) {
@@ -56,24 +86,32 @@ impl App {
         self.previous_time = current_time;
         self.elapsed_time += dt;
 
-        if graphics.canvas.is_focused() && let Some(ref mut screen) = self.active_screen {
-        // if let Some(ref mut screen) = self.active_screen {
-            match screen.process_input(graphics, dt) {
-                ScreenTransition::Exit => {
+        if graphics.canvas.is_focused() && let Some(ref mut driver) = self.driver {
+            for action in self.global_input.mouse.poll_on_press() {
+                match action {
+                    MouseGlobalAction::LockMouse => graphics.canvas.set_cursor_lock(true),
+                    MouseGlobalAction::UnlockMouse => graphics.canvas.set_cursor_lock(false),
+                }
+            }
+
+            for action in self.global_input.keyboard.poll_on_press() {
+                match action {
+                    KeyboardGlobalAction::Exit => event_loop.exit(),
+                }
+            }
+
+            match driver.process_input(graphics, dt) {
+                WindowState::Exit => {
                     event_loop.exit();
                     return;
-                }
-                ScreenTransition::SwitchTo(mut screen) => {
-                    screen.init(graphics);
-                    self.active_screen = Some(screen);
-                    return;
-                }
-                ScreenTransition::None => {
-                    screen.update(graphics, dt)
+                },
+                WindowState::Continue => {
+                    driver.update(graphics, dt);
                 }
             }
         }
 
+        self.global_input.clear_events();
         graphics.canvas.redraw();
     }
 }
@@ -89,13 +127,22 @@ impl ApplicationHandler for App {
             let window = Arc::new(event_loop.create_window(window_attrs).unwrap());
             event_loop.listen_device_events(DeviceEvents::Always);
 
+            self.register_bindings();
+
             let mut graphics_init = GraphicsInit::new().with_backend(wgpu::Backends::DX12);
             let mut graphics = pollster::block_on(graphics_init.init(window)).unwrap();
 
-            let mut game_screen = TextTest::new();
-            game_screen.init(&mut graphics);
+            let mut init_screen = Game::new();
+            let mut input = InputHandler::new();
 
-            self.active_screen = Some(Box::new(game_screen));
+            init_screen.init(&mut graphics, &mut input);
+
+            let active = ActiveScreen::Game { 
+                screen: init_screen, 
+                input
+            };
+
+            self.driver = Some(Box::new(ScreenRouter::new(active)));
             self.graphics = Some(graphics);
         }
     }
@@ -105,7 +152,7 @@ impl ApplicationHandler for App {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
-        let (Some(graphics), Some(screen)) = (&mut self.graphics, &mut self.active_screen) else { return; };
+        let (Some(graphics), Some(driver)) = (&mut self.graphics, &mut self.driver) else { return; };
 
         let current_time = Instant::now();
         let dt = (current_time - self.previous_time).as_secs_f32();
@@ -117,10 +164,10 @@ impl ApplicationHandler for App {
             WindowEvent::Resized(physical_size) => {   
                 // println!("---WINDOW RESIZED---");     
                 graphics.on_resize(physical_size.width, physical_size.height);
-                screen.on_resize(graphics);
+                driver.on_resize(graphics);
 
-                screen.update(graphics, dt);
-                let result = screen.render(graphics);
+                driver.update(graphics, dt);
+                let result = driver.render(graphics);
 
                 match result {
                     Err(wgpu::SurfaceError::OutOfMemory) => event_loop.exit(),
@@ -129,32 +176,41 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::RedrawRequested => {
-                match screen.render(graphics) {
+                match driver.render(graphics) {
                     Err(wgpu::SurfaceError::OutOfMemory) => event_loop.exit(),
                     Err(wgpu::SurfaceError::Lost) => graphics.reset(),
                     _ => {}
                 }
             }
             WindowEvent::KeyboardInput { event, .. } => {
-                screen.input_event(InputEvent::Key(event));
+                let input_event = InputEvent::Key(event);
+
+                self.global_input.process_event(input_event.clone());
+                driver.process_event(input_event);
             }
             WindowEvent::Focused(focused) => {
                 graphics.canvas.set_focused(focused);
                 graphics.canvas.set_cursor_lock(focused);
             }
             WindowEvent::MouseInput { state, button, .. } => {
-                screen.input_event(InputEvent::MouseButton { state, button });
+                let input_event = InputEvent::MouseButton { state, button };
+                
+                self.global_input.process_event(input_event.clone());
+                driver.process_event(input_event);
             }
             _ => {}
         }
     }
 
     fn device_event(&mut self, _event_loop: &ActiveEventLoop, _device_id: DeviceId, event: DeviceEvent) {
-        let Some(ref mut screen) = self.active_screen else { return; };
+        let Some(ref mut screen) = self.driver else { return; };
         
         match event {
             DeviceEvent::MouseMotion { delta } => {
-                screen.input_event(InputEvent::MouseMotion { dx: delta.0, dy: delta.1 });
+                let input_event = InputEvent::MouseMotion { dx: delta.0, dy: delta.1 };
+                
+                self.global_input.process_event(input_event.clone());
+                screen.process_event(input_event);
             }
             _ => {}
         }

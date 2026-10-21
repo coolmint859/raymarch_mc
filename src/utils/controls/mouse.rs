@@ -2,12 +2,14 @@ use std::collections::{HashMap, HashSet};
 
 use winit::event::{ElementState, MouseButton};
 
+/// The motion vector of the cursor
 #[derive(Clone, Copy)]
 pub struct DeltaMotion {
     pub dx: f64,
     pub dy: f64,
 }
 
+/// Maps winit mouse events to 
 pub struct MouseHandler<M> {
     bindings: HashMap<MouseButton, M>,
 
@@ -120,5 +122,12 @@ impl<M: Clone> MouseHandler<M> {
         self.held_buttons.clear();
         self.just_pressed.clear();
         self.just_released.clear();
+    }
+
+    /// Removes all bindings from this `MouseHandler`.
+    /// 
+    /// Call `register_button()` to add new bindings.
+    pub fn reset_bindings(&mut self) {
+        self.bindings.clear();
     }
 }
