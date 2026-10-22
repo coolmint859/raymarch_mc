@@ -4,7 +4,7 @@ use image::GenericImageView;
 use uuid::Uuid;
 use wgpu::Extent3d;
 
-use crate::graphics::{ResourceId, TextureId};
+use crate::{graphics::{ResourceId, TextureId}, utils::HoldPolicy};
 
 /// A lightweight handle to a gpu texture
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -146,6 +146,8 @@ pub struct Texture {
     pub usage: wgpu::TextureUsages,
     /// The mip levels of the texture, default is 1.
     pub mip_levels: u32,
+    /// The hold policy of the texture. If `None`, the global policy is used instead
+    pub hold_policy: Option<HoldPolicy>
 }
 
 impl Texture {
@@ -155,12 +157,19 @@ impl Texture {
             format: wgpu::TextureFormat::Rgba8Unorm,
             usage: wgpu::TextureUsages::TEXTURE_BINDING,
             mip_levels: 1,
+            hold_policy: None,
         }
     }
 
     /// Set the label for gpu profiling of the resultant texture
     pub fn with_label(mut self, label: &str) -> Self {
         self.label = label.to_string();
+        self
+    }
+
+    /// Set the hold policy for this sampler. This overrides the global policy.
+    pub fn with_hold_policy(mut self, policy: HoldPolicy) -> Self {
+        self.hold_policy = Some(policy);
         self
     }
 

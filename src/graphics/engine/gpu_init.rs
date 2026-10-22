@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use winit::window::Window;
 
-use crate::{Canvas, graphics::{GpuContext, GpuHandle}};
+use crate::{Canvas, graphics::{GlobalHoldPolicy, GpuContext, GpuHandle}};
 
 /// Graphics initialization errors
 #[derive(Clone, Debug)]
@@ -60,6 +60,7 @@ pub struct GraphicsInit {
     present_mode: wgpu::PresentMode,
     frame_latency: u32,
     back_end: wgpu::Backends,
+    global_hp: GlobalHoldPolicy,
     is_initialized: bool
 }
 
@@ -70,6 +71,7 @@ impl GraphicsInit {
             present_mode: wgpu::PresentMode::Immediate,
             frame_latency: 2,
             back_end: wgpu::Backends::PRIMARY,
+            global_hp: GlobalHoldPolicy::default(),
             is_initialized: false
         }
     }
@@ -96,6 +98,12 @@ impl GraphicsInit {
     /// However it may be worth it to consider setting this to a platform specific backend (such as DX12) depending on your application needs.
     pub fn with_backend(mut self, backend: wgpu::Backends) -> Self {
         self.back_end = backend;
+        self
+    }
+
+    /// Set the global hold policy for resources created with the gpu
+    pub fn with_global_hp(mut self, policy: GlobalHoldPolicy) -> Self {
+        self.global_hp = policy;
         self
     }
 
@@ -140,7 +148,7 @@ impl GraphicsInit {
         surface.configure(&gpu.device, &config);
 
         let canvas = Canvas::new(window, surface, config);
-        let gpu = GpuContext::new(gpu);
+        let gpu = GpuContext::new(gpu, self.global_hp);
 
         Ok(Graphics { context: gpu, canvas })
     }

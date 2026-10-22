@@ -2,7 +2,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 
 use uuid::Uuid;
 
-use crate::graphics::{LayoutId, PipelineId, ResourceId, VertexBufferLayout};
+use crate::{graphics::{LayoutId, PipelineId, ResourceId, VertexBufferLayout}, utils::HoldPolicy};
 
 /// Represents a handle to a render/compute pipeline
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -32,10 +32,10 @@ impl PipelineHandle {
 /// Holds configuration state for a render pipeline blueprint
 #[derive(Clone, Debug, Hash)]
 pub struct Render {
-    pub vs_main: &'static str, 
-    pub fs_main: &'static str, 
-    pub format: wgpu::TextureFormat,
-    pub vertex_layouts: Vec<VertexBufferLayout>,
+    pub(crate) vs_main: &'static str, 
+    pub(crate) fs_main: &'static str, 
+    pub(crate) format: wgpu::TextureFormat,
+    pub(crate) vertex_layouts: Vec<VertexBufferLayout>,
 }
 
 impl Render {
@@ -44,7 +44,7 @@ impl Render {
             vs_main,
             fs_main,
             format: wgpu::TextureFormat::Bgra8UnormSrgb,
-            vertex_layouts: Vec::new()
+            vertex_layouts: Vec::new(),
         }
     }
 }
@@ -52,7 +52,7 @@ impl Render {
 /// Holds configurations state for a compute pipeline creation
 #[derive(Clone, Copy, Debug, Hash)]
 pub struct Compute {
-    pub main: &'static str
+    pub(crate) main: &'static str,
 }
 
 impl Compute {
@@ -111,6 +111,7 @@ pub struct Pipeline<T: Hash> {
     pub label: String,
     pub bg_layouts: Vec<LayoutId>,
     pub shader_path: Option<String>,
+    pub hold_policy: Option<HoldPolicy>,
     pub ty: T,
 }
 
@@ -132,6 +133,12 @@ impl<T: Hash> Pipeline<T> {
         self.shader_path = Some(path.to_string());
         self
     }
+
+    /// Set the hold policy for this compute pipeline. This overrides the global policy.
+    pub fn with_hold_policy(mut self, policy: HoldPolicy) -> Self {
+        self.hold_policy = Some(policy);
+        self
+    }
 }
 
 impl<T: Hash> ResourceId for Pipeline<T> {
@@ -151,6 +158,7 @@ impl Pipeline<Render> {
             label: "render_pipeline".to_string(),
             bg_layouts: Vec::new(),
             shader_path: None,
+            hold_policy: None,
             ty: Render::new("vs_main", "fs_main")
         }
     }
@@ -182,6 +190,7 @@ impl Pipeline<Compute> {
             label: "compute_pipeline".to_string(),
             bg_layouts: Vec::new(),
             shader_path: None,
+            hold_policy: None,
             ty: Compute::new("cs_main")
         }
     }

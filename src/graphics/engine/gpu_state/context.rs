@@ -1,5 +1,29 @@
 use std::{collections::HashSet};
-use crate::{graphics::{pip_registry::PipelineRegistry, *}, utils::{ResourceHandler, Task}};
+use crate::{graphics::{pip_registry::PipelineRegistry, *}, utils::{HoldPolicy, ResourceHandler, Task}};
+
+/// The hold policy for all gpu resources globally. All resources have an indefinite hold policy by default.
+/// 
+/// These are followed internally by the context unless a resource is configured otherwise.
+#[derive(Debug, Clone, Copy)]
+pub struct GlobalHoldPolicy {
+    pub buffers: HoldPolicy,
+    pub textures: HoldPolicy,
+    pub samplers: HoldPolicy,
+    pub bind_groups: HoldPolicy,
+    pub pipelines: HoldPolicy,
+}
+
+impl Default for GlobalHoldPolicy {
+    fn default() -> Self {
+        Self {
+            buffers: HoldPolicy::Indefinite,
+            textures: HoldPolicy::Indefinite,
+            samplers: HoldPolicy::Indefinite,
+            bind_groups: HoldPolicy::Indefinite,
+            pipelines: HoldPolicy::Indefinite,
+        }
+    }
+}
 
 /// Represents types that can be identified as a gpu resource
 pub trait ResourceId {
@@ -59,15 +83,17 @@ pub struct GpuContext {
     pub(crate) resources: GpuResources,
     pub(crate) bg_registry: BindGroupRegistry,
     pub(crate) pip_registry: PipelineRegistry,
+    pub(crate) global_hp: GlobalHoldPolicy,
 }
 
 impl GpuContext {
     /// Create a new `GpuContext` from a `GpuHandle`.
-    pub fn new(gpu: GpuHandle) -> Self {
+    pub fn new(gpu: GpuHandle, global_hp: GlobalHoldPolicy) -> Self {
         Self {
             resources: GpuResources::new(),
             bg_registry: BindGroupRegistry::new(gpu.clone()),
             pip_registry: PipelineRegistry::new(gpu.clone()),
+            global_hp,
             gpu
         }
     }
@@ -82,14 +108,25 @@ impl GpuContext {
     /// Returns a `BufferId` that is uniquely associated with the resultant wgpu `Buffer`.
     pub fn request_buffer<S>(&mut self, blueprint: Buffer, source: BufferSource<S>) -> BufferId {
         let id = blueprint.create_id();
+
+        let policy = blueprint.hold_policy.unwrap_or(self.global_hp.buffers);
         
         let gpu = self.gpu.clone();
         let buffer_task = Task::io_bound( async move {
             gpu.create_buffer(blueprint, source.data, source.capacity)
-        });
+        }).with_hold_policy(policy);
+
         self.resources.buffers.request_new(&id, buffer_task);
 
         id
+    }
+
+    /// Ensures a buffer has been requested.
+    /// 
+    /// If `test_id` maps to an already requested buffer, it's returned back to the caller. Otherwise a new buffer is requested from `blueprint` and `source`, and a new `BufferId` is returned. 
+    pub fn ensure_buffer<S>(&mut self, test_id: BufferId, blueprint: Buffer, source: BufferSource<S>) -> BufferId {
+        if self.is_buffer_requested(test_id) { return test_id };
+        self.request_buffer(blueprint, source)
     }
 
     /// Request a texture to be created from the provided blueprint and source.
@@ -98,13 +135,24 @@ impl GpuContext {
     pub fn request_texture(&mut self, blueprint: Texture, source: impl TextureSource) -> TextureId {
         let id = blueprint.create_id();
 
+        let policy = blueprint.hold_policy.unwrap_or(self.global_hp.buffers);
+
         let gpu = self.gpu.clone();
         let texture_task = Task::io_bound(async move {
             gpu.create_texture(blueprint, source)
-        });
+        }).with_hold_policy(policy);
+
         self.resources.textures.request_new(&id, texture_task);
 
         id
+    }
+
+    /// Ensures a texture has been requested.
+    /// 
+    /// If `test_id` maps to an already requested texture, it's returned back to the caller. Otherwise a new texture is requested from `blueprint` and `source`, and a new `TextureId` is returned. 
+    pub fn ensure_texture(&mut self, test_id: TextureId, blueprint: Texture, source: impl TextureSource) -> TextureId {
+        if self.is_texture_requested(test_id) { return test_id };
+        self.request_texture(blueprint, source)
     }
 
     /// Request a sampler to be created from the provided blueprint.
@@ -115,37 +163,62 @@ impl GpuContext {
         B: SamplerType + ResourceId<Id = SamplerId>
     {
         let id = blueprint.create_id();
-
         // if self.resources.samplers.contains(&id) { return id; }
+
+        let policy = blueprint.hold_policy().unwrap_or(self.global_hp.buffers);
 
         let gpu = self.gpu.clone();
         let sampler_task = Task::io_bound(async move {
             gpu.create_sampler(blueprint)
-        });
+        }).with_hold_policy(policy);
+
         self.resources.samplers.request_new(&id, sampler_task);
 
         id
+    }
+
+    /// Ensures a sampler has been requested.
+    /// 
+    /// If `test_id` maps to an already requested sampler, it's returned back to the caller. Otherwise a new sampler is requested from `blueprint`, and a new `SamplerId` is returned. 
+    /// 
+    /// TODO: SamplerId needs to be content-addressable
+    pub fn ensure_sampler<B>(&mut self, test_id: SamplerId, blueprint: B) -> SamplerId 
+    where 
+        B: SamplerType + ResourceId<Id = SamplerId>
+    {
+        if self.is_sampler_requested(test_id) { return test_id };
+        self.request_sampler(blueprint)
     }
 
     /// Request a bind group to be created from the provided blueprint
     /// 
     /// Returns a `BindGroupIdPair`, which contains a unique `BindGroupId` and content-addressable `LayoutId`.
     pub fn request_bind_group(&mut self, blueprint: BindGroup) -> BindGroupIdPair {
-        return self.bg_registry.request_bg(blueprint, &self.resources);
+        return self.bg_registry.request_bg(blueprint, &self.resources, self.global_hp.bind_groups);
+    }
+
+    /// Ensures a bind group has been requested.
+    /// 
+    /// If `test_pair` maps to an already requested bind group, it's returned back to the caller. Otherwise a new bind group is requested from `blueprint`, and a new `BindGroupIdPair` is returned. 
+    /// 
+    /// Note: If the layout the bind group uses was already requested before, it's `LayoutId` will be the same regardless of whether the bind group is requested new.
+    pub fn ensure_bind_group(&mut self, test_pair: BindGroupIdPair, blueprint: BindGroup) -> BindGroupIdPair {
+        if self.is_bindgroup_requested(&test_pair.id) { return test_pair};
+        self.request_bind_group(blueprint)
     }
 
     /// Request a pipeline to be created from the provided blueprint.
     /// 
     /// Returns a `PipelineId` that is content-addressable to the blueprint. (This ensures that identical pipeline blueprints map to the same id)
     pub fn request_pipeline(&mut self, blueprint: impl Into<PipelineType>) -> PipelineId {
-        return self.pip_registry.request(blueprint.into(), &self.bg_registry);
+        return self.pip_registry.request(blueprint.into(), &self.bg_registry, self.global_hp.pipelines);
     }
 
     /// Sync pending resources with the main thread. This should be called regularly.
     pub fn sync(&mut self) {
         self.resources.sync();
-        self.bg_registry.sync(&self.resources);
-        self.pip_registry.sync(&self.bg_registry);
+        self.bg_registry.sync(&self.resources, self.global_hp.bind_groups);
+        self.pip_registry.sync(&self.bg_registry, self.global_hp.pipelines);
     }
 
     /// Update a buffer with the provided id, if found.
@@ -275,5 +348,35 @@ impl GpuContext {
     /// Note that any changes to underlying resources will invalidate the pipeline, triggering revalidation on the next usage.
     pub fn validate_pipeline(&self, pip_id: &PipelineId) -> Option<&PipelineHandle> {
         self.pip_registry.validate(pip_id, &self.bg_registry)
+    }
+
+    /// Returns `true` if a buffer mapped to the provided id exists or is pending completion, `false` otherwise
+    pub fn is_buffer_requested(&self, buf_id: BufferId) -> bool {
+        self.resources.buffers.mark_accessed(&buf_id);
+        self.resources.buffers.is_requested(&buf_id)
+    }
+
+    /// Returns `true` if a texture mapped to the provided id exists or is pending completion, `false` otherwise
+    pub fn is_texture_requested(&self, tex_id: TextureId) -> bool {
+        self.resources.textures.mark_accessed(&tex_id);
+        self.resources.textures.is_requested(&tex_id)
+    }
+
+    /// Returns `true` if a sampler mapped to the provided id exists or is pending completion, `false` otherwise
+    pub fn is_sampler_requested(&self, samp_id: SamplerId) -> bool {
+        self.resources.samplers.mark_accessed(&samp_id);
+        self.resources.samplers.is_requested(&samp_id)
+    }
+
+    /// Returns `true` if a bind group mapped to the provided id exists or is pending completion, `false` otherwise
+    pub fn is_bindgroup_requested(&self, bg_id: &BindGroupId) -> bool {
+        self.bg_registry.mark_bg_accessed(bg_id, &self.resources);
+        self.bg_registry.is_bg_requested(bg_id)
+    }
+
+    /// Returns `true` if a pipeline mapped to the provided id exists or is pending completion, `false` otherwise
+    pub fn is_pipeline_requested(&self, pip_id: &PipelineId) -> bool {
+        self.pip_registry.mark_accessed(pip_id);
+        self.pip_registry.is_requested(pip_id)
     }
 }

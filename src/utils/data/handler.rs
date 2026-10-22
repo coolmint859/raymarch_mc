@@ -5,7 +5,16 @@ use std::{
 
 use tokio::{runtime::Handle, task::JoinHandle};
 
-/// Specfifies whether a task is io-bound (Non-Blocking) or cpu-bound (Blocking)
+/// Represents the duration a resource is kept alive in a `ResourceHandler`
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HoldPolicy {
+    /// Resource persists for the duration of program unless manually removed
+    Indefinite,
+    /// Resource is kept alive for the provided duration since last accessed.
+    WithDuration(Duration),
+}
+
+/// Specifies whether a task is io-bound (Non-Blocking) or cpu-bound (Blocking)
 #[derive(Debug)]
 pub enum TaskType {
     /// task is cpu-bound
@@ -20,7 +29,7 @@ pub enum TaskType {
 pub struct Task<F, R> {
     pub fut: F,
     pub ty: TaskType,
-    pub hold_time: Option<u64>,
+    pub hold_policy: HoldPolicy,
     _rsc: PhantomData<R>
 }
 
@@ -34,7 +43,7 @@ where
         Self {
             fut,
             ty: TaskType::IoBound,
-            hold_time: None,
+            hold_policy: HoldPolicy::Indefinite,
             _rsc: PhantomData
         }
     }
@@ -44,14 +53,16 @@ where
         Self {
             fut,
             ty: TaskType::CpuBound,
-            hold_time: None,
+            hold_policy: HoldPolicy::Indefinite,
             _rsc: PhantomData
         }
     }
 
-    /// Set the hold time for the resource created from the task after not being accessed
-    pub fn with_hold_time(mut self, secs: u64) -> Self {
-        self.hold_time = Some(secs);
+    /// Set the hold duration for the resource created from the task. 
+    /// 
+    /// If the hold timer exceeds this value after not being accessed, the resource is removed.
+    pub fn with_hold_policy(mut self, policy: HoldPolicy) -> Self {
+        self.hold_policy = policy;
         self
     }
 }
@@ -61,7 +72,7 @@ pub struct Ready<R> {
     /// The stored resource
     pub rsc: R,
     /// The time in seconds before this resource should be deallocated.
-    pub hold_time: Option<u64>,
+    pub hold_policy: HoldPolicy,
     /// The time stamp for when this resource was last accessed.
     pub accessed: Cell<Instant>,
 }
@@ -245,7 +256,7 @@ where
                     let ready_result = result
                         .map(|rsc| { Ready { 
                             rsc, 
-                            hold_time: task.hold_time, 
+                            hold_policy: task.hold_policy, 
                             accessed: Cell::new(Instant::now()) 
                         }});
 
@@ -260,7 +271,7 @@ where
                     let ready_result = result
                         .map(|rsc| { Ready { 
                             rsc, 
-                            hold_time: task.hold_time, 
+                            hold_policy: task.hold_policy, 
                             accessed: Cell::new(Instant::now()) 
                         }});
 
@@ -293,7 +304,7 @@ where
         let result = pollster::block_on(task.fut);
             
         result.map(|rsc| {
-            self.store(key, task.hold_time, rsc);
+            self.store(key, task.hold_policy, rsc);
             self.get(key)
         })
     }
@@ -303,10 +314,10 @@ where
     /// * 'key' - A key of type `K` used query the handler for the resource
     /// * 'hold_time' - The time in seconds before a resource is considered 'dead' and is removed from the handler
     /// * 'resource' - An instance of the expected Resource this handler stores
-    pub fn store(&mut self, key: &K, hold_time: Option<u64>, resource: R) {
+    pub fn store(&mut self, key: &K, hold_policy: HoldPolicy, resource: R) {
         let status = ResourceStatus::Ready(Ready { 
             rsc: resource, 
-            hold_time, 
+            hold_policy, 
             accessed: Cell::new(Instant::now())
         });
 
@@ -343,15 +354,17 @@ where
         self.resource_map.retain(|key, status| {
             match status {
                 ResourceStatus::Ready(ready_rsc) => {
-                    if let Some(hold_time) = ready_rsc.hold_time {
-                        let hold_duration = Duration::from_secs(hold_time);
-                        let accessed = ready_rsc.accessed.get();
+                    match ready_rsc.hold_policy {
+                        HoldPolicy::WithDuration(duration) => {
+                            let accessed = ready_rsc.accessed.get();
 
-                        if now.saturating_duration_since(accessed) > hold_duration {
-                            println!("[ResourceHandler] Removed resource with key {:?} from handler due to hold timeout.", key);
-                            
-                            return false; // resource is considered 'dead', remove it from the handler
-                        }
+                            if now.saturating_duration_since(accessed) > duration {
+                                println!("[ResourceHandler] Removed resource with key {:?} from handler due to hold timeout.", key);
+                                
+                                return false; // resource is considered 'dead', remove it from the handler
+                            }
+                        },
+                        HoldPolicy::Indefinite => {}
                     }
                 },
                 ResourceStatus::Pending(pending) => {
@@ -393,6 +406,13 @@ where
         self.resource_map.get(key).is_some_and(|rsc| rsc.is_failed())
     }
 
+    /// Returns true if a resource is either `Pending` or `Ready`, false otherwise.
+    pub fn is_requested(&self, key: &K) -> bool {
+        self.resource_map.get(key).is_some_and(|rsc| {
+            return rsc.is_pending() || rsc.is_ready()
+        })
+    }
+
     /// Get the error message of a failed resource, if applicable.
     pub fn get_err(&self, key: &K) -> Option<&str> {
         return self.resource_map.get(key)?.error_msg();
@@ -427,9 +447,9 @@ where
         }
     }
 
-    /// Mark a resource as accessed. 
+    /// Mark a `Ready` resource as accessed.
     /// 
-    /// This is useful in cases where a resource may have dependencies, but you don't need to access the dependencies directly.
+    /// This is useful in the case the resource is a dependency to some other resource, but you don't need a reference to it.
     pub fn mark_accessed(&self, key: &K) {
         match self.resource_map.get(key) {
             Some(ResourceStatus::Ready(ready)) => {

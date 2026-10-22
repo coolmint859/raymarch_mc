@@ -1,5 +1,5 @@
 use std::{cell::RefCell, collections::{HashMap, HashSet}};
-use crate::{graphics::*, utils::{ResourceHandler, Task}};
+use crate::{graphics::*, utils::{HoldPolicy, ResourceHandler, Task}};
 
 /// The resolved dependencies of a bind group
 pub(crate) struct PipelineDependencies {
@@ -27,24 +27,24 @@ impl PipelineRegistry {
     }
 
     /// Request a new pipeline
-    pub fn request<'a>(&mut self, blueprint: PipelineType, bgs: &'a BindGroupRegistry) -> PipelineId {
+    pub fn request(&mut self, blueprint: PipelineType, bgs: &BindGroupRegistry, global_hp: HoldPolicy) -> PipelineId {
         let id = blueprint.create_id();
 
         // pipeline ids are content-addressable, so its possible the same blueprint was used
         if self.handles.contains(&id) { return id };
 
-        self.try_request(&id, blueprint, bgs);
+        self.try_request(&id, blueprint, bgs, global_hp);
 
         id
     }
 
     /// Sync the registry and process deferred groups
-    pub fn sync<'a>(&mut self, bgs: &'a BindGroupRegistry) {
+    pub fn sync(&mut self, bgs: &BindGroupRegistry, global_hp: HoldPolicy) {
         self.handles.sync();
 
         let pending_bgs = std::mem::take(&mut self.deferred);
         for (id, pip_def) in &pending_bgs {
-            self.try_request(id, pip_def.clone(), bgs);
+            self.try_request(id, pip_def.clone(), bgs, global_hp);
         }
     }
 
@@ -62,13 +62,13 @@ impl PipelineRegistry {
     }
 
     /// Validates and returns a pipeline handle corresponding to the id if it passes
-    pub fn validate<'a>(&self, pip_id: &PipelineId, bgs: &'a BindGroupRegistry) -> Option<&PipelineHandle> {
+    pub fn validate(&self, pip_id: &PipelineId, bgs: &BindGroupRegistry) -> Option<&PipelineHandle> {
         if self.valid_pips.borrow().contains(pip_id) {
             return self.handles.get(pip_id);
         }
 
-        let pip_def = self.pip_bps.get(pip_id)?;
-        self.resolve_dependencies(pip_def, bgs)?;
+        let blueprint = self.pip_bps.get(pip_id)?;
+        self.resolve_dependencies(blueprint, bgs)?;
 
         self.valid_pips.borrow_mut().insert(*pip_id);
         self.handles.get(pip_id)
@@ -79,12 +79,23 @@ impl PipelineRegistry {
         self.valid_pips.borrow_mut().remove(pip_id);
     }
 
+    /// Mark the bind group and dependencies as accessed.
+    pub fn mark_accessed(&self, pip_id: &PipelineId) {
+        self.handles.mark_accessed(pip_id);
+    }
+
+    /// Returns `true` if a bind group mapped to the provided id exists or is pending completion, `false` otherwise
+    pub fn is_requested(&self, pip_id: &PipelineId) -> bool {
+        self.handles.is_requested(pip_id)
+    }
+
     /// Try requesting a new pipeline tied to the provided id.
-    fn try_request<'a>(
+    fn try_request(
         &mut self,
         pip_id: &PipelineId,
         blueprint: PipelineType, 
-        bgs: &'a BindGroupRegistry
+        bgs: &BindGroupRegistry,
+        global_hp: HoldPolicy
     ) {
         if let Some(deps) = self.resolve_dependencies(&blueprint, bgs) {
             self.deferred.remove(pip_id);
@@ -99,17 +110,21 @@ impl PipelineRegistry {
 
             let gpu = self.gpu.clone();
             match blueprint {
-                PipelineType::Render(pip_def) => {
+                PipelineType::Render(pip_bp) => {
+                    let policy = pip_bp.hold_policy.unwrap_or(global_hp);
+
                     let r_pip_task = Task::io_bound(async move {
-                        gpu.create_render_pipeline(pip_def, deps.bg_layouts)
-                    });
+                        gpu.create_render_pipeline(pip_bp, deps.bg_layouts)
+                    }).with_hold_policy(policy);
 
                     self.handles.request_new(pip_id, r_pip_task);
                 },
-                PipelineType::Compute(pip_def) => {
+                PipelineType::Compute(pip_bp) => {
+                    let policy = pip_bp.hold_policy.unwrap_or(global_hp);
+
                     let c_pip_task = Task::io_bound(async move {
-                        gpu.create_compute_pipeline(pip_def, deps.bg_layouts)
-                    });
+                        gpu.create_compute_pipeline(pip_bp, deps.bg_layouts)
+                    }).with_hold_policy(policy);
 
                     self.handles.request_new(pip_id, c_pip_task);
                 }
@@ -120,11 +135,7 @@ impl PipelineRegistry {
     }
 
     /// Resolves the dependencies of a pipeline given it's `blueprint` and a `BindGroupRegistry`
-    fn resolve_dependencies<'a>(
-        &self,
-        blueprint: &PipelineType, 
-        bgs: &'a BindGroupRegistry
-    ) -> Option<PipelineDependencies> {
+    fn resolve_dependencies(&self, blueprint: &PipelineType, bgs: &BindGroupRegistry) -> Option<PipelineDependencies> {
         let mut bg_layouts = Vec::new();
         for bgl_id in blueprint.bg_layouts().iter() {
             if let Some(layout) =  bgs.layout_handles.get(bgl_id).cloned() {

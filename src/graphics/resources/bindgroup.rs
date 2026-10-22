@@ -2,7 +2,7 @@ use std::{hash::{DefaultHasher, Hash, Hasher}, num::NonZero};
 
 use uuid::Uuid;
 
-use crate::graphics::{BindGroupId, BufferId, LayoutId, ResourceId, SamplerId, TextureId};
+use crate::{graphics::{BindGroupId, BufferId, LayoutId, ResourceId, SamplerId, TextureId}, utils::HoldPolicy};
 
 /// The target ID for a bind group entry
 #[derive(Clone, Debug)]
@@ -34,6 +34,7 @@ pub struct BindGroup {
     pub(crate) label: String,
     pub(crate) layout: BindGroupLayout,
     pub(crate) bindings: Vec<GroupEntry>,
+    pub(crate) hold_policy: Option<HoldPolicy>
 }
 
 impl BindGroup {
@@ -42,12 +43,19 @@ impl BindGroup {
             label: "bind_group".to_string(),
             layout: BindGroupLayout::new(),
             bindings: Vec::new(),
+            hold_policy: None,
         }
     }
 
     /// Set the label for gpu profiling of the resultant bind group
     pub fn with_label(mut self, label: &str) -> Self {
         self.label = label.to_string();
+        self
+    }
+
+    /// Set the hold policy for this bind group. This overrides the global policy.
+    pub fn with_hold_policy(mut self, policy: HoldPolicy) -> Self {
+        self.hold_policy = Some(policy);
         self
     }
 

@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use uuid::Uuid;
 
-use crate::graphics::{BufferId, ResourceId};
+use crate::{graphics::{BufferId, ResourceId}, utils::HoldPolicy};
 
 /// Represents types that can be serialized into slices of bytes.
 /// 
@@ -139,7 +139,8 @@ pub struct BufferPayload {
 pub struct Buffer {
     pub label: String,
     pub usage: wgpu::BufferUsages,
-    pub alignment: Option<u64>
+    pub alignment: Option<u64>,
+    pub hold_policy: Option<HoldPolicy>
 }
 
 impl Buffer {
@@ -150,7 +151,8 @@ impl Buffer {
         Self {
             label: "uniform_buffer".to_string(),
             usage: wgpu::BufferUsages::UNIFORM,
-            alignment: Some(16)
+            alignment: Some(16),
+            hold_policy: None,
         }
     }
 
@@ -159,7 +161,8 @@ impl Buffer {
         Self {
             label: "storage_buffer".to_string(),
             usage: wgpu::BufferUsages::STORAGE,
-            alignment: None
+            alignment: None,
+            hold_policy: None,
         }
     }
 
@@ -168,7 +171,8 @@ impl Buffer {
         Self {
             label: "vertex_buffer".to_string(),
             usage: wgpu::BufferUsages::VERTEX,
-            alignment: None
+            alignment: None,
+            hold_policy: None,
         }
     }
 
@@ -177,13 +181,20 @@ impl Buffer {
         Self {
             label: "index_buffer".to_string(),
             usage: wgpu::BufferUsages::INDEX,
-            alignment: None
+            alignment: None,
+            hold_policy: None,
         }
     }
 
     /// Set the label for gpu profiling of the resultant buffer
     pub fn with_label(mut self, label: &str) -> Self {
         self.label = label.to_string();
+        self
+    }
+
+    /// Set the hold policy for this buffer. This overrides the global policy.
+    pub fn with_hold_policy(mut self, policy: HoldPolicy) -> Self {
+        self.hold_policy = Some(policy);
         self
     }
 

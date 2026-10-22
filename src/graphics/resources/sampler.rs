@@ -2,7 +2,7 @@ use std::{hash::Hash, marker::PhantomData, num::NonZero};
 
 use uuid::Uuid;
 
-use crate::graphics::{ResourceId, SamplerId};
+use crate::{graphics::{ResourceId, SamplerId}, utils::HoldPolicy};
 
 pub struct SamplerPayload {
     pub desc: wgpu::SamplerDescriptor<'static>,
@@ -12,12 +12,16 @@ pub struct SamplerPayload {
 pub trait SamplerType: Send + 'static {
     /// Convert the sampler into its full payload information, if possible.
     fn into_payload(self) -> Result<SamplerPayload, String>;
+
+    /// Returns the hold policy associated with the sampler, if exists.
+    fn hold_policy(&self) -> Option<HoldPolicy>;
 }
 
 /// A blueprint for constructing samplers
 #[derive(Debug, Clone)]
 pub struct Sampler<T> {
-    desc: wgpu::SamplerDescriptor<'static>,
+    pub(crate) desc: wgpu::SamplerDescriptor<'static>,
+    pub(crate) hold_policy: Option<HoldPolicy>,
     ty: PhantomData<T>
 }
 
@@ -42,6 +46,12 @@ impl<T> Sampler<T> {
         self.desc.lod_max_clamp = max;
         self
     }
+
+    /// Set the hold policy for this sampler. This overrides the global policy.
+    pub fn with_hold_policy(mut self, policy: HoldPolicy) -> Self {
+        self.hold_policy = Some(policy);
+        self
+    }
 }
 
 impl<T> ResourceId for Sampler<T> {
@@ -61,6 +71,7 @@ impl Sampler<Linear> {
     pub fn linear() -> Self {
         Self {
             ty: std::marker::PhantomData,
+            hold_policy: None,
             desc: wgpu::SamplerDescriptor {
                 label: Some("linear_sampler"),
                 address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -89,6 +100,10 @@ impl SamplerType for Sampler<Linear> {
     fn into_payload(self) -> Result<SamplerPayload, String> {
         Ok(SamplerPayload { desc: self.desc })
     }
+
+    fn hold_policy(&self) -> Option<HoldPolicy> {
+        self.hold_policy
+    }
 }
 
 /// Sampler type for nearest filtering
@@ -100,6 +115,7 @@ impl Sampler<Nearest> {
     pub fn nearest() -> Self {
         Self {
             ty: std::marker::PhantomData,
+            hold_policy: None,
             desc: wgpu::SamplerDescriptor {
                 label: Some("nearest_sampler"),
                 address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -128,6 +144,10 @@ impl SamplerType for Sampler<Nearest> {
     fn into_payload(self) -> Result<SamplerPayload, String> {
         Ok(SamplerPayload { desc: self.desc })
     }
+
+    fn hold_policy(&self) -> Option<HoldPolicy> {
+        self.hold_policy
+    }
 }
 
 /// Sampler type for anisotropic filtering
@@ -139,6 +159,7 @@ impl Sampler<Anisotropic> {
     pub fn anisotropic(level: NonZero<u16>) -> Self {
         Self {
             ty: std::marker::PhantomData,
+            hold_policy: None,
             desc: wgpu::SamplerDescriptor {
                 label: Some("anisotropic_sampler"),
                 address_mode_u: wgpu::AddressMode::Repeat,
@@ -165,6 +186,10 @@ impl SamplerType for Sampler<Anisotropic> {
             Ok(SamplerPayload { desc: self.desc })
         }
     }
+
+    fn hold_policy(&self) -> Option<HoldPolicy> {
+        self.hold_policy
+    }
 }
 
 /// Sampler type for borders around sampled texture
@@ -176,6 +201,7 @@ impl Sampler<Bordered> {
     pub fn bordered() -> Self {
         Self {
             ty: std::marker::PhantomData,
+            hold_policy: None,
             desc: wgpu::SamplerDescriptor {
                 label: Some("bordered_sampler"),
                 address_mode_u: wgpu::AddressMode::ClampToBorder,
@@ -201,6 +227,10 @@ impl SamplerType for Sampler<Bordered> {
             _ => Err(format!("Cannot create sampler with label '{:?}'. Bordered sampler must have address mode ClampToBorder", self.desc.label))
         }
     }
+
+    fn hold_policy(&self) -> Option<HoldPolicy> {
+        self.hold_policy
+    }
 }
 
 /// Sampler type for comparison between values in sampled texture
@@ -212,6 +242,7 @@ impl Sampler<Comparison> {
     pub fn comparison(func: wgpu::CompareFunction) -> Self {
         Self {
             ty: std::marker::PhantomData,
+            hold_policy: None,
             desc: wgpu::SamplerDescriptor {
                 label: Some("comparison_sampler"),
                 address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -233,5 +264,9 @@ impl Sampler<Comparison> {
 impl SamplerType for Sampler<Comparison> {
     fn into_payload(self) -> Result<SamplerPayload, String> {
         Ok(SamplerPayload { desc: self.desc })
+    }
+
+    fn hold_policy(&self) -> Option<HoldPolicy> {
+        self.hold_policy
     }
 }
