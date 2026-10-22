@@ -4,7 +4,7 @@ use glam::{Quat, Vec3, vec3};
 use winit::keyboard::KeyCode;
 
 use crate::{
-    Graphics, game::{ScreenTransition, VoxelRenderer, VoxelWorld}, graphics::*, utils::{Camera, CharacterRange, Controllable, EntityController, FontManager, FontReader, InputHandler, NoAction, RelativePerspective, TextOptions, Transform, font::font::FontId},
+    Graphics, game::{ScreenTransition, VoxelRenderer, VoxelWorld}, graphics::*, utils::{Camera, CameraSpace, CharacterRange, Controllable, EntityController, FontManager, FontReader, InputHandler, NoAction, RelativePerspective, TextOptions, Transform, font::font::FontId},
 };
 
 #[derive(Clone, Copy)]
@@ -70,7 +70,7 @@ impl Game {
 
     pub fn init(&mut self, graphics: &mut Graphics, input: &mut InputHandler<PlayerKeyAction, NoAction>) {
         self.camera.init(graphics);
-        self.renderer.init(graphics, &self.world, *self.camera.buf_id());
+        self.renderer.init(graphics, &self.world, &self.camera);
 
         self.arial = self.fonts.request_font(
             "./assets/arial.ttf", 
@@ -128,7 +128,10 @@ impl Game {
         self.world.update(dt, false);
         self.camera.update(graphics, dt);
 
-        let screen_height = graphics.canvas.dimensions().1 as f32;
+        let cam_vp = self.camera.get_space().view_proj_mat(graphics);
+        self.renderer.update_cam_motion(graphics, cam_vp);
+
+        let screen_height = graphics.canvas.height() as f32;
 
         if self.show_fps {
             self.fonts.stage_text(

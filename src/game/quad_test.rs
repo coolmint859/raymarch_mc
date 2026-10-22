@@ -170,7 +170,7 @@ impl QuadTest {
 
     pub fn update(&mut self, graphics: &mut Graphics, dt: f32) {
         self.camera.update(graphics, 0.0);
-        let screen_height = graphics.canvas.dimensions().1 as f32;
+        let screen_height = graphics.canvas.height() as f32;
 
         self.text_renderer.stage_text(
             &self.mono, 

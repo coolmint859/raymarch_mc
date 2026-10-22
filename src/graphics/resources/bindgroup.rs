@@ -31,9 +31,9 @@ pub struct GroupEntry {
 /// A blueprint for constructing wgpu bind groups
 #[derive(Clone, Debug)]
 pub struct BindGroup {
-    pub label: String,
-    pub layout: BindGroupLayout,
-    pub bindings: Vec<GroupEntry>,
+    pub(crate) label: String,
+    pub(crate) layout: BindGroupLayout,
+    pub(crate) bindings: Vec<GroupEntry>,
 }
 
 impl BindGroup {
@@ -80,7 +80,7 @@ impl ResourceId for BindGroup {
 /// A blueprint for constucting bind group layouts. Ids are generated for one based on it's contents.
 #[derive(Clone, Debug, Hash)]
 pub struct BindGroupLayout {
-    pub entries: Vec<wgpu::BindGroupLayoutEntry>
+    pub(crate) entries: Vec<wgpu::BindGroupLayoutEntry>
 }
 
 impl BindGroupLayout {
@@ -118,10 +118,45 @@ impl ResourceId for BindGroupLayout {
 }
 
 /// Options for configurating a storage texture binding
+/// 
+/// Default is `access=WriteOnly` and `fmt=Rgba16Float`
 #[derive(Debug, Clone, Copy)]
 pub struct TextureTypeStorage {
-    pub access: wgpu::StorageTextureAccess, 
-    pub fmt: wgpu::TextureFormat
+    access: wgpu::StorageTextureAccess, 
+    fmt: wgpu::TextureFormat
+}
+
+impl TextureTypeStorage {
+    pub fn new(fmt: wgpu::TextureFormat) -> Self {
+        Self {
+            access: wgpu::StorageTextureAccess::WriteOnly,
+            fmt
+        }
+    }
+
+    /// Set the shader access for the texture to read only. 
+    /// 
+    /// Texture must be annotated with `read` (wgsl) or `read_only` (glsl) in the shader
+    pub fn read_only(mut self) -> Self {
+        self.access = wgpu::StorageTextureAccess::ReadOnly;
+        self
+    }
+
+    /// Set the shader access for the texture to read and write. 
+    /// 
+    /// Texture must be annotated with `read_write` in the shader.
+    pub fn read_write(mut self) -> Self {
+        self.access = wgpu::StorageTextureAccess::ReadWrite;
+        self
+    }
+
+    /// Set the shader access for the texture to atomic read write. 
+    /// 
+    /// Texture must be annotated with `read_write` in the shader.
+    pub fn atomic_rw(mut self) -> Self {
+        self.access = wgpu::StorageTextureAccess::Atomic;
+        self
+    }
 }
 
 impl Default for TextureTypeStorage {
@@ -133,7 +168,9 @@ impl Default for TextureTypeStorage {
     }
 }
 
-/// options for configuring a sampled texture binding
+/// Options for configuring a sampled texture binding
+/// 
+/// Default is `filterable=false` and `multisampled=false`
 #[derive(Debug, Clone, Copy)]
 pub struct TextureTypeSampled {
     pub filterable: bool, 
@@ -141,11 +178,6 @@ pub struct TextureTypeSampled {
 }
 
 impl TextureTypeSampled {
-    /// Disallows textures to be filtered when sampled
-    pub fn unfilterable() -> Self {
-        Self { filterable: false, multisampled: false }
-    }
-
     /// Allows textures to be filtered when sampled
     pub fn filterable() -> Self {
         Self { filterable: true, multisampled: false }
@@ -160,7 +192,7 @@ impl TextureTypeSampled {
 
 impl Default for TextureTypeSampled {
     fn default() -> Self {
-        Self::unfilterable()
+        Self { filterable: false, multisampled: false }
     }
 }
 

@@ -1,7 +1,7 @@
 use std::{cell::{Cell, RefCell}, collections::{HashMap, HashSet}, ops::Deref};
 use crate::{graphics::*, utils::{ResourceHandler, Task}};
 
-/// A lightweight handle to a bind group and associated layout
+/// A handle to a bind group and associated layout
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BindGroupHandle {
     pub bind_group: wgpu::BindGroup,
@@ -16,7 +16,7 @@ impl Deref for BindGroupHandle {
     }
 }
 
-/// A lightweight handle to a bind group layout
+/// A handle to a bind group layout
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BindGroupLayoutHandle {
     pub ref_count: Cell<usize>,

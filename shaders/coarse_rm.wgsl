@@ -282,7 +282,7 @@ fn cs_main(@builtin(global_invocation_id) id: vec3<u32>) {
     
     let d: f32 = clamp(hit_info.t / max_dist, 0.0, 1.0);
     let p: vec4f = select(vec4f(0.0), vec4f(hit_info.hit_pos, 0.0), hit_info.did_hit); 
-    let n: vec4f = select(vec4f(0u), map_normal(hit_info.normal), hit_info.did_hit);
+    let n: vec4f = select(vec4f(0.0), map_normal(hit_info.normal), hit_info.did_hit);
     let m: f32 = select(0.0, f32(hit_info.mat_id), hit_info.did_hit);
 
     textureStore(depth, id.xy, vec4f(d, 0.0, 0.0, 0.0));

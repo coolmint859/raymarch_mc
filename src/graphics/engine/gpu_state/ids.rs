@@ -1,68 +1,56 @@
 use uuid::Uuid;
 
-/// unique identifier to a buffer
+/// Unique identifier for a buffer
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] 
 pub struct BufferId(pub Uuid);
 
 impl BufferId {
-    /// A uninitialized `BufferId` (points to nothing). 
+    /// A uninitialized `BufferId` (refers to nothing). 
     pub const UNINIT: Self = BufferId(Uuid::nil());
-
-    /// Returns a copy of the inner `Uuid`
-    pub fn get(&self) -> Uuid { self.0 }
 }
 
-/// unique identifier for a texture
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+/// Unique identifier for a texture
 #[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct TextureId(pub Uuid);
 
 impl TextureId {
-    /// A uninitialized `TextureId` (points to nothing). 
+    /// A uninitialized `TextureId` (refers to nothing). 
     pub const UNINIT: Self = TextureId(Uuid::nil());
-
-    /// Returns a copy of the inner `Uuid`
-    pub fn get(&self) -> Uuid { self.0 }
 }
 
-/// unique identifier for a sampler
+/// Content-Addressable identifier for a sampler
+#[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] 
 pub struct SamplerId(pub Uuid);
 
 impl SamplerId {
-    /// A uninitialized `SamplerId` (points to nothing). 
+    /// A uninitialized `SamplerId` (refers to nothing). 
     pub const UNINIT: Self = SamplerId(Uuid::nil());
-
-    /// Returns a copy of the inner `Uuid`
-    pub fn get(&self) -> Uuid { self.0 }
 }
 
-/// unique identifier for a bind group
+/// Unique identifier for a bind group
+#[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] 
 pub struct BindGroupId(pub Uuid);
 
 impl BindGroupId {
-    /// A uninitialized `BindGroupId` (points to nothing). 
+    /// A uninitialized `BindGroupId` (refers to nothing). 
     pub const UNINIT: Self = BindGroupId(Uuid::nil());
-
-    /// Returns a copy of the inner `Uuid`
-    pub fn get(&self) -> Uuid { self.0 }
 }
 
-/// unique identifier for a bind group layout
+/// Content-Addressable identifier for a bind group layout
+#[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] 
 pub struct LayoutId(pub Uuid);
 
 impl LayoutId {
-    /// A uninitialized `LayoutId` (points to nothing). 
+    /// A uninitialized `LayoutId` (refers to nothing). 
     pub const UNINIT: Self = LayoutId(Uuid::nil());
-    
-    /// Returns a copy of the inner `Uuid`
-    pub fn get(&self) -> Uuid { self.0 }
 }
 
-/// unique identifiers for a bind group and it's layout
+/// Unique identifiers for a bind group and associated layout
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] 
 pub struct BindGroupIdPair {
     pub id: BindGroupId,
@@ -70,21 +58,19 @@ pub struct BindGroupIdPair {
 }
 
 impl BindGroupIdPair {
-    /// A uninitialized `BindGroupIdPair` (ids point to nothing). 
+    /// A uninitialized `BindGroupIdPair` (ids refer to nothing). 
     pub const UNINIT: Self = BindGroupIdPair {
         id: BindGroupId::UNINIT,
         layout_id: LayoutId::UNINIT
     };
 }
 
-/// unique identifier for a pipeline
+/// Content-Addressable identifier for a pipeline
+#[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)] 
 pub struct PipelineId(pub Uuid);
 
 impl PipelineId {
-    /// A uninitialized `PipelineId` (points to nothing). 
+    /// A uninitialized `PipelineId` (refers to nothing). 
     pub const UNINIT: Self = PipelineId(Uuid::nil());
-    
-    /// Returns a copy of the inner `Uuid`
-    pub fn get(&self) -> Uuid { self.0 }
 }

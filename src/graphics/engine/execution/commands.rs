@@ -14,7 +14,7 @@ pub struct RenderingState {
     pub clear_color: Option<wgpu::Color>,
 }
 
-/// Renders Drawable entites to an output view via a wgpu render pass
+/// Renders `Drawable` entites to an output view via a wgpu render pass
 pub struct DrawCommand {
     /// The set of drawables to issue draw calls for
     draws: Vec<Box<dyn Drawable>>,

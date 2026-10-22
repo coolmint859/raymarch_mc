@@ -51,7 +51,7 @@ impl TextTest {
 
     pub fn update(&mut self, graphics: &mut Graphics, dt: f32) {
         self.camera.update(graphics, 0.0);
-        let screen_height = graphics.canvas.dimensions().1 as f32;
+        let screen_height = graphics.canvas.height() as f32;
 
         // self.fonts.stage_text(
         //     &self.arial_sdf, 
@@ -91,6 +91,8 @@ impl TextTest {
 
         self.fonts.update(graphics);
     }
+
+    pub fn on_resize(&mut self, _graphics: &mut Graphics) {}
 
     pub fn render(&mut self, graphics: &mut Graphics) -> Result<(), wgpu::SurfaceError> {
         let frame = graphics.canvas.next_frame()?;

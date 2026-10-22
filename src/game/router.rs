@@ -1,35 +1,11 @@
-use crate::{Graphics, InputEvent, WindowState, game::{Game, PlayerKeyAction, QuadTest}, utils::{InputHandler, NoAction}};
-
-/// Represents types that control the state of the window
-pub trait WindowDriver {
-    /// Initialize the driver state
-    fn init(&mut self, graphics: &mut Graphics);
-
-    /// Process an input event as detected by the OS
-    fn process_event(&mut self, event: InputEvent);
-
-    /// Perform resize operations as per the window
-    fn on_resize(&mut self, _graphics: &mut Graphics) {}
-
-    /// Process user input. 
-    /// 
-    /// Returns a `WindowState`:
-    /// * `WindowState::Continue` means the app should continue processing window events.
-    /// * `WindowState::Exit` means the app should close the window
-    fn process_input(&mut self, _graphics: &mut Graphics, _dt: f32) -> WindowState;
-
-    /// Update the driver state
-    fn update(&mut self, graphics: &mut Graphics, dt: f32);
-
-    /// Render the driver state to the window
-    fn render(&mut self, graphics: &mut Graphics) -> Result<(), wgpu::SurfaceError>;
-}
+use crate::{Graphics, InputEvent, WindowDriver, WindowState, game::{Game, PlayerKeyAction, QuadTest, TextTest}, utils::{InputHandler, NoAction}};
 
 /// Represents transitions between screens
 pub enum ScreenTransition {
     None,
     Game,
     QuadTest,
+    TextTest,
     Exit,
 }
 
@@ -43,6 +19,10 @@ pub enum ActiveScreen {
     },
     QuadTest {
         screen: QuadTest,
+        input: InputHandler<NoAction, NoAction>
+    },
+    TextTest {
+        screen: TextTest,
         input: InputHandler<NoAction, NoAction>
     }
 }
@@ -66,6 +46,9 @@ impl WindowDriver for ScreenRouter {
             },
             ActiveScreen::QuadTest { screen, input  } => {
                 screen.init(graphics, input);
+            },
+            ActiveScreen::TextTest { screen, input } => {
+                screen.init(graphics, input);
             }
         }
     }
@@ -76,6 +59,9 @@ impl WindowDriver for ScreenRouter {
                 input.process_event(event);
             },
             ActiveScreen::QuadTest { screen: _, input } => {
+                input.process_event(event);
+            },
+            ActiveScreen::TextTest { screen: _, input } => {
                 input.process_event(event);
             }
         }
@@ -90,6 +76,12 @@ impl WindowDriver for ScreenRouter {
                 t
             },
             ActiveScreen::QuadTest { screen, input } => {
+                let t = screen.process_input(graphics, input, dt);
+                input.clear_events();
+
+                t
+            },
+            ActiveScreen::TextTest { screen, input } => {
                 let t = screen.process_input(graphics, input, dt);
                 input.clear_events();
 
@@ -120,6 +112,17 @@ impl WindowDriver for ScreenRouter {
                     input
                 };
                 WindowState::Continue
+            },
+            ScreenTransition::TextTest => {
+                let mut text_test = TextTest::new();
+                let mut input = InputHandler::new();
+
+                text_test.init(graphics,&mut input);
+                self.active_screen = ActiveScreen::TextTest { 
+                    screen: text_test, 
+                    input
+                };
+                WindowState::Continue
             }
             ScreenTransition::Exit => WindowState::Exit
         }
@@ -132,6 +135,9 @@ impl WindowDriver for ScreenRouter {
             },
             ActiveScreen::QuadTest { screen, input: _ } => {
                 screen.on_resize(graphics)
+            },
+            ActiveScreen::TextTest { screen, input: _ } => {
+                screen.on_resize(graphics);
             }
         }
     }
@@ -143,6 +149,9 @@ impl WindowDriver for ScreenRouter {
             },
             ActiveScreen::QuadTest { screen, input: _ } => {
                 screen.update(graphics, dt);
+            },
+            ActiveScreen::TextTest { screen, input: _ } => {
+                screen.update(graphics, dt);
             }
         }
     }
@@ -153,6 +162,9 @@ impl WindowDriver for ScreenRouter {
                 screen.render(graphics)
             },
             ActiveScreen::QuadTest { screen, input: _ } => {
+                screen.render(graphics)
+            },
+            ActiveScreen::TextTest { screen, input: _ } => {
                 screen.render(graphics)
             }
         }

@@ -26,7 +26,7 @@ impl PipelineRegistry {
         }
     }
 
-    /// request a new pipeline
+    /// Request a new pipeline
     pub fn request<'a>(&mut self, blueprint: PipelineType, bgs: &'a BindGroupRegistry) -> PipelineId {
         let id = blueprint.create_id();
 
@@ -38,7 +38,7 @@ impl PipelineRegistry {
         id
     }
 
-    /// sync the registry and process deferred groups
+    /// Sync the registry and process deferred groups
     pub fn sync<'a>(&mut self, bgs: &'a BindGroupRegistry) {
         self.handles.sync();
 
@@ -48,7 +48,7 @@ impl PipelineRegistry {
         }
     }
 
-    /// remove a bind group from the registry
+    /// Remove a bind group from the registry
     pub fn remove(&mut self, pip_id: &PipelineId, bgs: &mut BindGroupRegistry) {
         if let Some(blueprint) = self.pip_bps.remove(pip_id) {
             for layout_id in blueprint.bg_layouts().iter() {

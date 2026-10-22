@@ -9,6 +9,7 @@ pub struct PassIds {
 }
 
 impl PassIds {
+    /// Initialize the bind group and pipeline ids for the different rendering passes
     pub fn init(graphics: &mut Graphics, rsc_ids: &ResourceIds, cam_id: BufferId) -> Self {
         Self {
             rm_ids: RayMarchIds::init(graphics, rsc_ids, cam_id),
@@ -17,12 +18,14 @@ impl PassIds {
         }
     }
 
+    /// Reset the bind groups with screen-dependent resources
     pub fn on_resize(&mut self, graphics: &mut Graphics, rsc_ids: &ResourceIds) {
         self.rm_ids.on_resize(graphics, rsc_ids);
         self.taa_ids.on_resize(graphics, rsc_ids);
         self.blit_ids.on_resize(graphics, rsc_ids);
     }
 
+    /// Get the next bind groups in the texture swap chain
     pub fn next_bgs(&self) -> (BindGroupId, BindGroupId) {
         let taa_bg = self.taa_ids.next_bg();
         let blit_bg = self.blit_ids.next_bg();
@@ -73,10 +76,10 @@ impl RayMarchIds {
         let coarse_gbuffer_bg = graphics.context.request_bind_group(
             BindGroup::new()
                 .with_label("GBuffer Textures (Coarse)")
-                .with_entry(TextureBinding::as_storage(rsc_ids.g_buffer.pos, TextureTypeStorage { access: wgpu::StorageTextureAccess::WriteOnly, fmt: wgpu::TextureFormat::Rgba16Float }).with_visibility(wgpu::ShaderStages::COMPUTE))
-                .with_entry(TextureBinding::as_storage(rsc_ids.g_buffer.norm, TextureTypeStorage { access: wgpu::StorageTextureAccess::WriteOnly, fmt: wgpu::TextureFormat::Rgba8Unorm }).with_visibility(wgpu::ShaderStages::COMPUTE))
-                .with_entry(TextureBinding::as_storage(rsc_ids.g_buffer.depth, TextureTypeStorage { access: wgpu::StorageTextureAccess::WriteOnly, fmt: wgpu::TextureFormat::R32Float }).with_visibility(wgpu::ShaderStages::COMPUTE))
-                .with_entry(TextureBinding::as_storage(rsc_ids.g_buffer.mat, TextureTypeStorage { access: wgpu::StorageTextureAccess::WriteOnly, fmt: wgpu::TextureFormat::R32Float }).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(TextureBinding::as_storage(rsc_ids.g_buffer.pos, TextureTypeStorage::new(wgpu::TextureFormat::Rgba16Float)).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(TextureBinding::as_storage(rsc_ids.g_buffer.norm, TextureTypeStorage::new(wgpu::TextureFormat::Rgba8Unorm)).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(TextureBinding::as_storage(rsc_ids.g_buffer.depth, TextureTypeStorage::new(wgpu::TextureFormat::R32Float)).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(TextureBinding::as_storage(rsc_ids.g_buffer.mat, TextureTypeStorage::new(wgpu::TextureFormat::R32Float)).with_visibility(wgpu::ShaderStages::COMPUTE))
         );
 
         let coarse_pip = graphics.context.request_pipeline(
@@ -136,10 +139,10 @@ impl RayMarchIds {
         self.coarse_gbuffer_bg = graphics.context.request_bind_group(
             BindGroup::new()
                 .with_label("GBuffer Textures (Coarse)")
-                .with_entry(TextureBinding::as_storage(rsc_ids.g_buffer.pos, TextureTypeStorage { access: wgpu::StorageTextureAccess::WriteOnly, fmt: wgpu::TextureFormat::Rgba16Float }).with_visibility(wgpu::ShaderStages::COMPUTE))
-                .with_entry(TextureBinding::as_storage(rsc_ids.g_buffer.norm, TextureTypeStorage { access: wgpu::StorageTextureAccess::WriteOnly, fmt: wgpu::TextureFormat::Rgba8Unorm }).with_visibility(wgpu::ShaderStages::COMPUTE))
-                .with_entry(TextureBinding::as_storage(rsc_ids.g_buffer.depth, TextureTypeStorage { access: wgpu::StorageTextureAccess::WriteOnly, fmt: wgpu::TextureFormat::R32Float }).with_visibility(wgpu::ShaderStages::COMPUTE))
-                .with_entry(TextureBinding::as_storage(rsc_ids.g_buffer.mat, TextureTypeStorage { access: wgpu::StorageTextureAccess::WriteOnly, fmt: wgpu::TextureFormat::R32Float }).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(TextureBinding::as_storage(rsc_ids.g_buffer.pos, TextureTypeStorage::new(wgpu::TextureFormat::Rgba16Float)).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(TextureBinding::as_storage(rsc_ids.g_buffer.norm, TextureTypeStorage::new(wgpu::TextureFormat::Rgba8Unorm)).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(TextureBinding::as_storage(rsc_ids.g_buffer.depth, TextureTypeStorage::new(wgpu::TextureFormat::R32Float)).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(TextureBinding::as_storage(rsc_ids.g_buffer.mat, TextureTypeStorage::new(wgpu::TextureFormat::R32Float)).with_visibility(wgpu::ShaderStages::COMPUTE))
         );
 
         self.fine_gbuffer_bg = graphics.context.request_bind_group(
@@ -168,17 +171,21 @@ impl TaaPassIds {
         let taa_bg1 = graphics.context.request_bind_group(
             BindGroup::new()
                 .with_label("TAA Bind Group A")
-                .with_entry(TextureBinding::as_sampled(rsc_ids.taa.rm_tex, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
-                .with_entry(TextureBinding::as_sampled(rsc_ids.taa.tex1, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(BufferBinding::as_uniform(rsc_ids.taa.cam_vp_mats).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(TextureBinding::as_sampled(rsc_ids.taa.rm_tex, TextureTypeSampled::filterable()).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(TextureBinding::as_sampled(rsc_ids.taa.tex1, TextureTypeSampled::filterable()).with_visibility(wgpu::ShaderStages::COMPUTE))
                 .with_entry(TextureBinding::as_storage(rsc_ids.taa.tex2, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(SamplerBinding::new(rsc_ids.taa.samp).with_binding_type(wgpu::SamplerBindingType::Filtering).with_visibility(wgpu::ShaderStages::COMPUTE))
         );
 
         let taa_bg2 = graphics.context.request_bind_group(
             BindGroup::new()
                 .with_label("TAA Bind Group B")
-                .with_entry(TextureBinding::as_sampled(rsc_ids.taa.rm_tex, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
-                .with_entry(TextureBinding::as_sampled(rsc_ids.taa.tex2, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(BufferBinding::as_uniform(rsc_ids.taa.cam_vp_mats).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(TextureBinding::as_sampled(rsc_ids.taa.rm_tex, TextureTypeSampled::filterable()).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(TextureBinding::as_sampled(rsc_ids.taa.tex2, TextureTypeSampled::filterable()).with_visibility(wgpu::ShaderStages::COMPUTE))
                 .with_entry(TextureBinding::as_storage(rsc_ids.taa.tex1, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(SamplerBinding::new(rsc_ids.taa.samp).with_binding_type(wgpu::SamplerBindingType::Filtering).with_visibility(wgpu::ShaderStages::COMPUTE))
         );
 
         assert!(taa_bg1.layout_id == taa_bg2.layout_id);
@@ -206,17 +213,21 @@ impl TaaPassIds {
         let taa_bg1 = graphics.context.request_bind_group(
             BindGroup::new()
                 .with_label("TAA Bind Group A")
-                .with_entry(TextureBinding::as_sampled(rsc_ids.taa.rm_tex, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
-                .with_entry(TextureBinding::as_sampled(rsc_ids.taa.tex1, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(BufferBinding::as_uniform(rsc_ids.taa.cam_vp_mats).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(TextureBinding::as_sampled(rsc_ids.taa.rm_tex, TextureTypeSampled::filterable()).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(TextureBinding::as_sampled(rsc_ids.taa.tex1, TextureTypeSampled::filterable()).with_visibility(wgpu::ShaderStages::COMPUTE))
                 .with_entry(TextureBinding::as_storage(rsc_ids.taa.tex2, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(SamplerBinding::new(rsc_ids.taa.samp).with_binding_type(wgpu::SamplerBindingType::Filtering).with_visibility(wgpu::ShaderStages::COMPUTE))
         );
 
-        let taa_bg2 =graphics.context.request_bind_group(
+        let taa_bg2 = graphics.context.request_bind_group(
             BindGroup::new()
                 .with_label("TAA Bind Group B")
-                .with_entry(TextureBinding::as_sampled(rsc_ids.taa.rm_tex, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
-                .with_entry(TextureBinding::as_sampled(rsc_ids.taa.tex2, TextureTypeSampled::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(BufferBinding::as_uniform(rsc_ids.taa.cam_vp_mats).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(TextureBinding::as_sampled(rsc_ids.taa.rm_tex, TextureTypeSampled::filterable()).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(TextureBinding::as_sampled(rsc_ids.taa.tex2, TextureTypeSampled::filterable()).with_visibility(wgpu::ShaderStages::COMPUTE))
                 .with_entry(TextureBinding::as_storage(rsc_ids.taa.tex1, TextureTypeStorage::default()).with_visibility(wgpu::ShaderStages::COMPUTE))
+                .with_entry(SamplerBinding::new(rsc_ids.taa.samp).with_binding_type(wgpu::SamplerBindingType::Filtering).with_visibility(wgpu::ShaderStages::COMPUTE))
         );
 
         assert!(taa_bg1.layout_id == taa_bg2.layout_id);

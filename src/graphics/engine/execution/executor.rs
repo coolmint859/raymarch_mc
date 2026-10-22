@@ -2,7 +2,7 @@ use crate::graphics::{GpuCommand, GpuContext};
 
 /// Represents the execution phase of gpu operations.
 pub trait SequentialExecutor {
-    /// Add a command to the executor
+    /// Add a `GpuCommand` to the executor
     fn add_command(&mut self, cmd: impl GpuCommand + 'static);
 
     /// Record/submit all known commands and execute them on the gpu

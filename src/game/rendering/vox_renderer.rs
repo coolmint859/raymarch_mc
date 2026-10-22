@@ -1,6 +1,7 @@
-use crate::{game::{PassIds, VoxelWorld, rscs::ResourceIds}, graphics::{BufferId, BufferUpdate, ComputeCommand, DrawCommand, Graphics, IndexedDraw, MultiBufferExecutor, RenderingState, SequentialExecutor}};
+use crate::{game::{PassIds, VoxelWorld, rscs::ResourceIds}, graphics::{BufferUpdate, CanvasDimensions, ComputeCommand, DrawCommand, Graphics, IndexedDraw, MultiBufferExecutor, RenderingState, SequentialExecutor}, utils::{Camera, CameraSpace, RelativePerspective}};
 
-pub enum RendererState {
+/// Represents the state of the voxel renderer
+pub enum VoxelRendererState {
     Uninit,
     Initialized {
         resources: ResourceIds,
@@ -8,51 +9,69 @@ pub enum RendererState {
     }
 }
 
+/// Holds the gpu resources needed for rendering the voxel world
 pub struct VoxelRenderer {
-    pub state: RendererState,
+    pub state: VoxelRendererState,
 }
 
 impl VoxelRenderer {
     pub fn new() -> Self {
-        Self { state: RendererState::Uninit }
+        Self { state: VoxelRendererState::Uninit }
     }
 
-    pub fn init(&mut self, graphics: &mut Graphics, world: &VoxelWorld, cam_id: BufferId) {
-        let resources = ResourceIds::init(graphics, world);
+    /// initialize the renderer and create all voxel ray march resources
+    pub fn init(&mut self, graphics: &mut Graphics, world: &VoxelWorld, camera: &Camera<RelativePerspective>) {
+        let cam_id = *camera.buf_id();
+        let cam_vp = camera.get_space().view_proj_mat(graphics);
+        
+        let resources = ResourceIds::init(graphics, world, cam_vp);
         let passes = PassIds::init(graphics, &resources, cam_id);
 
-        self.state = RendererState::Initialized { resources, passes };
+        self.state = VoxelRendererState::Initialized { resources, passes };
     }
 
+    /// Resize screen-dependent resources
     pub fn on_resize(&mut self, graphics: &mut Graphics) {
         match &mut self.state {
-            RendererState::Uninit => { return; }
-            RendererState::Initialized { resources, passes } => {
+            VoxelRendererState::Uninit => { return; }
+            VoxelRendererState::Initialized { resources, passes } => {
                 resources.on_resize(graphics);
                 passes.on_resize(graphics, &resources)
             }
         }
     }
 
+    /// update environment uniforms
     pub fn update_environment(&self, graphics: &mut Graphics, update: impl BufferUpdate) {
         match &self.state {
-            RendererState::Uninit => { return; }
-            RendererState::Initialized { resources, passes: _ } => {
+            VoxelRendererState::Uninit => { return; }
+            VoxelRendererState::Initialized { resources, passes: _ } => {
                 let env_buffer_id = resources.world.env.id();
                 let _ = graphics.context.update_buffer(&env_buffer_id, update);
             }
         }
     }
 
+    /// update camera vp matrix uniforms
+    pub fn update_cam_motion(&mut self, graphics: &mut Graphics, cam_vp: glam::Mat4) {
+        match &mut self.state {
+            VoxelRendererState::Uninit => { return; }
+            VoxelRendererState::Initialized { resources, passes: _ } => {
+                resources.update_cam_motion(graphics, cam_vp);
+            }
+        }
+    }
+
+    /// record this frame's draw commands into the provided executor
     pub fn record(
         &self, 
         executor: &mut MultiBufferExecutor, 
         state: RenderingState,
-        canvas_dims: (u32, u32)
+        canvas_dims: CanvasDimensions
     ) {
         match &self.state {
-            RendererState::Uninit => { return; }
-            RendererState::Initialized { resources: _, passes } => {
+            VoxelRendererState::Uninit => { return; }
+            VoxelRendererState::Initialized { resources: _, passes } => {
                 VoxelRenderer::record_passes(executor, state, canvas_dims, passes);
             }
         }
@@ -61,14 +80,14 @@ impl VoxelRenderer {
     fn record_passes(
         executor: &mut MultiBufferExecutor, 
         state: RenderingState,
-        canvas_dims: (u32, u32),
+        canvas_dims: CanvasDimensions,
         passes: &PassIds,
     ) {
-        let (cw, ch) = canvas_dims;
-        let fwx = (cw + 15) / 16;
-        let fwy = (ch + 15) / 16;
-        let hwx = ((cw / 2) + 15) / 16;
-        let hwy = ((ch / 2) + 15) / 16;
+        let dims = canvas_dims;
+        let fwx = (dims.width + 15) / 16;
+        let fwy = (dims.height + 15) / 16;
+        let hwx = ((dims.width / 2) + 15) / 16;
+        let hwy = ((dims.height / 2) + 15) / 16;
 
         let (taa_bg, blit_bg) = passes.next_bgs();
 

@@ -2,13 +2,13 @@ use std::ops::Range;
 
 use crate::graphics::{BindGroupId, BufferId, GpuContext, PipelineId};
 
-/// Represents entities that can used in a DrawCommand
+/// Represents entities that can used in a `DrawCommand`
 pub trait Drawable {
     /// Draw this entity given the provided render pass in the provided context
     fn draw(&mut self, pass: &mut wgpu::RenderPass, context: &GpuContext);
 }
 
-/// Draws an entity. Must be used with a DrawCommand. Supports indexed or non-indexed draw calls
+/// Draws an entity. Must be used with a `DrawCommand`. Supports indexed or non-indexed draw calls
 pub struct IndexedDraw {
     /// the id to the pipeline the draw command will run on
     pip_id: PipelineId,
@@ -39,26 +39,26 @@ impl IndexedDraw {
         }
     }
 
-    /// Add a set of vertex buffers to the draw command
+    /// Add a set of vertex buffers to the draw call.
     pub fn with_vertex_buffers(mut self, buffers: &[BufferId]) -> Self {
         self.vertex_buffers.extend_from_slice(buffers);
         self
     }
 
-    /// Add an index buffer to the draw command.
+    /// Add an index buffer to the draw call.
     pub fn with_index_buffer(mut self, buffer: BufferId, format: wgpu::IndexFormat) -> Self {
         self.index_buffer = Some(buffer);
         self.index_format = Some(format);
         self
     }
 
-    /// Add a set of bind groups to the draw command
+    /// Add a set of bind groups to the draw call
     pub fn with_bind_groups(mut self, groups: &[BindGroupId]) -> Self {
         self.bind_groups.extend_from_slice(groups);
         self
     }
 
-    /// Set the range of instances to draw. Must have a corresponding instance buffer that is at least as large as 'max'.
+    /// Set the range of instances to draw. Must have a corresponding instance buffer that is at least as large as the maximum value in `range`.
     pub fn with_instances(mut self, range: Range<u32>) -> Self {
         self.instance_range = range;
         self

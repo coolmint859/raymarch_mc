@@ -9,16 +9,43 @@ pub mod game;
 pub mod utils;
 
 pub mod graphics;
-use crate::{game::{ActiveScreen, Game, QuadTest, ScreenRouter, TextTest, WindowDriver}, graphics::*, utils::InputHandler};
+use crate::{game::{ActiveScreen, Game, QuadTest, ScreenRouter, TextTest}, graphics::*, utils::InputHandler};
 
+/// Represents types that control the state of the window
+pub trait WindowDriver {
+    /// Initialize the driver state
+    fn init(&mut self, graphics: &mut Graphics);
+
+    /// Process an input event as detected by the OS
+    fn process_event(&mut self, event: InputEvent);
+
+    /// Perform resize operations as per the window
+    fn on_resize(&mut self, _graphics: &mut Graphics) {}
+
+    /// Process user input. 
+    /// 
+    /// Returns a `WindowState`:
+    /// * `WindowState::Continue` means the app should continue processing window events.
+    /// * `WindowState::Exit` means the app should close the window
+    fn process_input(&mut self, _graphics: &mut Graphics, _dt: f32) -> WindowState;
+
+    /// Update the driver state
+    fn update(&mut self, graphics: &mut Graphics, dt: f32);
+
+    /// Render the driver state to the window
+    fn render(&mut self, graphics: &mut Graphics) -> Result<(), wgpu::SurfaceError>;
+}
+
+/// Mouse actions global to the app
 #[derive(Debug, Clone)]
-enum MouseGlobalAction {
+enum GlobalMouseAction {
     LockMouse,
     UnlockMouse,
 }
 
+/// Keyboard actions global to the app
 #[derive(Debug, Clone)]
-enum KeyboardGlobalAction {
+enum GlobalKeyboardAction {
     Exit
 }
 
@@ -50,7 +77,7 @@ pub enum InputEvent {
 /// Core window driver
 struct App {
     graphics: Option<Graphics>,
-    global_input: InputHandler<KeyboardGlobalAction, MouseGlobalAction>,
+    global_input: InputHandler<GlobalKeyboardAction, GlobalMouseAction>,
     driver: Option<Box<dyn WindowDriver>>,
 
     previous_time: Instant,
@@ -70,10 +97,10 @@ impl App {
     }
 
     pub fn register_bindings(&mut self) {
-        self.global_input.keyboard.register_key(KeyCode::Escape, KeyboardGlobalAction::Exit);
+        self.global_input.keyboard.register_key(KeyCode::Escape, GlobalKeyboardAction::Exit);
 
-        self.global_input.mouse.register_button(MouseButton::Left, MouseGlobalAction::LockMouse);
-        self.global_input.mouse.register_button(MouseButton::Right, MouseGlobalAction::UnlockMouse);
+        self.global_input.mouse.register_button(MouseButton::Left, GlobalMouseAction::LockMouse);
+        self.global_input.mouse.register_button(MouseButton::Right, GlobalMouseAction::UnlockMouse);
     }
     
     pub fn run_frame(&mut self, event_loop: &ActiveEventLoop) {
@@ -89,14 +116,14 @@ impl App {
         if graphics.canvas.is_focused() && let Some(ref mut driver) = self.driver {
             for action in self.global_input.mouse.poll_on_press() {
                 match action {
-                    MouseGlobalAction::LockMouse => graphics.canvas.set_cursor_lock(true),
-                    MouseGlobalAction::UnlockMouse => graphics.canvas.set_cursor_lock(false),
+                    GlobalMouseAction::LockMouse => graphics.canvas.set_cursor_lock(true),
+                    GlobalMouseAction::UnlockMouse => graphics.canvas.set_cursor_lock(false),
                 }
             }
 
             for action in self.global_input.keyboard.poll_on_press() {
                 match action {
-                    KeyboardGlobalAction::Exit => event_loop.exit(),
+                    GlobalKeyboardAction::Exit => event_loop.exit(),
                 }
             }
 

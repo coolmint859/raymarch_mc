@@ -1,18 +1,24 @@
 use std::sync::Arc;
 use winit::window::{CursorGrabMode, Window};
 
-/// A snapshot of the state of the canvas.
+/// The width and height of the `Canvas`
+pub struct CanvasDimensions {
+    pub width: u32,
+    pub height: u32
+}
+
+/// A snapshot (frame) of the `Canvas`.
 pub struct CanvasFrame {
     /// The rendering surface
     surface: wgpu::SurfaceTexture,
-    /// The current wgpu texture view onto the canvas
+    /// The current wgpu texture view onto the `Canvas`
     pub view: wgpu::TextureView,
     /// The current frame number
     pub number: u32,
     /// The canvas aspect ratio
     pub aspect: f32,
-    /// the width/height of the canvas
-    pub dimensions: (u32, u32)
+    /// the width/height of the `Canvas`
+    pub dimensions: CanvasDimensions
 }
 
 impl CanvasFrame {
@@ -101,9 +107,19 @@ impl Canvas {
         })
     }
 
-    /// Get the current dimensions of the canvas in pixels
-    pub fn dimensions(&self) -> (u32, u32) {
-        (self.config.width, self.config.height)
+    /// Returns the current dimensions of the canvas in pixels
+    pub fn dimensions(&self) -> CanvasDimensions {
+        CanvasDimensions { width: self.config.width, height: self.config.height }
+    }
+
+    /// Returns the current width of the canvas in pixels
+    pub fn width(&self) -> u32 {
+        self.config.width
+    }
+
+    /// Returns the current height of the canvas in pixels
+    pub fn height(&self) -> u32 {
+        self.config.height
     }
 
     /// Get the aspect ratio of the canvas
