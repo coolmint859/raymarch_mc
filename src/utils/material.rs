@@ -1,4 +1,4 @@
-use std::{any::Any, fmt::Debug};
+use std::{any::Any, fmt::Debug, hash::Hash};
 
 use indexmap::IndexMap;
 
@@ -394,14 +394,14 @@ impl MaterialComponent for TextureRefComponent {
 
 /// A `MaterialComponent` for samplers
 #[derive(Debug)]
-pub struct SamplerComponent<T> {
+pub struct SamplerComponent<T: Hash> {
     id: SamplerId,
     blueprint: Sampler<T>,
     visibility: wgpu::ShaderStages,
     binding_type: wgpu::SamplerBindingType,
 }
 
-impl<T> SamplerComponent<T> {
+impl<T: Hash> SamplerComponent<T> {
     pub fn new(blueprint: Sampler<T>) -> Self {
         Self {
             id: SamplerId::UNINIT,
@@ -426,7 +426,7 @@ impl<T> SamplerComponent<T> {
 
 impl<T> MaterialComponent for SamplerComponent<T> 
 where
-    T: Debug + Clone + 'static,
+    T: Debug + Clone + Hash + 'static,
     Sampler<T>: SamplerType
 {
     fn as_any(&self) -> &dyn Any { self }

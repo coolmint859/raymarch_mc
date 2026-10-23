@@ -1,8 +1,45 @@
-use std::{hash::Hash, marker::PhantomData, num::NonZero};
+use std::{hash::{DefaultHasher, Hash, Hasher}, marker::PhantomData, num::NonZero};
 
 use uuid::Uuid;
 
 use crate::{graphics::{ResourceId, SamplerId}, utils::HoldPolicy};
+
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct HashableSamplerDescriptor {
+    /// used to convert lod clamps into floats for wgpu
+    pub lod_divisor: u32,
+    pub label: &'static str,
+    pub address_mode: wgpu::AddressMode,
+    pub min_filter: wgpu::FilterMode,
+    pub mag_filter: wgpu::FilterMode,
+    pub mipmap_filter: wgpu::MipmapFilterMode,
+    pub lod_min_clamp: u32,
+    pub lod_max_clamp: u32, 
+    pub anisotropy_clamp: u16,
+    pub compare: Option<wgpu::CompareFunction>,
+    pub border_color: Option<wgpu::SamplerBorderColor>,
+}
+
+impl HashableSamplerDescriptor {
+    /// Converts `self` into a `wgpu::SamplerDescriptor`
+    pub fn into_wgpu_desc(self) -> wgpu::SamplerDescriptor<'static> {
+        wgpu::SamplerDescriptor {
+            label: Some(self.label),
+            address_mode_u: self.address_mode,
+            address_mode_v: self.address_mode,
+            address_mode_w: self.address_mode,
+            min_filter: self.min_filter,
+            mag_filter: self.mag_filter,
+            mipmap_filter: self.mipmap_filter,
+            lod_min_clamp: self.lod_min_clamp as f32 / self.lod_divisor as f32,
+            lod_max_clamp: self.lod_max_clamp as f32 / self.lod_divisor as f32, 
+            anisotropy_clamp: 1,
+            compare: self.compare,
+            border_color: self.border_color
+        }
+    }
+}
 
 pub struct SamplerPayload {
     pub desc: wgpu::SamplerDescriptor<'static>,
@@ -18,47 +55,53 @@ pub trait SamplerType: Send + 'static {
 }
 
 /// A blueprint for constructing samplers
-#[derive(Debug, Clone)]
-pub struct Sampler<T> {
-    pub(crate) desc: wgpu::SamplerDescriptor<'static>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Sampler<T: Hash> {
+    pub(crate) desc: HashableSamplerDescriptor,
     pub(crate) hold_policy: Option<HoldPolicy>,
     ty: PhantomData<T>
 }
 
-impl<T> Sampler<T> {
+impl<T: Hash> Sampler<T> {
     /// Set the label for gpu profiling of the resultant texture
     pub fn with_label(mut self, label: &'static str) -> Self {
-        self.desc.label = Some(label);
+        self.desc.label = label;
         self
     }
 
     /// Set the address mode of the sampler
     pub fn with_address_mode(mut self, mode: wgpu::AddressMode) -> Self {
-        self.desc.address_mode_u = mode;
-        self.desc.address_mode_v = mode;
-        self.desc.address_mode_w = mode;
+        self.desc.address_mode = mode;
         self
     }
 
     /// Set the lod clamp range
-    pub fn with_lod_clamp(mut self, min: f32, max: f32) -> Self {
+    /// 
+    /// The `min` and `max` values are divided by `lod_divisor` to convert them into floats just before the `wgpu::Sampler` is created. 
+    /// This allows the `Sampler` blueprint to be hashable without complex float hashing algorithms or losing precision.
+    /// 
+    /// Ex: min: 250, max: 250, lod_divisor: 1000 -> min: 0.25, max: 0.25
+    pub fn with_lod_clamp(mut self, min: u32, max: u32, lod_divisor: u32) -> Self {
         self.desc.lod_min_clamp = min;
         self.desc.lod_max_clamp = max;
+        self.desc.lod_divisor = lod_divisor;
         self
     }
 
-    /// Set the hold policy for this sampler. This overrides the global policy.
+    /// Set the hold policy for this sampler. This overrides the global policy on the `GpuContext`.
     pub fn with_hold_policy(mut self, policy: HoldPolicy) -> Self {
         self.hold_policy = Some(policy);
         self
     }
 }
 
-impl<T> ResourceId for Sampler<T> {
+impl<T: Hash> ResourceId for Sampler<T> {
     type Id = SamplerId;
 
     fn create_id(&self) -> Self::Id {
-        SamplerId(Uuid::new_v4())
+        let mut hasher = DefaultHasher::new();
+        self.hash(&mut hasher);
+        return SamplerId(Uuid::from_u128(hasher.finish() as u128));
     }
 }
 
@@ -72,19 +115,18 @@ impl Sampler<Linear> {
         Self {
             ty: std::marker::PhantomData,
             hold_policy: None,
-            desc: wgpu::SamplerDescriptor {
-                label: Some("linear_sampler"),
-                address_mode_u: wgpu::AddressMode::ClampToEdge,
-                address_mode_v: wgpu::AddressMode::ClampToEdge,
-                address_mode_w: wgpu::AddressMode::ClampToEdge,
+            desc: HashableSamplerDescriptor {
+                label: "linear_sampler",
+                address_mode: wgpu::AddressMode::ClampToEdge,
                 min_filter: wgpu::FilterMode::Linear,
                 mag_filter: wgpu::FilterMode::Linear,
                 mipmap_filter: wgpu::MipmapFilterMode::Linear,
-                lod_min_clamp: 0.0,
-                lod_max_clamp: 32.0, 
+                lod_min_clamp: 0,
+                lod_max_clamp: 32, 
                 anisotropy_clamp: 1,
                 compare: None,
                 border_color: None,
+                lod_divisor: 1,
             }
         }
     }
@@ -98,7 +140,7 @@ impl Sampler<Linear> {
 
 impl SamplerType for Sampler<Linear> {
     fn into_payload(self) -> Result<SamplerPayload, String> {
-        Ok(SamplerPayload { desc: self.desc })
+        Ok(SamplerPayload { desc: self.desc.into_wgpu_desc() })
     }
 
     fn hold_policy(&self) -> Option<HoldPolicy> {
@@ -116,19 +158,18 @@ impl Sampler<Nearest> {
         Self {
             ty: std::marker::PhantomData,
             hold_policy: None,
-            desc: wgpu::SamplerDescriptor {
-                label: Some("nearest_sampler"),
-                address_mode_u: wgpu::AddressMode::ClampToEdge,
-                address_mode_v: wgpu::AddressMode::ClampToEdge,
-                address_mode_w: wgpu::AddressMode::ClampToEdge,
+            desc: HashableSamplerDescriptor {
+                label: "nearest_sampler",
+                address_mode: wgpu::AddressMode::ClampToEdge,
                 min_filter: wgpu::FilterMode::Nearest,
                 mag_filter: wgpu::FilterMode::Nearest,
                 mipmap_filter: wgpu::MipmapFilterMode::Nearest,
-                lod_min_clamp: 0.0,
-                lod_max_clamp: 32.0, 
+                lod_min_clamp: 0,
+                lod_max_clamp: 32, 
                 anisotropy_clamp: 1,
                 compare: None,
                 border_color: None,
+                lod_divisor: 1
             }
         }
     }
@@ -142,7 +183,7 @@ impl Sampler<Nearest> {
 
 impl SamplerType for Sampler<Nearest> {
     fn into_payload(self) -> Result<SamplerPayload, String> {
-        Ok(SamplerPayload { desc: self.desc })
+        Ok(SamplerPayload { desc: self.desc.into_wgpu_desc() })
     }
 
     fn hold_policy(&self) -> Option<HoldPolicy> {
@@ -160,19 +201,18 @@ impl Sampler<Anisotropic> {
         Self {
             ty: std::marker::PhantomData,
             hold_policy: None,
-            desc: wgpu::SamplerDescriptor {
-                label: Some("anisotropic_sampler"),
-                address_mode_u: wgpu::AddressMode::Repeat,
-                address_mode_v: wgpu::AddressMode::Repeat,
-                address_mode_w: wgpu::AddressMode::Repeat,
+            desc: HashableSamplerDescriptor {
+                label: "anisotropic_sampler",
+                address_mode: wgpu::AddressMode::Repeat,
                 min_filter: wgpu::FilterMode::Linear,
                 mag_filter: wgpu::FilterMode::Linear,
                 mipmap_filter: wgpu::MipmapFilterMode::Linear,
-                lod_min_clamp: 0.0,
-                lod_max_clamp: 32.0, 
+                lod_min_clamp: 0,
+                lod_max_clamp: 32, 
                 anisotropy_clamp: level.get(),
                 compare: None,
                 border_color: None,
+                lod_divisor: 1
             }
         }
     }
@@ -180,10 +220,10 @@ impl Sampler<Anisotropic> {
 
 impl SamplerType for Sampler<Anisotropic> {
     fn into_payload(self) -> Result<SamplerPayload, String> {
-        if self.desc.anisotropy_clamp.gt(&16u16) {
+        if self.desc.anisotropy_clamp > 16u16 {
             Err(format!("Cannot create sampler with label '{:?}'. Anisotropic level must be in the range [1, 16].", self.desc.label))
         } else {
-            Ok(SamplerPayload { desc: self.desc })
+            Ok(SamplerPayload { desc: self.desc.into_wgpu_desc() })
         }
     }
 
@@ -202,19 +242,18 @@ impl Sampler<Bordered> {
         Self {
             ty: std::marker::PhantomData,
             hold_policy: None,
-            desc: wgpu::SamplerDescriptor {
-                label: Some("bordered_sampler"),
-                address_mode_u: wgpu::AddressMode::ClampToBorder,
-                address_mode_v: wgpu::AddressMode::ClampToBorder,
-                address_mode_w: wgpu::AddressMode::ClampToBorder,
+            desc: HashableSamplerDescriptor {
+                label: "bordered_sampler",
+                address_mode: wgpu::AddressMode::ClampToBorder,
                 min_filter: wgpu::FilterMode::Nearest,
                 mag_filter: wgpu::FilterMode::Nearest,
                 mipmap_filter: wgpu::MipmapFilterMode::Nearest,
-                lod_min_clamp: 0.0,
-                lod_max_clamp: 32.0, 
+                lod_min_clamp: 0,
+                lod_max_clamp: 32, 
                 anisotropy_clamp: 1,
                 compare: None,
                 border_color: None,
+                lod_divisor: 1
             }
         }
     }
@@ -222,8 +261,8 @@ impl Sampler<Bordered> {
 
 impl SamplerType for Sampler<Bordered> {
     fn into_payload(self) -> Result<SamplerPayload, String> {
-        match self.desc.address_mode_u {
-            wgpu::AddressMode::ClampToBorder => Ok(SamplerPayload { desc: self.desc }),
+        match self.desc.address_mode {
+            wgpu::AddressMode::ClampToBorder => Ok(SamplerPayload { desc: self.desc.into_wgpu_desc() }),
             _ => Err(format!("Cannot create sampler with label '{:?}'. Bordered sampler must have address mode ClampToBorder", self.desc.label))
         }
     }
@@ -243,19 +282,18 @@ impl Sampler<Comparison> {
         Self {
             ty: std::marker::PhantomData,
             hold_policy: None,
-            desc: wgpu::SamplerDescriptor {
-                label: Some("comparison_sampler"),
-                address_mode_u: wgpu::AddressMode::ClampToEdge,
-                address_mode_v: wgpu::AddressMode::ClampToEdge,
-                address_mode_w: wgpu::AddressMode::ClampToEdge,
+            desc: HashableSamplerDescriptor {
+                label: "comparison_sampler",
+                address_mode: wgpu::AddressMode::ClampToEdge,
                 min_filter: wgpu::FilterMode::Linear,
                 mag_filter: wgpu::FilterMode::Linear,
                 mipmap_filter: wgpu::MipmapFilterMode::Linear,
-                lod_min_clamp: 0.0,
-                lod_max_clamp: 32.0, 
+                lod_min_clamp: 0,
+                lod_max_clamp: 32, 
                 anisotropy_clamp: 1,
                 compare: Some(func),
                 border_color: None,
+                lod_divisor: 1
             }
         }
     }
@@ -263,7 +301,7 @@ impl Sampler<Comparison> {
 
 impl SamplerType for Sampler<Comparison> {
     fn into_payload(self) -> Result<SamplerPayload, String> {
-        Ok(SamplerPayload { desc: self.desc })
+        Ok(SamplerPayload { desc: self.desc.into_wgpu_desc() })
     }
 
     fn hold_policy(&self) -> Option<HoldPolicy> {

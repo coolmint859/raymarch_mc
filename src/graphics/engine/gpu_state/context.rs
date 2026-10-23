@@ -177,19 +177,6 @@ impl GpuContext {
         id
     }
 
-    /// Ensures a sampler has been requested.
-    /// 
-    /// If `test_id` maps to an already requested sampler, it's returned back to the caller. Otherwise a new sampler is requested from `blueprint`, and a new `SamplerId` is returned. 
-    /// 
-    /// TODO: SamplerId needs to be content-addressable
-    pub fn ensure_sampler<B>(&mut self, test_id: SamplerId, blueprint: B) -> SamplerId 
-    where 
-        B: SamplerType + ResourceId<Id = SamplerId>
-    {
-        if self.is_sampler_requested(test_id) { return test_id };
-        self.request_sampler(blueprint)
-    }
-
     /// Request a bind group to be created from the provided blueprint
     /// 
     /// Returns a `BindGroupIdPair`, which contains a unique `BindGroupId` and content-addressable `LayoutId`.
@@ -350,33 +337,21 @@ impl GpuContext {
         self.pip_registry.validate(pip_id, &self.bg_registry)
     }
 
-    /// Returns `true` if a buffer mapped to the provided id exists or is pending completion, `false` otherwise
+    /// Returns `true` if a buffer mapped to `buf_id` exists or is pending completion, `false` otherwise
     pub fn is_buffer_requested(&self, buf_id: BufferId) -> bool {
         self.resources.buffers.mark_accessed(&buf_id);
         self.resources.buffers.is_requested(&buf_id)
     }
 
-    /// Returns `true` if a texture mapped to the provided id exists or is pending completion, `false` otherwise
+    /// Returns `true` if a texture mapped to `tex_id` exists or is pending completion, `false` otherwise
     pub fn is_texture_requested(&self, tex_id: TextureId) -> bool {
         self.resources.textures.mark_accessed(&tex_id);
         self.resources.textures.is_requested(&tex_id)
     }
 
-    /// Returns `true` if a sampler mapped to the provided id exists or is pending completion, `false` otherwise
-    pub fn is_sampler_requested(&self, samp_id: SamplerId) -> bool {
-        self.resources.samplers.mark_accessed(&samp_id);
-        self.resources.samplers.is_requested(&samp_id)
-    }
-
-    /// Returns `true` if a bind group mapped to the provided id exists or is pending completion, `false` otherwise
+    /// Returns `true` if a bind group mapped to `bg_id` exists or is pending completion, `false` otherwise
     pub fn is_bindgroup_requested(&self, bg_id: &BindGroupId) -> bool {
         self.bg_registry.mark_bg_accessed(bg_id, &self.resources);
         self.bg_registry.is_bg_requested(bg_id)
-    }
-
-    /// Returns `true` if a pipeline mapped to the provided id exists or is pending completion, `false` otherwise
-    pub fn is_pipeline_requested(&self, pip_id: &PipelineId) -> bool {
-        self.pip_registry.mark_accessed(pip_id);
-        self.pip_registry.is_requested(pip_id)
     }
 }

@@ -79,16 +79,6 @@ impl PipelineRegistry {
         self.valid_pips.borrow_mut().remove(pip_id);
     }
 
-    /// Mark the bind group and dependencies as accessed.
-    pub fn mark_accessed(&self, pip_id: &PipelineId) {
-        self.handles.mark_accessed(pip_id);
-    }
-
-    /// Returns `true` if a bind group mapped to the provided id exists or is pending completion, `false` otherwise
-    pub fn is_requested(&self, pip_id: &PipelineId) -> bool {
-        self.handles.is_requested(pip_id)
-    }
-
     /// Try requesting a new pipeline tied to the provided id.
     fn try_request(
         &mut self,
