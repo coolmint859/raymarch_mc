@@ -36,9 +36,9 @@ pub trait ResourceId {
 
 /// The low level gpu resources (Buffers, Textures and Samplers)
 pub(crate) struct GpuResources {
-    pub(crate) buffers: ResourceHandler<BufferId, wgpu::Buffer>,
-    pub(crate) textures: ResourceHandler<TextureId, TextureHandle>,
-    pub(crate) samplers: ResourceHandler<SamplerId, wgpu::Sampler>
+    pub(crate) buffers: ResourceHandler<BufferId, wgpu::Buffer, String>,
+    pub(crate) textures: ResourceHandler<TextureId, TextureHandle, String>,
+    pub(crate) samplers: ResourceHandler<SamplerId, wgpu::Sampler, String>
 }
 
 impl GpuResources {
@@ -116,7 +116,7 @@ impl GpuContext {
             gpu.create_buffer(blueprint, source.data, source.capacity)
         }).with_hold_policy(policy);
 
-        self.resources.buffers.request_new(&id, buffer_task);
+        self.resources.buffers.request(id, buffer_task);
 
         id
     }
@@ -142,7 +142,7 @@ impl GpuContext {
             gpu.create_texture(blueprint, source)
         }).with_hold_policy(policy);
 
-        self.resources.textures.request_new(&id, texture_task);
+        self.resources.textures.request(id, texture_task);
 
         id
     }
@@ -163,7 +163,7 @@ impl GpuContext {
         B: SamplerType + ResourceId<Id = SamplerId>
     {
         let id = blueprint.create_id();
-        // if self.resources.samplers.contains(&id) { return id; }
+        if self.resources.samplers.contains(&id) { return id; }
 
         let policy = blueprint.hold_policy().unwrap_or(self.global_hp.buffers);
 
@@ -172,7 +172,7 @@ impl GpuContext {
             gpu.create_sampler(blueprint)
         }).with_hold_policy(policy);
 
-        self.resources.samplers.request_new(&id, sampler_task);
+        self.resources.samplers.request(id, sampler_task);
 
         id
     }

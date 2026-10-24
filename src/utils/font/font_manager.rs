@@ -17,7 +17,7 @@ pub struct TextOptions {
 /// `Font` resources are loaded asynchronously using an internal `ResourceHandler`
 pub struct FontManager {
     /// The set of fonts currently parsing
-    pending_fonts: ResourceHandler<FontId, FontReadResult>,
+    pending_fonts: ResourceHandler<FontId, FontReadResult, String>,
     /// The set of fonts ready to be used
     ready_fonts: HashMap<FontId, Font>,
     /// The set of active fonts (fonts with staged text)
@@ -50,7 +50,7 @@ impl FontManager {
             reader.parse(&path_copy)
         });
 
-        self.pending_fonts.request_new(&font_id, font_parse_task);
+        self.pending_fonts.request(font_id.clone(), font_parse_task);
         return font_id;
     }
 
@@ -79,7 +79,7 @@ impl FontManager {
             .collect();
 
         for font_id in ids {
-            if let Some(raw_font) = self.pending_fonts.remove(&font_id) {
+            if let Some(raw_font) = self.pending_fonts.remove_ready(&font_id) {
                 self.ready_fonts.insert(
                     font_id.clone(), 
                     Font::create(raw_font, &cam_buf_id, &mut graphics.context)

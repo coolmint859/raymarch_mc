@@ -50,9 +50,9 @@ pub(crate) struct BindGroupRegistry {
     /// the set of bind groups that are known to be valid. 
     valid_bgs: RefCell<HashSet<BindGroupId>>,
     /// The handles to bind groups
-    pub(crate) bg_handles: ResourceHandler<BindGroupId, BindGroupHandle>,
+    pub(crate) bg_handles: ResourceHandler<BindGroupId, BindGroupHandle, String>,
     /// The handles to bind group layouts
-    pub(crate) layout_handles: ResourceHandler<LayoutId, BindGroupLayoutHandle>,
+    pub(crate) layout_handles: ResourceHandler<LayoutId, BindGroupLayoutHandle, String>,
     /// maps bind groups to their blueprints
     pub(crate) bg_blueprints: HashMap<BindGroupId, BindGroup>,
 }
@@ -81,7 +81,7 @@ impl BindGroupRegistry {
                 .and_then(|layout| Ok(BindGroupLayoutHandle { layout, ref_count: Cell::new(1)}))
         });
 
-        self.layout_handles.request_new(id, layout_task);
+        self.layout_handles.request(*id, layout_task);
     }
 
     /// Request a new bind group
@@ -220,7 +220,7 @@ impl BindGroupRegistry {
                     .and_then(|bg| Ok(BindGroupHandle { bind_group: bg, layout_id: layout_id_copy}))
             }).with_hold_policy(policy);
 
-            self.bg_handles.request_new(&bg_id, bind_group_task);
+            self.bg_handles.request(*bg_id, bind_group_task);
         } else {
             self.request_layout(layout_id, &blueprint);
             self.deferred.insert(*bg_id, (*layout_id, blueprint.clone()));

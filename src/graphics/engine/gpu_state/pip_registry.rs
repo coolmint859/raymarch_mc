@@ -9,7 +9,7 @@ pub(crate) struct PipelineDependencies {
 /// Keeps track of and validates requests for render/compute pipelines
 pub(crate) struct PipelineRegistry {
     gpu: GpuHandle,
-    handles: ResourceHandler<PipelineId, PipelineHandle>,
+    handles: ResourceHandler<PipelineId, PipelineHandle, String>,
     pip_bps: HashMap<PipelineId, PipelineType>,
     deferred: HashMap<PipelineId, PipelineType>,
     valid_pips: RefCell<HashSet<PipelineId>>
@@ -107,7 +107,7 @@ impl PipelineRegistry {
                         gpu.create_render_pipeline(pip_bp, deps.bg_layouts)
                     }).with_hold_policy(policy);
 
-                    self.handles.request_new(pip_id, r_pip_task);
+                    self.handles.request(*pip_id, r_pip_task);
                 },
                 PipelineType::Compute(pip_bp) => {
                     let policy = pip_bp.hold_policy.unwrap_or(global_hp);
@@ -116,7 +116,7 @@ impl PipelineRegistry {
                         gpu.create_compute_pipeline(pip_bp, deps.bg_layouts)
                     }).with_hold_policy(policy);
 
-                    self.handles.request_new(pip_id, c_pip_task);
+                    self.handles.request(*pip_id, c_pip_task);
                 }
             };
         } else {
