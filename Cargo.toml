@@ -18,3 +18,4 @@ tokio = { version = "1", features = ["full"] }
 fontdue = "0.9.3"
 indexmap = "2.14.2"
 uuid = { version = "1.27.0", features = ["v4"]}
+async-store = "0.3.0"

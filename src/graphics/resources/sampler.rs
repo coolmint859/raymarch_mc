@@ -1,8 +1,9 @@
 use std::{hash::{DefaultHasher, Hash, Hasher}, marker::PhantomData, num::NonZero};
 
+use async_store::HoldPolicy;
 use uuid::Uuid;
 
-use crate::{graphics::{ResourceId, SamplerId}, utils::HoldPolicy};
+use crate::{graphics::{ResourceId, SamplerId}};
 
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

@@ -1,8 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
+use async_store::{HoldPolicy, ResourceHandler, Task};
 use uuid::Uuid;
 
-use crate::{graphics::{BufferId, DrawCommand, Graphics, RenderingState, SequentialExecutor}, utils::{Camera, FontReadResult, FontReaderType, ResourceHandler, ScreenSpace, Task, Transform, font::font::{Font, FontId}}};
+use crate::{graphics::{BufferId, DrawCommand, Graphics, RenderingState, SequentialExecutor}, utils::{Camera, FontReadResult, FontReaderType, ScreenSpace, Transform, font::font::{Font, FontId}}};
 
 /// Options for text display
 pub struct TextOptions {
@@ -46,7 +47,8 @@ impl FontManager {
         let font_id = FontId(Uuid::new_v4());
 
         let path_copy = font_path.to_string().clone();
-        let font_parse_task = Task::cpu_bound(async move {
+        let policy = HoldPolicy::Indefinite;
+        let font_parse_task = Task::cpu_bound(policy, async move {
             reader.parse(&path_copy)
         });
 

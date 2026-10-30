@@ -1,8 +1,9 @@
 use std::{hash::{DefaultHasher, Hash, Hasher}, num::NonZero};
 
+use async_store::HoldPolicy;
 use uuid::Uuid;
 
-use crate::{graphics::{BindGroupId, BufferId, LayoutId, ResourceId, SamplerId, TextureId}, utils::HoldPolicy};
+use crate::{graphics::{BindGroupId, BufferId, LayoutId, ResourceId, SamplerId, TextureId}};
 
 /// The target ID for a bind group entry
 #[derive(Clone, Debug)]

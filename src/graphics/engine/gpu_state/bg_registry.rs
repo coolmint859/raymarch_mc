@@ -1,5 +1,7 @@
 use std::{cell::{Cell, RefCell}, collections::{HashMap, HashSet}, ops::Deref};
-use crate::{graphics::*, utils::{HoldPolicy, ResourceHandler, Task}};
+use async_store::{HoldPolicy, ResourceHandler, Task};
+
+use crate::graphics::*;
 
 /// A handle to a bind group and associated layout
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -76,7 +78,8 @@ impl BindGroupRegistry {
         let gpu = self.gpu.clone();
         let builder = blueprint.clone();
 
-        let layout_task = Task::io_bound(async move {
+        let policy = HoldPolicy::Indefinite;
+        let layout_task = Task::io_bound(policy, async move {
             gpu.create_bg_layout(builder)
                 .and_then(|layout| Ok(BindGroupLayoutHandle { layout, ref_count: Cell::new(1)}))
         });
@@ -147,7 +150,7 @@ impl BindGroupRegistry {
     /// If the count hits 0, this will remove it from the registry
     pub fn check_dec_bgl(&mut self, bgl_id: &LayoutId) {
         let mut should_remove = false;
-        if let Some(layout) = self.layout_handles.get_mut(bgl_id) {
+        if let Some(layout) = self.layout_handles.get(bgl_id) {
             if layout.ref_count.get() > 0 {
                 layout.ref_count.set(layout.ref_count.get() - 1);
             }
@@ -194,7 +197,7 @@ impl BindGroupRegistry {
 
             let policy = blueprint.hold_policy.unwrap_or(global_hp);
 
-            let bind_group_task = Task::io_bound(async move {
+            let bind_group_task = Task::io_bound(policy, async move {
                 let mut entries = Vec::new();
 
                 for (_id, buf, slot) in &deps.buffers {
@@ -218,7 +221,7 @@ impl BindGroupRegistry {
 
                 gpu.create_bind_group(builder, entries, deps.layout)
                     .and_then(|bg| Ok(BindGroupHandle { bind_group: bg, layout_id: layout_id_copy}))
-            }).with_hold_policy(policy);
+            });
 
             self.bg_handles.request(*bg_id, bind_group_task);
         } else {

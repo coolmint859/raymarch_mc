@@ -1,5 +1,4 @@
 pub mod traits;
-pub mod handler;
 pub mod transform;
 pub mod table;
 
@@ -9,7 +8,6 @@ pub mod uniform;
 pub mod storage;
 
 pub use traits::*;
-pub use handler::*;
 pub use transform::*;
 pub use table::*;
 

@@ -1,10 +1,11 @@
 use std::{ops::Deref};
 
+use async_store::HoldPolicy;
 use image::GenericImageView;
 use uuid::Uuid;
 use wgpu::Extent3d;
 
-use crate::{graphics::{ResourceId, TextureId}, utils::HoldPolicy};
+use crate::{graphics::{ResourceId, TextureId}};
 
 /// A lightweight handle to a gpu texture
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]

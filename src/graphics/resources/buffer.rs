@@ -1,8 +1,9 @@
 use std::marker::PhantomData;
 
+use async_store::HoldPolicy;
 use uuid::Uuid;
 
-use crate::{graphics::{BufferId, ResourceId}, utils::HoldPolicy};
+use crate::{graphics::{BufferId, ResourceId}};
 
 /// Represents types that can be serialized into slices of bytes.
 /// 

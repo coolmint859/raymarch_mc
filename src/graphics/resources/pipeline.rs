@@ -1,8 +1,9 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 
+use async_store::HoldPolicy;
 use uuid::Uuid;
 
-use crate::{graphics::{LayoutId, PipelineId, ResourceId, VertexBufferLayout}, utils::HoldPolicy};
+use crate::{graphics::{LayoutId, PipelineId, ResourceId, VertexBufferLayout}};
 
 /// Represents a handle to a render/compute pipeline
 #[derive(Clone, Debug, PartialEq, Eq)]

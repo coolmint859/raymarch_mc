@@ -10,16 +10,14 @@ pub trait Drawable {
 
 /// Draws an entity. Must be used with a `DrawCommand`. Supports indexed or non-indexed draw calls
 pub struct IndexedDraw {
-    /// the id to the pipeline the draw command will run on
+    /// The id to the pipeline the draw call will use
     pip_id: PipelineId,
-    /// the set of bind groups used in the pipeline
+    /// The set of bind groups used in the pipeline's shader
     bind_groups: Vec<BindGroupId>,
-    /// the set of vertex buffers used in the draw command
+    /// The set of vertex buffers used in the draw call
     vertex_buffers: Vec<BufferId>,
-    /// optional index buffer. When set, invocations must be proportional to the size of this buffer.
-    index_buffer: Option<BufferId>,
-    /// the format of the index buffer, if provided
-    index_format: Option<wgpu::IndexFormat>,
+    /// Optional index buffer. When set, `element_range` must be proportional to the size of this buffer.
+    index_buffer: Option<(BufferId, wgpu::IndexFormat)>,
     /// The range of elements (vertices/indices) to draw with the pipeline
     element_range: Range<u32>,
     /// The range of instances to draw with the pipeline.
@@ -34,7 +32,6 @@ impl IndexedDraw {
             bind_groups: Vec::new(),
             vertex_buffers: Vec::new(),
             index_buffer: None,
-            index_format: None,
             instance_range: 0..1,
         }
     }
@@ -47,8 +44,7 @@ impl IndexedDraw {
 
     /// Add an index buffer to the draw call.
     pub fn with_index_buffer(mut self, buffer: BufferId, format: wgpu::IndexFormat) -> Self {
-        self.index_buffer = Some(buffer);
-        self.index_format = Some(format);
+        self.index_buffer = Some((buffer, format));
         self
     }
 
@@ -89,7 +85,7 @@ impl Drawable for IndexedDraw {
             pass.set_vertex_buffer(idx as u32, buffer.slice(..));
         }
 
-        if let (Some(idx_id), Some(idx_fmt)) = (self.index_buffer, self.index_format) {
+        if let Some((idx_id, idx_fmt)) = self.index_buffer {
             let Some(buffer) = context.resources.buffers.get(&idx_id) else {
                 // println!("[DrawCommand] Failed to validate index buffer @{:?} for render pipeline @{:?}", idx_id, self.pip_id);
                 return;

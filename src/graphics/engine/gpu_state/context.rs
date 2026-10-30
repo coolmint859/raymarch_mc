@@ -1,5 +1,7 @@
 use std::{collections::HashSet};
-use crate::{graphics::{pip_registry::PipelineRegistry, *}, utils::{HoldPolicy, ResourceHandler, Task}};
+use async_store::{HoldPolicy, ResourceHandler, Task};
+
+use crate::{graphics::{pip_registry::PipelineRegistry, *}};
 
 /// The hold policy for all gpu resources globally. All resources have an indefinite hold policy by default.
 /// 
@@ -112,9 +114,9 @@ impl GpuContext {
         let policy = blueprint.hold_policy.unwrap_or(self.global_hp.buffers);
         
         let gpu = self.gpu.clone();
-        let buffer_task = Task::io_bound( async move {
+        let buffer_task = Task::io_bound( policy, async move {
             gpu.create_buffer(blueprint, source.data, source.capacity)
-        }).with_hold_policy(policy);
+        });
 
         self.resources.buffers.request(id, buffer_task);
 
@@ -138,9 +140,9 @@ impl GpuContext {
         let policy = blueprint.hold_policy.unwrap_or(self.global_hp.buffers);
 
         let gpu = self.gpu.clone();
-        let texture_task = Task::io_bound(async move {
+        let texture_task = Task::io_bound(policy, async move {
             gpu.create_texture(blueprint, source)
-        }).with_hold_policy(policy);
+        });
 
         self.resources.textures.request(id, texture_task);
 
@@ -168,9 +170,9 @@ impl GpuContext {
         let policy = blueprint.hold_policy().unwrap_or(self.global_hp.buffers);
 
         let gpu = self.gpu.clone();
-        let sampler_task = Task::io_bound(async move {
+        let sampler_task = Task::io_bound(policy, async move {
             gpu.create_sampler(blueprint)
-        }).with_hold_policy(policy);
+        });
 
         self.resources.samplers.request(id, sampler_task);
 
